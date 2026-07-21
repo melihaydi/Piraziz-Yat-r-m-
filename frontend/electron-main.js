@@ -1,30 +1,53 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('path')
 const { spawn, exec } = require('child_process')
+const fs = require('fs')
 
 let backendProcess = null
+let frontendProcess = null
 
-function startBackend() {
-  // Locate the backend directory relative to this script's directory
-  const backendDir = path.join(__dirname, '../backend')
-  const pythonPath = path.join(backendDir, 'venv', 'Scripts', 'python.exe')
-  
-  console.log('Starting Python backend automatically in background:', pythonPath)
-  
-  // Spawn uvicorn server in background completely hidden
-  backendProcess = spawn(pythonPath, [
-    '-m', 'uvicorn', 'app.main:app', 
-    '--host', '127.0.0.1', 
-    '--port', '8000'
-  ], {
-    cwd: backendDir,
-    shell: true,
-    stdio: 'ignore' // hides console output and runs completely in background
-  })
+// Dynamically locate the Desktop folder and BIP/BİP project directory (Request 1!)
+const desktopDir = app.getPath('desktop')
+let WORKSPACE_DIR = path.join(desktopDir, 'BİP')
+if (!fs.existsSync(WORKSPACE_DIR)) {
+  WORKSPACE_DIR = path.join(desktopDir, 'BIP')
+}
 
-  backendProcess.on('error', (err) => {
-    console.error('Failed to auto-start Python backend:', err)
-  })
+const BACKEND_DIR = path.join(WORKSPACE_DIR, 'backend')
+const FRONTEND_DIR = path.join(WORKSPACE_DIR, 'frontend')
+
+function startServers() {
+  // 1. Start Python FastAPI backend in the background
+  const pythonPath = path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe')
+  if (fs.existsSync(pythonPath)) {
+    console.log('Auto-starting Python backend in background from:', BACKEND_DIR)
+    backendProcess = spawn(pythonPath, [
+      '-m', 'uvicorn', 'app.main:app', 
+      '--host', '127.0.0.1', 
+      '--port', '8000'
+    ], {
+      cwd: BACKEND_DIR,
+      shell: true,
+      stdio: 'ignore'
+    })
+  } else {
+    console.error('Could not find Python interpreter at:', pythonPath)
+  }
+
+  // 2. Start Next.js frontend production server in the background
+  if (fs.existsSync(FRONTEND_DIR)) {
+    console.log('Auto-starting Next.js frontend in background from:', FRONTEND_DIR)
+    frontendProcess = spawn('npx', [
+      'next', 'start', 
+      '-p', '3000'
+    ], {
+      cwd: FRONTEND_DIR,
+      shell: true,
+      stdio: 'ignore'
+    })
+  } else {
+    console.error('Could not find frontend directory at:', FRONTEND_DIR)
+  }
 }
 
 function createWindow () {
@@ -39,11 +62,12 @@ function createWindow () {
     backgroundColor: '#18181b'
   })
   
-  // Hide default menu bar
   win.setMenuBarVisibility(false)
   
-  // Load local Next.js dev server (or change to Netlify URL for production!)
-  win.loadURL('http://localhost:3000')
+  // Wait 4 seconds for servers to bind to ports before loading URL
+  setTimeout(() => {
+    win.loadURL('http://localhost:3000')
+  }, 4000)
 
   win.on('page-title-updated', (e) => {
     e.preventDefault();
@@ -51,9 +75,7 @@ function createWindow () {
 }
 
 app.whenReady().then(() => {
-  // Start backend server automatically on startup
-  startBackend()
-  
+  startServers()
   createWindow()
 
   app.on('activate', () => {
@@ -69,15 +91,16 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Clean up: Ensure python backend process is fully terminated when the Electron app quits
+// Clean up processes on quit to prevent orphaned server instances
 app.on('will-quit', () => {
   if (backendProcess) {
-    console.log('Terminating Python backend process...')
     try {
-      // Force kill the process tree on Windows to prevent orphaned python processes
       exec(`taskkill /pid ${backendProcess.pid} /T /F`)
-    } catch (e) {
-      console.error('Failed to terminate backend process:', e)
-    }
+    } catch (e) {}
+  }
+  if (frontendProcess) {
+    try {
+      exec(`taskkill /pid ${frontendProcess.pid} /T /F`)
+    } catch (e) {}
   }
 })
