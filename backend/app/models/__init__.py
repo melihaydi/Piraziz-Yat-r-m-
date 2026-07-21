@@ -1,0 +1,19 @@
+# Import all models here so that Alembic can auto-detect them through Base.metadata
+from app.db.base_class import Base
+from app.models.user import User
+from app.models.company import Company
+from app.models.financial import FinancialStatement
+from app.models.kap import KapNotification
+from app.models.portfolio import Portfolio, PortfolioAsset
+from app.models.alert import Alert
+
+__all__ = [
+    "Base",
+    "User",
+    "Company",
+    "FinancialStatement",
+    "KapNotification",
+    "Portfolio",
+    "PortfolioAsset",
+    "Alert"
+]

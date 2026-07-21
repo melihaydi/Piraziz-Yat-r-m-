@@ -1,0 +1,23 @@
+# Piraziz Yatırım Terminali TODO List
+
+- [x] Call Stack Zum Hatalarını Bitir (isSyncing Guard)
+- [x] AI Crossover Sinyalleri Altyapısını ve Portföy Entegrasyonunu Ekle
+- [x] Canlı Seans Veri Akışını Kontrol Et (USDTRY FX_IDC Düzeltmesi)
+- [x] Kurumsal Markalama: BIP BIST -> Piraziz Yatırım Dönüşümü
+- [x] Kurumsal Degrade Zümrüt Logosu Oluştur ve Sitelere Entegre Et
+- [x] AI KAP Analizi Bölümlerini Temizle (Kaldır)
+- [x] Ekonomi Takvimini Piyasa Takip Paneline Ekle
+- [x] Ayarlar Arayüzünü Yap (Profil Emojisi, İsim Değiştirme, Mock Giriş)
+- [x] Canlı Bildirim Zili ve Ping Efekti Ekle
+- [x] Hisse Arama Bölümünü Screener İçerisinde Split-View ile Bütünleştir
+- [x] Favoriler Sistemi Ekle (Yıldızlama, Süzme ve Dashboard Listesi)
+- [x] İletişim & Destek Bilgilerini Settings'e Ekle
+- [x] TEFAS Fon Takip Sayfasını (`/funds`) ve Grafik Alt Yapısını Kur
+- [x] Portföy Sayfasında Fon Ekleme Desteğini Aktif Et (3 Harfli Kod Entegrasyonu)
+- [x] Lightweight Charts Ayarlarını Güncelle (RSI/MACD Default Gizle, Hacim Kaldır)
+- [x] Electron Masaüstü EXE Konfigürasyonunu Tamamla
+- [x] TEFAS Fonlarını Yalnızca PHE, PBR, DFI, TLY, TMV, PUK Olacak Şekilde Kısıtla
+- [x] Screener Fiyat Getirme Hızlandırması (get_quote'u Tamamen Non-Blocking Yaparak Milisaniyelere Çekme)
+- [x] Default Stock Grafiğini 1 Saatlik ("1h") Yaparak İlk Yüklemede Anında Grafik Getirme
+- [x] Sol Alttaki Yardım/Sorunlar Linkini Kaldırma, Ayrı Bir Menü Düzeni Yapma
+- [x] Profil Fotoğrafı Yükleme (Gerçek Image Upload + Base64 LocalStorage Entegrasyonu)
