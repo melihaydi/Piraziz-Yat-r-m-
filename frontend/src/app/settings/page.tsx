@@ -1,10 +1,81 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon } from "lucide-react"
+import {
+  User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon,
+  Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+
+// Content for the "Güvenlik & Yetkiler" section (Request: professional security/permissions overview)
+const SECURITY_ITEMS = [
+  {
+    icon: ShieldCheck,
+    title: "Veri Güvenliği",
+    description: "Sunucu ile uygulama arasındaki tüm veri alışverişi şifreli bağlantı üzerinden yapılır; piyasa verileri ve hesap bilgileriniz üçüncü şahıslarla paylaşılmaz.",
+    badge: "Aktif",
+    badgeColor: "emerald"
+  },
+  {
+    icon: KeyRound,
+    title: "API Yetkileri",
+    description: "Uygulama; TradingView (canlı fiyat akışı), Google Gemini (AI analiz) ve KAP (kamuyu aydınlatma) servislerine yalnızca salt-okunur veri çekme yetkisiyle bağlanır.",
+    badge: "Salt Okunur",
+    badgeColor: "blue"
+  },
+  {
+    icon: Database,
+    title: "Yerel Veri Depolama",
+    description: "Profil bilgileriniz, favori hisse/fonlarınız ve arayüz tercihleriniz yalnızca bu cihazda (tarayıcı yerel deposunda) tutulur, sunucuya kopyalanmaz.",
+    badge: "Yerel",
+    badgeColor: "purple"
+  },
+  {
+    icon: Lock,
+    title: "Şifreleme Bilgisi",
+    description: "Hesap şifreleriniz tek yönlü hash algoritmasıyla saklanır; oturumlarınız HS256 algoritmasıyla imzalanmış JWT belirteçleriyle doğrulanır.",
+    badge: "HS256",
+    badgeColor: "blue"
+  },
+  {
+    icon: Fingerprint,
+    title: "Oturum Güvenliği",
+    description: "Giriş oturumlarınız 24 saat (1440 dakika) sonunda otomatik olarak sona erer ve yeniden kimlik doğrulama istenir.",
+    badge: "24 Saat",
+    badgeColor: "amber"
+  },
+  {
+    icon: RefreshCw,
+    title: "Güncelleme Kontrolü",
+    description: "Uygulama sürümünüz ve piyasa veri motorunuz düzenli olarak kontrol edilir; kritik güncellemeler otomatik olarak bildirilir.",
+    badge: "v0.1.0",
+    badgeColor: "zinc"
+  },
+  {
+    icon: ScrollText,
+    title: "Loglama",
+    description: "Yalnızca hata teşhisi ve alarm/sinyal tetiklemeleri için sınırlı sistem günlüğü tutulur; kişisel veya finansal verileriniz kaydedilmez ya da satılmaz.",
+    badge: "Sınırlı",
+    badgeColor: "zinc"
+  },
+  {
+    icon: BadgeCheck,
+    title: "Lisans Bilgisi",
+    description: "Hesabınız Piraziz Yatırım Premium lisansı kapsamında gerçek zamanlı BIST verisi ve TEFAS fon verisi erişimine sahiptir.",
+    badge: "Premium",
+    badgeColor: "emerald"
+  }
+]
+
+const BADGE_STYLES: Record<string, string> = {
+  emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  purple: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  amber: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  zinc: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+}
 
 const AVATAR_OPTIONS = [
   { emoji: "💼", label: "Yatırımcı" },
@@ -15,10 +86,10 @@ const AVATAR_OPTIONS = [
 ]
 
 export default function SettingsPage() {
-  const [username, setUsername] = useState("Ömer Faruk")
+  const [username, setUsername] = useState("")
   const [avatarEmoji, setAvatarEmoji] = useState("💼")
   const [profilePic, setProfilePic] = useState("")
-  const [email, setEmail] = useState("omerfaruk@bip.com")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("••••••••")
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [authSuccess, setAuthSuccess] = useState(false)
@@ -28,9 +99,11 @@ export default function SettingsPage() {
     const savedName = localStorage.getItem("bip_username")
     const savedEmoji = localStorage.getItem("bip_avatar_emoji")
     const savedPic = localStorage.getItem("bip_profile_pic")
+    const savedEmail = localStorage.getItem("bip_user_email")
     if (savedName) setUsername(savedName)
     if (savedEmoji) setAvatarEmoji(savedEmoji)
     if (savedPic) setProfilePic(savedPic)
+    if (savedEmail) setEmail(savedEmail)
   }, [])
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,6 +123,7 @@ export default function SettingsPage() {
     localStorage.setItem("bip_username", username)
     localStorage.setItem("bip_avatar_emoji", avatarEmoji)
     localStorage.setItem("bip_profile_pic", profilePic)
+    if (email) localStorage.setItem("bip_user_email", email)
     
     // Dispatch custom event to notify Header of changes
     window.dispatchEvent(new Event("profile-updated"))
@@ -60,8 +134,18 @@ export default function SettingsPage() {
 
   const handleMockAuth = (e: React.FormEvent) => {
     e.preventDefault()
+    if (email) localStorage.setItem("bip_user_email", email)
+    if (password && password !== "••••••••") localStorage.setItem("bip_user_password", password)
+    window.dispatchEvent(new Event("profile-updated"))
     setAuthSuccess(true)
     setTimeout(() => setAuthSuccess(false), 3000)
+  }
+
+  const [activeSection, setActiveSection] = useState<"profile" | "security" | "help">("profile")
+
+  const scrollToSection = (section: "profile" | "security" | "help") => {
+    setActiveSection(section)
+    document.getElementById(`section-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
   return (
@@ -80,15 +164,30 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <Card glass={true} className="p-2">
             <div className="space-y-1">
-              <button className="w-full flex items-center px-4 py-3 text-sm font-semibold rounded-lg bg-primary text-primary-foreground shadow-md transition-all text-left">
+              <button
+                onClick={() => scrollToSection("profile")}
+                className={`w-full flex items-center px-4 py-3 text-sm font-semibold rounded-lg transition-all text-left cursor-pointer ${
+                  activeSection === "profile" ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+                }`}
+              >
                 <User className="h-4 w-4 mr-3" />
                 Profil Bilgileri
               </button>
-              <button className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary/40 hover:text-foreground transition-all text-left">
+              <button
+                onClick={() => scrollToSection("security")}
+                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
+                  activeSection === "security" ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+                }`}
+              >
                 <Shield className="h-4 w-4 mr-3" />
                 Güvenlik & Yetkiler
               </button>
-              <button className="w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary/40 hover:text-foreground transition-all text-left">
+              <button
+                onClick={() => scrollToSection("help")}
+                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
+                  activeSection === "help" ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+                }`}
+              >
                 <HelpCircle className="h-4 w-4 mr-3" />
                 Yardım ve Destek
               </button>
@@ -111,9 +210,9 @@ export default function SettingsPage() {
 
         {/* Right Side: Tab Forms */}
         <div className="md:col-span-2 space-y-8">
-          
+
           {/* Profile Form */}
-          <Card glass={true}>
+          <Card glass={true} id="section-profile">
             <CardHeader>
               <CardTitle className="text-base flex items-center">
                 <User className="h-4.5 w-4.5 mr-2 text-primary" />
@@ -235,29 +334,81 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Help & Support (Request 13) */}
-          <Card glass={true}>
+          {/* Security & Permissions */}
+          <Card glass={true} id="section-security" className="border-primary/10">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center">
+                <Shield className="h-4.5 w-4.5 mr-2 text-primary" />
+                Güvenlik & Yetkiler
+              </CardTitle>
+              <CardDescription>Verilerinizin nasıl korunduğu, hangi servislere hangi yetkiyle bağlanıldığı ve hesap güvenliğinize dair bilgiler.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {SECURITY_ITEMS.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <div
+                      key={item.title}
+                      className="p-3.5 bg-secondary/20 rounded-lg border border-border/30 hover:border-border/60 transition-colors space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center min-w-0">
+                          <div className="p-1.5 rounded-md bg-primary/10 text-primary mr-2.5 shrink-0">
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                          <span className="text-xs font-bold text-foreground truncate">{item.title}</span>
+                        </div>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${BADGE_STYLES[item.badgeColor]}`}>
+                          {item.badge}
+                        </span>
+                      </div>
+                      <p className="text-[10.5px] text-muted-foreground leading-relaxed">{item.description}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Help & Support */}
+          <Card glass={true} id="section-help">
             <CardHeader>
               <CardTitle className="text-base flex items-center">
                 <HelpCircle className="h-4.5 w-4.5 mr-2 text-primary" />
-                Destek & İletişim
+                Yardım & Destek
               </CardTitle>
-              <CardDescription>Sorularınız veya teknik problemleriniz için bizimle iletişime geçin.</CardDescription>
+              <CardDescription>Sorularınız veya teknik problemleriniz için bizimle doğrudan iletişime geçin.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-xs font-medium">
-              <div className="flex items-center p-3.5 bg-secondary/20 rounded-lg border border-border/30">
-                <Mail className="h-5 w-5 text-primary mr-3" />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">E-posta Destek</p>
-                  <p className="text-foreground font-mono text-sm">destek@pirazizyatirim.com</p>
-                </div>
-              </div>
-              <div className="flex items-center p-3.5 bg-secondary/20 rounded-lg border border-border/30">
-                <Phone className="h-5 w-5 text-primary mr-3" />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold">Çağrı Merkezi</p>
-                  <p className="text-foreground font-mono text-sm">444 0 799</p>
-                </div>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <a
+                  href="mailto:melihaydi@gmail.com"
+                  className="group flex flex-col p-4 bg-gradient-to-br from-secondary/25 to-secondary/5 rounded-xl border border-border/40 hover:border-primary/40 transition-all"
+                >
+                  <div className="inline-flex p-2.5 rounded-lg bg-primary/10 text-primary w-fit mb-3 group-hover:bg-primary/20 transition-colors">
+                    <Mail className="h-4.5 w-4.5" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">E-posta Desteği</p>
+                  <p className="text-foreground font-mono text-sm mt-1 break-all">melihaydi@gmail.com</p>
+                  <span className="text-[10px] text-primary font-semibold mt-2 flex items-center">
+                    E-posta gönder <MessageCircle className="h-3 w-3 ml-1" />
+                  </span>
+                </a>
+
+                <a
+                  href="tel:+905530221529"
+                  className="group flex flex-col p-4 bg-gradient-to-br from-secondary/25 to-secondary/5 rounded-xl border border-border/40 hover:border-primary/40 transition-all"
+                >
+                  <div className="inline-flex p-2.5 rounded-lg bg-primary/10 text-primary w-fit mb-3 group-hover:bg-primary/20 transition-colors">
+                    <Phone className="h-4.5 w-4.5" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Telefon Desteği</p>
+                  <p className="text-foreground font-mono text-sm mt-1">0553 022 15 29</p>
+                  <span className="text-[10px] text-primary font-semibold mt-2 flex items-center">
+                    Hemen ara <MessageCircle className="h-3 w-3 ml-1" />
+                  </span>
+                </a>
               </div>
             </CardContent>
           </Card>

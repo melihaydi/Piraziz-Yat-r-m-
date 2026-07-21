@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { Skeleton } from "@/components/ui/Skeleton"
 
 // Fallback index chart points in case of connection limits
 const marketData = [
@@ -101,70 +102,98 @@ export default function Home() {
   // Fetch all dashboard data
   useEffect(() => {
     // 1. Fetch market summary
-    fetch("http://localhost:8000/api/v1/screener/market-summary")
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.sentiment) {
-          setMarketSummary(data)
-        }
-        setLoadingSummary(false)
-      })
-      .catch(err => {
-        console.error("Failed to load market summary:", err)
-        setLoadingSummary(false)
-      })
-
-    // 3. Fetch portfolio signals with auth bootstrapping (Request 2!)
-    const bootstrapAndLoad = async () => {
-      let token = localStorage.getItem("token")
-      
-      if (!token) {
-        try {
-          // Attempt registration
-          await fetch("http://localhost:8000/api/v1/auth/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: "omerfaruk@bip.com", password: "password123", full_name: "Ömer Faruk" })
-          })
-          
-          // Login to get token
-          const loginRes = await fetch("http://localhost:8000/api/v1/auth/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ username: "omerfaruk@bip.com", password: "password123" })
-          })
-          const loginData = await loginRes.json()
-          if (loginData.access_token) {
-            token = loginData.access_token as string
-            localStorage.setItem("token", token)
-          }
-        } catch (e) {
-          console.error("Auth bootstrapping failed:", e)
-        }
-      }
-      
-      fetch("http://localhost:8000/api/v1/portfolio/signals", {
-        headers: token ? { "Authorization": `Bearer ${token}` } : {}
-      })
+    const fetchMarketSummary = () => {
+      fetch("http://localhost:8000/api/v1/screener/market-summary")
         .then(res => res.json())
         .then(data => {
-          if (data && Array.isArray(data.signals)) {
-            setSignals(data.signals)
-            setIsFallbackSignals(data.is_fallback)
+          if (data && data.sentiment) {
+            setMarketSummary(data)
           }
-          setLoadingSignals(false)
+          setLoadingSummary(false)
         })
         .catch(err => {
-          console.error("Failed to fetch signals:", err)
-          setLoadingSignals(false)
+          console.error("Failed to load market summary:", err)
+          setLoadingSummary(false)
         })
     }
 
-    bootstrapAndLoad()
+    // 3. Fetch portfolio signals with auth bootstrapping (Request 2!)
+    // Re-authenticates automatically if the stored token is missing, expired, or
+    // otherwise invalid (401) - previously a stale token from an old session (or a
+    // backend restart with a fresh DB) would silently break this panel forever,
+    // since a *present* token was trusted without ever being validated.
+    const authenticate = async (): Promise<string | null> => {
+      const userEmail = localStorage.getItem("bip_user_email") || ""
+      const userPass = localStorage.getItem("bip_user_password") || ""
+      const userName = localStorage.getItem("bip_username") || ""
+
+      if (!userEmail || !userPass) return null
+
+      try {
+        // Attempt registration (fine if it fails because the account already exists)
+        await fetch("http://localhost:8000/api/v1/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userEmail, password: userPass, full_name: userName })
+        })
+
+        // Login to get a fresh token
+        const loginRes = await fetch("http://localhost:8000/api/v1/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ username: userEmail, password: userPass })
+        })
+        if (!loginRes.ok) return null
+        const loginData = await loginRes.json()
+        if (loginData.access_token) {
+          localStorage.setItem("token", loginData.access_token)
+          return loginData.access_token as string
+        }
+      } catch (e) {
+        console.error("Auth bootstrapping failed:", e)
+      }
+      return null
+    }
+
+    const bootstrapAndLoad = async () => {
+      let token = localStorage.getItem("token")
+      if (!token) {
+        token = await authenticate()
+      }
+
+      const fetchSignals = async (authToken: string | null) => {
+        const res = await fetch("http://localhost:8000/api/v1/portfolio/signals", {
+          headers: (authToken ? { "Authorization": `Bearer ${authToken}` } : {}) as Record<string, string>
+        })
+        return res
+      }
+
+      try {
+        let res = await fetchSignals(token)
+
+        // Token missing/expired/invalid - re-authenticate once and retry.
+        if (res.status === 401) {
+          localStorage.removeItem("token")
+          const freshToken = await authenticate()
+          if (freshToken) {
+            res = await fetchSignals(freshToken)
+          }
+        }
+
+        const data = await res.json()
+        if (data && Array.isArray(data.signals)) {
+          setSignals(data.signals)
+          setIsFallbackSignals(data.is_fallback)
+        }
+      } catch (err) {
+        console.error("Failed to fetch signals:", err)
+      } finally {
+        setLoadingSignals(false)
+      }
+    }
 
     // 4. Fetch details for favorites (Request 12 & 16!)
     const loadFavorites = async () => {
-      setLoadingFavorites(true)
       const favStocksStr = localStorage.getItem("favorites_stocks")
       const favFundsStr = localStorage.getItem("favorites_funds")
       
@@ -203,7 +232,22 @@ export default function Home() {
       setLoadingFavorites(false)
     }
 
+    // Initial fetch
+    fetchMarketSummary()
+    bootstrapAndLoad()
     loadFavorites()
+
+    // Market summary reads from an in-memory cache on the backend (no extra
+    // network cost per call), so it can refresh close to real-time.
+    const marketInterval = setInterval(fetchMarketSummary, 2000)
+    // Favorites involve fetching the full stock/fund lists, so keep that on a
+    // slower cadence to avoid unnecessary load.
+    const favoritesInterval = setInterval(loadFavorites, 10000)
+
+    return () => {
+      clearInterval(marketInterval)
+      clearInterval(favoritesInterval)
+    }
   }, [])
 
   // Dynamic index details depending on selection (Request 4!)
@@ -327,32 +371,34 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Piraziz AI Technical Crossover Signals Card (Request 2!) */}
-          <Card glass={true}>
+          {/* Frantic Strateji - Piraziz AI live signal tracker (Request 2!) */}
+          <Card glass={true} className="border-emerald-500/10 bg-gradient-to-br from-card via-card to-emerald-950/5">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-lg flex items-center">
                     <Sparkles className="h-5 w-5 mr-2 text-emerald-400 animate-pulse" />
-                    Piraziz AI Sinyal Üreteci
+                    Frantic Strateji
                   </CardTitle>
                   <CardDescription>
-                    {isFallbackSignals 
+                    {isFallbackSignals
                       ? "Portföyünüzde hisse senedi bulunmadığı için popüler BIST 30 senetleri analiz ediliyor."
-                      : "Portföyünüzdeki hisse senetleri için 20 Günlük Hareketli Ortalama (SMA20) kırılım analizleri."
+                      : "Portföyünüzdeki hisseler için canlı, çok indikatörlü sinyal takibi."
                     }
                   </CardDescription>
                 </div>
-                <span className="text-[10px] uppercase font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full">
+                <span className="text-[10px] uppercase font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full flex items-center shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
                   Canlı Takip
                 </span>
               </div>
             </CardHeader>
             <CardContent>
               {loadingSignals ? (
-                <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                  <Loader2 className="h-8 w-8 text-primary animate-spin" />
-                  <span className="text-xs text-muted-foreground">Portföy Kırılım Sinyalleri Hesaplanıyor...</span>
+                <div className="space-y-3 py-1">
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-16 w-full rounded-xl" />
                 </div>
               ) : signals.length > 0 ? (
                 <div className="space-y-4">
@@ -360,14 +406,16 @@ export default function Home() {
                     <div 
                       key={idx} 
                       className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors ${
-                        sig.signal === "AL" ? "bg-emerald-950/10 border-emerald-500/25 hover:bg-emerald-950/20" :
-                        sig.signal === "SAT" ? "bg-rose-950/10 border-rose-500/25 hover:bg-rose-950/20" :
+                        sig.signal.includes("Güçlü AL") ? "bg-emerald-950/20 border-emerald-400/35 hover:bg-emerald-950/30" :
+                        sig.signal.includes("AL") ? "bg-green-950/10 border-green-500/25 hover:bg-green-950/15" :
+                        sig.signal.includes("Güçlü SAT") ? "bg-rose-950/20 border-rose-400/35 hover:bg-rose-950/30" :
+                        sig.signal.includes("SAT") ? "bg-orange-950/10 border-orange-500/25 hover:bg-orange-950/15" :
                         "bg-secondary/15 border-border/30 hover:bg-secondary/25"
                       }`}
                     >
-                      <div className="space-y-1">
+                      <div className="space-y-1.5 flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
-                          <span 
+                          <span
                             onClick={() => window.location.href = `/stock/${sig.ticker}`}
                             className="text-xs font-black bg-secondary hover:bg-secondary/80 px-2.5 py-1 rounded text-foreground cursor-pointer transition-colors"
                           >
@@ -379,19 +427,36 @@ export default function Home() {
                         <p className="text-xs text-muted-foreground leading-relaxed">
                           {sig.description}
                         </p>
+                        {/* Live indicator score bar: how many of the 11 tracked
+                            indicators currently lean bullish vs bearish */}
+                        {typeof sig.buy_score === "number" && typeof sig.sell_score === "number" && (
+                          <div className="flex items-center space-x-2 pt-0.5 max-w-xs">
+                            <div className="flex-1 h-1.5 rounded-full bg-secondary/40 overflow-hidden flex">
+                              <div
+                                className="h-full bg-emerald-500"
+                                style={{ width: `${(sig.buy_score / (sig.total_indicators || 11)) * 100}%` }}
+                              />
+                              <div
+                                className="h-full bg-rose-500"
+                                style={{ width: `${(sig.sell_score / (sig.total_indicators || 11)) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-mono text-muted-foreground shrink-0">
+                              {sig.buy_score} AL / {sig.sell_score} SAT
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      
+
                       <div className="flex items-center space-x-2 shrink-0">
-                        <span className={`px-2.5 py-1 rounded text-xs font-black uppercase border ${
+                        <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase border ${
+                          sig.signal === "Güçlü AL" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
                           sig.signal === "AL" ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                          sig.signal === "SAT" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
-                          sig.signal === "TUT" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                          "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          sig.signal === "Güçlü SAT" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                          sig.signal === "SAT" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" :
+                          "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
                         }`}>
-                          {sig.signal === "AL" ? "AL (Kırılım)" :
-                           sig.signal === "SAT" ? "SAT (Kırılım)" :
-                           sig.signal === "TUT" ? "TUT (Yükselen)" :
-                           "ZAYIF TREND"}
+                          {sig.signal}
                         </span>
                         <span className="text-[10px] text-muted-foreground font-mono">
                           {sig.timestamp}
@@ -422,8 +487,9 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               {loadingFavorites ? (
-                <div className="flex items-center justify-center py-6">
-                  <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                <div className="space-y-2 py-1">
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-10 w-full rounded-lg" />
                 </div>
               ) : (favoriteStocks.length > 0 || favoriteFunds.length > 0) ? (
                 <div className="space-y-3 text-xs">
@@ -486,8 +552,9 @@ export default function Home() {
             </CardHeader>
             <CardContent className="flex flex-col items-center">
               {loadingSummary ? (
-                <div className="flex items-center justify-center h-40">
-                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                <div className="w-full flex flex-col items-center justify-center space-y-3 h-40">
+                  <Skeleton className="h-28 w-28 rounded-full" />
+                  <Skeleton className="h-4 w-20 rounded" />
                 </div>
               ) : (
                 <>
@@ -537,30 +604,38 @@ export default function Home() {
           </Card>
 
           {/* Economy Calendar (Request 8!) */}
-          <Card glass={true}>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center">
-                <Calendar className="h-4.5 w-4.5 text-primary mr-2" />
+          <Card glass={true} className="border-purple-500/15 hover:border-purple-500/30 transition-colors duration-300">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-purple-400">
+                <Calendar className="h-4.5 w-4.5 text-purple-400 mr-2 animate-pulse" />
                 Ekonomi Takvimi
               </CardTitle>
-              <CardDescription>Piyasa üzerinde etkili kritik makro açıklamalar</CardDescription>
+              <CardDescription className="text-[10px] mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 text-xs font-semibold">
+            <CardContent className="space-y-3.5 text-xs font-semibold">
               {[
-                { time: "Bugün 14:00", event: "TCMB Haftalık Para ve Banka İstatistikleri", impact: "Orta" },
-                { time: "23 Temmuz 10:00", event: "TÜİK Tüketici Güven Endeksi (Haziran)", impact: "Yüksek" },
-                { time: "24 Temmuz 17:00", event: "ABD Üretim PMI Öncü Verisi", impact: "Yüksek" }
+                { time: "Bugün 14:00", event: "TCMB Haftalık Para ve Banka İstatistikleri", impact: "Orta", desc: "Para arzı, yabancı rezervler ve yerleşiklerin döviz mevduatı verileri açıklanacak." },
+                { time: "23 Temmuz 10:00", event: "TÜİK Tüketici Güven Endeksi (Haziran)", impact: "Yüksek", desc: "Tüketicilerin maddi durum ve genel ekonomiye yönelik eğilim endeksleri yayınlanacak." },
+                { time: "24 Temmuz 17:00", event: "ABD Üretim PMI Öncü Verisi", impact: "Yüksek", desc: "Küresel piyasaların faiz indirim döngüsü beklentilerine yön verecek kritik aktivite verisi." }
               ].map((ev, idx) => (
-                <div key={idx} className="p-3 bg-secondary/25 border border-border/35 rounded-lg space-y-1">
-                  <div className="flex items-center justify-between font-bold text-muted-foreground text-[10px]">
+                <div 
+                  key={idx} 
+                  className="p-3.5 bg-secondary/15 border border-border/30 rounded-xl space-y-2 hover:bg-purple-500/5 hover:border-purple-500/30 transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer shadow-sm hover:shadow-[0_4px_16px_rgba(168,85,247,0.06)] group"
+                >
+                  <div className="flex items-center justify-between font-bold text-muted-foreground text-[9px] uppercase tracking-wider">
                     <span>{ev.time}</span>
-                    <span className={`px-1.5 py-0.5 rounded-[3px] text-[8px] font-black ${
-                      ev.impact === "Yüksek" ? "bg-rose-500/10 text-rose-400 border border-rose-500/15" : "bg-slate-500/10 text-slate-400 border border-slate-500/15"
+                    <span className={`px-2 py-0.5 rounded-[4px] text-[8px] font-black border ${
+                      ev.impact === "Yüksek" ? "bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_8px_rgba(244,63,94,0.08)]" :
+                      ev.impact === "Orta" ? "bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.08)]" :
+                      "bg-slate-500/10 text-slate-400 border-slate-500/20"
                     }`}>
                       Etki: {ev.impact}
                     </span>
                   </div>
-                  <p className="font-extrabold text-foreground">{ev.event}</p>
+                  <div>
+                    <p className="font-extrabold text-foreground group-hover:text-purple-400 transition-colors leading-snug">{ev.event}</p>
+                    <p className="text-[10px] text-muted-foreground/80 mt-1 font-normal leading-relaxed line-clamp-2">{ev.desc}</p>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -574,8 +649,11 @@ export default function Home() {
             </CardHeader>
             <CardContent className="space-y-4">
               {loadingSummary ? (
-                <div className="flex items-center justify-center py-10">
-                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                <div className="space-y-3 py-1">
+                  <Skeleton className="h-4.5 w-full rounded" />
+                  <Skeleton className="h-4.5 w-full rounded" />
+                  <Skeleton className="h-4.5 w-full rounded" />
+                  <Skeleton className="h-4.5 w-full rounded" />
                 </div>
               ) : marketSummary.sectors.length > 0 ? (
                 marketSummary.sectors.map((sec: any) => (

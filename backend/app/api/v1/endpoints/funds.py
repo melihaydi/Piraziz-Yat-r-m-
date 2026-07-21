@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.services.tefas import tefas_service
 from app.services.market_data import market_data_service
 
@@ -26,10 +26,11 @@ def get_fund_detail(code: str):
     return fund
 
 @router.get("/chart/{code}")
-def get_fund_candles(code: str, count: int = 30):
-    """Get historical price candle array for a mutual fund."""
+def get_fund_candles(code: str, response: Response, count: int = 30):
+    """Get historical price candle array for a mutual fund (real TEFAS NAV history when available)."""
     chg = _get_live_index_change()
-    candles = tefas_service.get_fund_candles(code, count, chg)
+    candles, is_simulated = tefas_service.get_fund_candles(code, count, chg)
     if not candles:
         raise HTTPException(status_code=404, detail="Fund candles not found")
+    response.headers["X-Chart-Simulated"] = "true" if is_simulated else "false"
     return candles

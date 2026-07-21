@@ -321,3 +321,124 @@ class TechnicalAnalysisService:
             else:
                 vwap.append(cumulative_pv / cumulative_vol)
         return vwap
+
+    @staticmethod
+    def calculate_momentum(closes: List[float], period: int = 10) -> List[Optional[float]]:
+        """Calculate Momentum (Rate of Change)."""
+        momentum: List[Optional[float]] = [None] * len(closes)
+        if len(closes) <= period:
+            return momentum
+        for i in range(period, len(closes)):
+            momentum[i] = closes[i] - closes[i - period]
+        return momentum
+
+    @staticmethod
+    def calculate_adx(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> List[Optional[float]]:
+        """Calculate Average Directional Index (ADX) to determine trend strength."""
+        adx: List[Optional[float]] = [None] * len(closes)
+        n = len(closes)
+        if n < (period * 2):
+            return adx
+        
+        tr = [0.0] * n
+        plus_dm = [0.0] * n
+        minus_dm = [0.0] * n
+        
+        tr[0] = highs[0] - lows[0]
+        for i in range(1, n):
+            up_move = highs[i] - highs[i-1]
+            down_move = lows[i-1] - lows[i]
+            
+            tr[i] = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
+            
+            if up_move > down_move and up_move > 0:
+                plus_dm[i] = up_move
+            else:
+                plus_dm[i] = 0.0
+                
+            if down_move > up_move and down_move > 0:
+                minus_dm[i] = down_move
+            else:
+                minus_dm[i] = 0.0
+                
+        atr_s = [0.0] * n
+        plus_di = [0.0] * n
+        minus_di = [0.0] * n
+        
+        atr_s[period-1] = sum(tr[:period])
+        plus_dm_s = sum(plus_dm[:period])
+        minus_dm_s = sum(minus_dm[:period])
+        
+        for i in range(period, n):
+            atr_s[i] = atr_s[i-1] - (atr_s[i-1] / period) + tr[i]
+            plus_dm_s = plus_dm_s - (plus_dm_s / period) + plus_dm[i]
+            minus_dm_s = minus_dm_s - (minus_dm_s / period) + minus_dm[i]
+            
+            if atr_s[i] > 0:
+                plus_di[i] = 100 * (plus_dm_s / atr_s[i])
+                minus_di[i] = 100 * (minus_dm_s / atr_s[i])
+                
+        dx = [0.0] * n
+        for i in range(period, n):
+            di_sum = plus_di[i] + minus_di[i]
+            di_diff = abs(plus_di[i] - minus_di[i])
+            dx[i] = (di_diff / di_sum * 100) if di_sum > 0 else 0.0
+            
+        adx_sum = sum(dx[period:period*2]) / period
+        adx[period*2 - 1] = adx_sum
+        for i in range(period*2, n):
+            adx_sum = (adx_sum * (period - 1) + dx[i]) / period
+            adx[i] = adx_sum
+            
+        return adx
+
+    @staticmethod
+    def calculate_supertrend(highs: List[float], lows: List[float], closes: List[float], period: int = 10, multiplier: float = 3.0) -> Tuple[List[Optional[float]], List[str]]:
+        """Calculate Supertrend line and buy/sell signals."""
+        n = len(closes)
+        st_line: List[Optional[float]] = [None] * n
+        st_signal: List[str] = ["Takip Et"] * n
+        if n < period:
+            return st_line, st_signal
+            
+        atr = TechnicalAnalysisService.calculate_atr(highs, lows, closes, period)
+        
+        basic_ub = [0.0] * n
+        basic_lb = [0.0] * n
+        final_ub = [0.0] * n
+        final_lb = [0.0] * n
+        trend = [1] * n
+        
+        for i in range(n):
+            val_atr = atr[i] or 0.0
+            hl_avg = (highs[i] + lows[i]) / 2.0
+            basic_ub[i] = hl_avg + (multiplier * val_atr)
+            basic_lb[i] = hl_avg - (multiplier * val_atr)
+            
+        for i in range(1, n):
+            if basic_ub[i] < final_ub[i-1] or closes[i-1] > final_ub[i-1]:
+                final_ub[i] = basic_ub[i]
+            else:
+                final_ub[i] = final_ub[i-1]
+                
+            if basic_lb[i] > final_lb[i-1] or closes[i-1] < final_lb[i-1]:
+                final_lb[i] = basic_lb[i]
+            else:
+                final_lb[i] = final_lb[i-1]
+                
+            if trend[i-1] == 1:
+                if closes[i] < final_lb[i]:
+                    trend[i] = -1
+                else:
+                    trend[i] = 1
+            else:
+                if closes[i] > final_ub[i]:
+                    trend[i] = 1
+                else:
+                    trend[i] = -1
+                    
+            st_line[i] = final_lb[i] if trend[i] == 1 else final_ub[i]
+            st_signal[i] = "AL" if trend[i] == 1 else "SAT"
+            
+        return st_line, st_signal
+

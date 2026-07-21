@@ -1,4 +1,6 @@
+import logging
 from typing import List, Optional
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -9,6 +11,8 @@ from app.models.portfolio import Portfolio, PortfolioAsset
 from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse
 from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -264,43 +268,212 @@ def get_portfolio_signals(
         is_fallback = True
 
     signals = []
+    from app.services.technical_analysis import TechnicalAnalysisService
+
+    def _fetch_signal_candles(ticker: str):
+        """
+        Get daily OHLCV history for indicator calculation. First checks the
+        shared live-stream cache (instant, subscribe=False so it never steals
+        the single shared chart session that Hisseler/Fon pages rely on - see
+        the SPECIAL_EXCHANGES / patched_subscribe_chart notes in
+        market_data.py for why that session is exclusive).
+
+        Previously this was the ONLY source, so any ticker whose 1d chart
+        hadn't already been opened elsewhere in the app came back empty -
+        which is why the Frantic Strateji panel kept showing "Yetersiz
+        geçmiş veri" for tickers nobody had happened to chart yet. Now, if
+        the cache is empty, it falls back to borsapy's one-shot get_history
+        (Ticker(...).history()), which opens its OWN independent TradingView
+        WebSocket session and closes it when done - safe to call concurrently
+        for several tickers without disturbing anyone's live chart.
+        """
+        candles = market_data_service.get_candles(ticker, "1d", wait=False, subscribe=False)
+        if candles and len(candles) >= 20:
+            return ticker, candles
+
+        try:
+            import borsapy
+            hist_df = borsapy.Ticker(ticker).history(period="1y", interval="1d")
+            if hist_df is not None and not hist_df.empty:
+                built = []
+                for idx, row in hist_df.iterrows():
+                    vol = row.get("Volume", 0.0)
+                    built.append({
+                        "time": int(idx.timestamp()),
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "volume": float(vol) if vol == vol else 0.0,  # NaN-safe
+                    })
+                if built:
+                    return ticker, built
+        except Exception as hist_err:
+            logger.warning(f"borsapy history fallback failed for {ticker}: {hist_err}")
+
+        return ticker, candles or []
+
+    # Fetch every ticker's candles concurrently (each history() call is an
+    # independent WS session) instead of one-by-one, so worst case is a single
+    # symbol's timeout rather than N stacked timeouts.
+    stock_tickers = [t.upper() for t in symbols_to_check if len(t.upper()) != 3]
+    candles_by_ticker = {}
+    if stock_tickers:
+        with ThreadPoolExecutor(max_workers=min(len(stock_tickers), 5)) as pool:
+            for ticker, candles in pool.map(_fetch_signal_candles, stock_tickers):
+                candles_by_ticker[ticker] = candles
+
     for ticker in symbols_to_check:
         ticker = ticker.upper()
-        # Skip funds for MA crossover analysis (they have 3 characters)
-        if len(ticker) == 3:
-            continue
-            
-        candles = market_data_service.get_candles(ticker, "1d", wait=False, subscribe=False)
-        if not candles or len(candles) < 20:
+        if len(ticker) == 3:  # Skip funds (3 chars)
             continue
 
-        closes = [c["close"] for c in candles]
+        candles = candles_by_ticker.get(ticker, [])
+        if not candles or len(candles) < 20:
+            signals.append({
+                "ticker": ticker,
+                "price": 0.0,
+                "sma20": 0.0,
+                "signal": "Takip Et",
+                "description": "Yetersiz geçmiş veri nedeniyle teknik sinyal üretilemedi.",
+                "color": "zinc",
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            })
+            continue
+
+        closes = [float(c["close"]) for c in candles]
+        highs = [float(c["high"]) for c in candles]
+        lows = [float(c["low"]) for c in candles]
+        opens = [float(c["open"]) for c in candles]
+        volumes = [float(c["volume"]) for c in candles]
+        
         curr = closes[-1]
-        sma20 = sum(closes[-20:]) / 20.0
         
-        # Calculate Crossovers
-        prev_c = closes[-2]
-        prev_sma20 = sum(closes[-21:-1]) / 20.0
+        # Calculate moving averages
+        sma20_list = TechnicalAnalysisService.calculate_sma(closes, 20)
+        ema20_list = TechnicalAnalysisService.calculate_ema(closes, 20)
+        ema50_list = TechnicalAnalysisService.calculate_ema(closes, 50)
+        ema200_list = TechnicalAnalysisService.calculate_ema(closes, 200) if len(closes) >= 200 else TechnicalAnalysisService.calculate_ema(closes, 50)
         
-        sig = "TUT"
-        desc = "Fiyat 20 günlük hareketli ortalamanın (SMA20) üzerinde seyretmeye devam ediyor. Yükseliş trendi korunuyor."
-        color = "emerald"
+        sma20 = sma20_list[-1] if sma20_list else curr
+        ema20 = ema20_list[-1] if ema20_list else curr
+        ema50 = ema50_list[-1] if ema50_list else curr
+        ema200 = ema200_list[-1] if ema200_list else curr
         
-        # Check Crossover UP (AL)
-        if prev_c <= prev_sma20 and curr > sma20:
+        # Calculate RSI
+        rsi_list = TechnicalAnalysisService.calculate_rsi(closes, 14)
+        rsi = rsi_list[-1] if rsi_list and rsi_list[-1] is not None else 50.0
+        
+        # Calculate MACD
+        macd_line, sig_line, _ = TechnicalAnalysisService.calculate_macd(closes)
+        macd_val = macd_line[-1] if macd_line and macd_line[-1] is not None else 0.0
+        sig_val = sig_line[-1] if sig_line and sig_line[-1] is not None else 0.0
+        
+        # Calculate VWAP
+        vwap_list = TechnicalAnalysisService.calculate_vwap(highs, lows, closes, volumes)
+        vwap = vwap_list[-1] if vwap_list and vwap_list[-1] is not None else curr
+        
+        # Calculate Supertrend
+        st_line, st_signals = TechnicalAnalysisService.calculate_supertrend(highs, lows, closes)
+        st_signal = st_signals[-1] if st_signals else "Takip Et"
+        
+        # Calculate ATR & ADX
+        atr_list = TechnicalAnalysisService.calculate_atr(highs, lows, closes, 14)
+        atr = atr_list[-1] if atr_list and atr_list[-1] is not None else 1.0
+        adx_list = TechnicalAnalysisService.calculate_adx(highs, lows, closes, 14)
+        adx = adx_list[-1] if adx_list and adx_list[-1] is not None else 25.0
+        
+        # 11 Indicators Scoring
+        buy_score = 0
+        sell_score = 0
+        
+        # 1. SMA20
+        if curr > sma20: buy_score += 1
+        else: sell_score += 1
+        
+        # 2. EMA20
+        if curr > ema20: buy_score += 1
+        else: sell_score += 1
+        
+        # 3. EMA50
+        if curr > ema50: buy_score += 1
+        else: sell_score += 1
+        
+        # 4. EMA200
+        if curr > ema200: buy_score += 1
+        else: sell_score += 1
+        
+        # 5. RSI
+        if rsi < 30: buy_score += 2
+        elif rsi < 45: buy_score += 1
+        elif rsi > 70: sell_score += 2
+        elif rsi > 55: sell_score += 1
+        
+        # 6. MACD
+        if macd_val > sig_val: buy_score += 1
+        else: sell_score += 1
+        
+        # 7. Volume Spike
+        avg_vol_10 = sum(volumes[-10:]) / 10.0 if len(volumes) >= 10 else 1.0
+        if volumes[-1] > (1.8 * avg_vol_10):
+            if curr > opens[-1]: buy_score += 1
+            else: sell_score += 1
+            
+        # 8. VWAP
+        if curr > vwap: buy_score += 1
+        else: sell_score += 1
+        
+        # 9. Supertrend
+        if st_signal == "AL": buy_score += 1
+        elif st_signal == "SAT": sell_score += 1
+        
+        # 10. ATR (Volatility confirmation)
+        vol_ratio = atr / curr if curr > 0 else 0
+        if vol_ratio < 0.02 and curr > sma20:
+            buy_score += 1
+        elif vol_ratio > 0.04 and curr < sma20:
+            sell_score += 1
+            
+        # 11. ADX (Trend strength)
+        if adx > 25:
+            if curr > ema50: buy_score += 1
+            else: sell_score += 1
+
+        # Map scores to output
+        if buy_score >= 8:
+            sig = "Güçlü AL"
+            color = "emerald"
+        elif buy_score >= 5:
             sig = "AL"
-            desc = "Fiyat 20 günlük hareketli ortalamayı (SMA20) yukarı yönlü kırdı. Güçlü boğa momentumu başlattı!"
             color = "green"
-        # Check Crossover DOWN (SAT)
-        elif prev_c >= prev_sma20 and curr < sma20:
-            sig = "SAT"
-            desc = "Fiyat 20 günlük hareketli ortalamayı (SMA20) aşağı yönlü kırdı. Satış baskısı artabilir!"
+        elif sell_score >= 8:
+            sig = "Güçlü SAT"
             color = "rose"
-        # Check simple positions if no active crossover
-        elif curr < sma20:
-            sig = "ZAYIF"
-            desc = "Fiyat 20 günlük hareketli ortalamanın (SMA20) altında hareket ediyor. Teknik görünüm zayıf."
-            color = "amber"
+        elif sell_score >= 5:
+            sig = "SAT"
+            color = "orange"
+        else:
+            sig = "Takip Et"
+            color = "zinc"
+            
+        # Build dynamic details description
+        total_ind = buy_score + sell_score
+        desc = f"11 indikatörün {buy_score}'i AL, {sell_score}'si SAT yönünde. "
+        
+        # Highlights
+        highlights = []
+        if rsi < 30: highlights.append("RSI aşırı satım (ucuz) bölgesinde.")
+        elif rsi > 70: highlights.append("RSI aşırı alım (pahalı) bölgesinde.")
+        
+        if macd_val > sig_val: highlights.append("MACD AL kesişimi koruyor.")
+        else: highlights.append("MACD SAT kesişimi baskı oluşturuyor.")
+        
+        if curr > ema200: highlights.append("Fiyat uzun vadeli EMA200 trend desteğinin üzerinde.")
+        else: highlights.append("Fiyat uzun vadeli EMA200 direncinin altında.")
+        
+        if st_signal == "AL": highlights.append("Supertrend AL sinyalini sürdürüyor.")
+        
+        desc += " ".join(highlights[:2])
 
         signals.append({
             "ticker": ticker,
@@ -309,6 +482,9 @@ def get_portfolio_signals(
             "signal": sig,
             "description": desc,
             "color": color,
+            "buy_score": buy_score,
+            "sell_score": sell_score,
+            "total_indicators": 11,
             "timestamp": datetime.now().strftime("%H:%M:%S")
         })
 

@@ -1,57 +1,252 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('path')
-const { spawn, exec } = require('child_process')
+const http = require('http')
+const { spawn, spawnSync, exec } = require('child_process')
 const fs = require('fs')
 
 let backendProcess = null
 let frontendProcess = null
+let mainWindow = null
 
-// Dynamically locate the Desktop folder and BIP/BİP project directory (Request 1!)
-const desktopDir = app.getPath('desktop')
-let WORKSPACE_DIR = path.join(desktopDir, 'BİP')
-if (!fs.existsSync(WORKSPACE_DIR)) {
-  WORKSPACE_DIR = path.join(desktopDir, 'BIP')
+const isPackaged = app.isPackaged
+
+// --- Path resolution ---------------------------------------------------
+// In dev (npm run electron-dev / electron .) this always runs straight out
+// of this project's own frontend/ folder, which for this project lives at
+// Desktop/BİP - that assumption only holds for dev.
+//
+// In a packaged install (the NSIS setup.exe produced by `npm run dist`), the
+// app runs from wherever the user installed it (typically Program Files) and
+// there is no Desktop/BİP folder on a fresh machine. Instead, the backend
+// source and the pre-built Next.js "standalone" server are bundled directly
+// into the installer via electron-builder's "extraResources" (see
+// package.json's "build" config) and land under process.resourcesPath.
+let BACKEND_SOURCE_DIR
+let FRONTEND_DIR
+
+if (isPackaged) {
+  BACKEND_SOURCE_DIR = path.join(process.resourcesPath, 'backend')
+  FRONTEND_DIR = path.join(process.resourcesPath, 'frontend-standalone')
+} else {
+  const desktopDir = app.getPath('desktop')
+  let WORKSPACE_DIR = path.join(desktopDir, 'BİP')
+  if (!fs.existsSync(WORKSPACE_DIR)) {
+    WORKSPACE_DIR = path.join(desktopDir, 'BIP')
+  }
+  BACKEND_SOURCE_DIR = path.join(WORKSPACE_DIR, 'backend')
+  FRONTEND_DIR = path.join(WORKSPACE_DIR, 'frontend')
 }
 
-const BACKEND_DIR = path.join(WORKSPACE_DIR, 'backend')
-const FRONTEND_DIR = path.join(WORKSPACE_DIR, 'frontend')
+// The backend writes a SQLite file (./bip_dev.db) relative to its process's
+// working directory (see backend/app/db/session.py) and, in dev, imports its
+// own bundled venv - both assume a writable folder right next to the code.
+// Once installed, the bundled "backend" resources folder is normally
+// read-only, so in packaged mode the backend actually runs with its cwd
+// pointed at a per-user, always-writable data folder instead of the
+// (read-only) install directory. The bundled app/ source stays importable
+// via the PYTHONPATH set below. Bonus: the database and the Python venv then
+// live outside the versioned install folder, so they survive app
+// updates/reinstalls instead of being wiped with every new version.
+const BACKEND_RUN_DIR = isPackaged
+  ? ensureDir(path.join(app.getPath('userData'), 'backend-data'))
+  : BACKEND_SOURCE_DIR
 
-function startServers() {
-  // 1. Start Python FastAPI backend in the background
-  const pythonPath = path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe')
-  if (fs.existsSync(pythonPath)) {
-    console.log('Auto-starting Python backend in background from:', BACKEND_DIR)
-    backendProcess = spawn(pythonPath, [
-      '-m', 'uvicorn', 'app.main:app', 
-      '--host', '127.0.0.1', 
-      '--port', '8000'
-    ], {
-      cwd: BACKEND_DIR,
-      shell: true,
-      stdio: 'ignore'
-    })
-  } else {
-    console.error('Could not find Python interpreter at:', pythonPath)
+const VENV_DIR = isPackaged
+  ? path.join(app.getPath('userData'), 'backend-venv')
+  : path.join(BACKEND_SOURCE_DIR, 'venv')
+
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function venvPythonPath() {
+  return path.join(VENV_DIR, 'Scripts', 'python.exe')
+}
+
+// Loading screen shown immediately while the Python backend and Next.js
+// frontend finish booting in the background (and, on a packaged app's very
+// first launch, while the one-time Python environment setup below runs).
+const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#18181b;color:#e4e4e7;font-family:'Segoe UI',sans-serif;">
+  <div style="text-align:center;">
+    <div style="width:36px;height:36px;border:3px solid #3f3f46;border-top-color:#10b981;border-radius:50%;margin:0 auto 16px;animation:spin 0.8s linear infinite;"></div>
+    <div style="font-size:13px;color:#a1a1aa;">Piraziz Yatırım Terminali başlatılıyor...</div>
+    <div style="font-size:11px;color:#71717a;margin-top:6px;">İlk çalıştırmada kurulum birkaç dakika sürebilir</div>
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</body>
+</html>
+`)}`
+
+/**
+ * First-launch-only setup for a packaged install: creates a private Python
+ * virtual environment under the app's per-user data folder and installs the
+ * bundled backend's requirements.txt into it. Skipped entirely once that
+ * venv already exists (every subsequent launch), and skipped entirely in dev
+ * mode (where the project's own hand-created venv is used as-is, matching
+ * this project's existing local workflow).
+ *
+ * This step still requires a Python 3 installation to already be present on
+ * the target Windows machine (found via the "py" launcher, falling back to
+ * "python" on PATH) - it does not bundle a Python interpreter itself. That
+ * remains a one-time prerequisite for anyone installing this app fresh.
+ */
+function ensurePythonEnv() {
+  if (!isPackaged) return true
+  if (fs.existsSync(venvPythonPath())) return true
+
+  console.log('First launch detected - setting up Python environment at', VENV_DIR)
+
+  const pythonLaunchers = [
+    { cmd: 'py', args: ['-3'] },
+    { cmd: 'python', args: [] },
+  ]
+
+  let created = false
+  for (const launcher of pythonLaunchers) {
+    try {
+      const result = spawnSync(launcher.cmd, [...launcher.args, '-m', 'venv', VENV_DIR], {
+        shell: true,
+        windowsHide: true,
+      })
+      if (result.status === 0 && fs.existsSync(venvPythonPath())) {
+        created = true
+        break
+      }
+    } catch (e) {
+      // Try the next launcher candidate.
+    }
   }
 
-  // 2. Start Next.js frontend production server in the background
-  if (fs.existsSync(FRONTEND_DIR)) {
+  if (!created) {
+    console.error(
+      'Could not create a Python virtual environment. Please install Python 3 ' +
+      '(python.org) and make sure it is available on PATH, then restart the app.'
+    )
+    return false
+  }
+
+  const pipInstall = spawnSync(
+    venvPythonPath(),
+    ['-m', 'pip', 'install', '-r', path.join(BACKEND_SOURCE_DIR, 'requirements.txt')],
+    { cwd: BACKEND_RUN_DIR, shell: true, windowsHide: true }
+  )
+  if (pipInstall.status !== 0) {
+    console.error('Failed to install backend Python dependencies:', pipInstall.stderr?.toString())
+    return false
+  }
+
+  console.log('Python environment ready.')
+  return true
+}
+
+function startBackend() {
+  const pythonExe = isPackaged ? venvPythonPath() : path.join(VENV_DIR, 'Scripts', 'python.exe')
+  if (!fs.existsSync(pythonExe)) {
+    console.error('Could not find Python interpreter at:', pythonExe)
+    return
+  }
+
+  console.log('Auto-starting Python backend in background (cwd:', BACKEND_RUN_DIR, ')')
+  backendProcess = spawn(pythonExe, [
+    '-m', 'uvicorn', 'app.main:app',
+    '--host', '127.0.0.1',
+    '--port', '8000',
+  ], {
+    cwd: BACKEND_RUN_DIR,
+    env: { ...process.env, PYTHONPATH: BACKEND_SOURCE_DIR },
+    shell: true,
+    stdio: 'ignore',
+    // Prevents the brief black cmd.exe console flash on launch (Windows-only
+    // quirk of shell:true spawns) - this was the "0.5 saniyelik log ekranı".
+    windowsHide: true,
+  })
+}
+
+function startFrontend() {
+  if (isPackaged) {
+    // The bundled Next.js "standalone" server (see next.config.ts +
+    // package.json's extraResources) is just a plain Node script. Rather than
+    // requiring a separate system-wide Node.js install, it's run through
+    // Electron's own embedded Node runtime via ELECTRON_RUN_AS_NODE - the
+    // standard trick for executing a bundled Node script from inside an
+    // Electron app.
+    const serverJs = path.join(FRONTEND_DIR, 'server.js')
+    if (!fs.existsSync(serverJs)) {
+      console.error('Could not find bundled frontend server at:', serverJs)
+      return
+    }
+    console.log('Auto-starting bundled Next.js server from:', FRONTEND_DIR)
+    frontendProcess = spawn(process.execPath, [serverJs], {
+      cwd: FRONTEND_DIR,
+      env: { ...process.env, PORT: '3000', HOSTNAME: '127.0.0.1', ELECTRON_RUN_AS_NODE: '1' },
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+  } else {
+    if (!fs.existsSync(FRONTEND_DIR)) {
+      console.error('Could not find frontend directory at:', FRONTEND_DIR)
+      return
+    }
     console.log('Auto-starting Next.js frontend in background from:', FRONTEND_DIR)
     frontendProcess = spawn('npx', [
-      'next', 'start', 
-      '-p', '3000'
+      'next', 'start',
+      '-p', '3000',
     ], {
       cwd: FRONTEND_DIR,
       shell: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      windowsHide: true,
     })
-  } else {
-    console.error('Could not find frontend directory at:', FRONTEND_DIR)
   }
 }
 
+async function startServers() {
+  startFrontend()
+
+  const pythonReady = ensurePythonEnv()
+  if (pythonReady) {
+    startBackend()
+  } else {
+    console.error('Skipping backend startup - Python environment is not ready.')
+  }
+}
+
+/** Poll a local HTTP port until it responds (or timeout), then resolve. */
+function waitForServer(port, timeoutMs = 120000, intervalMs = 500) {
+  return new Promise((resolve) => {
+    const start = Date.now()
+    const tryOnce = () => {
+      const req = http.get({ host: '127.0.0.1', port, timeout: 1500 }, (res) => {
+        res.resume()
+        resolve(true)
+      })
+      req.on('error', () => {
+        if (Date.now() - start > timeoutMs) {
+          resolve(false)
+        } else {
+          setTimeout(tryOnce, intervalMs)
+        }
+      })
+      req.on('timeout', () => {
+        req.destroy()
+        if (Date.now() - start > timeoutMs) {
+          resolve(false)
+        } else {
+          setTimeout(tryOnce, intervalMs)
+        }
+      })
+    }
+    tryOnce()
+  })
+}
+
 function createWindow () {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     title: "Piraziz Yatırım Terminali",
@@ -59,19 +254,31 @@ function createWindow () {
       nodeIntegration: false,
       contextIsolation: true
     },
-    backgroundColor: '#18181b'
+    backgroundColor: '#18181b',
+    show: false
   })
-  
-  win.setMenuBarVisibility(false)
-  
-  // Wait 4 seconds for servers to bind to ports before loading URL
-  setTimeout(() => {
-    win.loadURL('http://localhost:3000')
-  }, 4000)
 
-  win.on('page-title-updated', (e) => {
+  mainWindow.setMenuBarVisibility(false)
+  mainWindow.loadURL(LOADING_HTML)
+  mainWindow.once('ready-to-show', () => mainWindow.show())
+
+  mainWindow.on('page-title-updated', (e) => {
     e.preventDefault();
   });
+
+  // Wait for both servers to actually accept connections (instead of a blind
+  // fixed delay) before switching over to the real app. Timeout is generous
+  // (120s) to comfortably cover a packaged app's first-run Python setup.
+  Promise.all([waitForServer(8000), waitForServer(3000)]).then(([backendUp, frontendUp]) => {
+    if (frontendUp) {
+      mainWindow.loadURL('http://localhost:3000')
+    } else {
+      console.error('Frontend server did not become ready in time.')
+    }
+    if (!backendUp) {
+      console.error('Backend server did not become ready in time - some data may not load.')
+    }
+  })
 }
 
 app.whenReady().then(() => {

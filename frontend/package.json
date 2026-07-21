@@ -5,11 +5,11 @@
   "main": "electron-main.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/copy-standalone-assets.js",
     "start": "next start",
     "lint": "eslint",
     "electron-dev": "electron .",
-    "dist": "electron-builder --windows"
+    "dist": "npm run build && electron-builder --windows"
   },
   "build": {
     "appId": "com.piraziz.terminal",
@@ -17,12 +17,40 @@
     "win": {
       "target": "nsis"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "directories": {
       "output": "dist"
     },
     "files": [
       "electron-main.js",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "frontend-standalone",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!venv",
+          "!venv/**",
+          "!__pycache__/**",
+          "!**/__pycache__/**",
+          "!*.db",
+          "!*.sqlite",
+          "!tests/**",
+          "!test_*.py"
+        ]
+      }
     ]
   },
   "dependencies": {

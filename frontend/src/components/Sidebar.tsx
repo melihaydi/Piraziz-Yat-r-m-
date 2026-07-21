@@ -1,63 +1,117 @@
 "use client"
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { 
-  LayoutDashboard, 
-  Search, 
-  Briefcase, 
+import { useRouter, usePathname } from "next/navigation"
+import {
+  LayoutDashboard,
+  Search,
+  Briefcase,
   Settings,
   Coins,
-  Newspaper
+  Newspaper,
+  CandlestickChart
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
 
   const menuItems = [
-    { name: "Piyasa Takip", href: "/", icon: LayoutDashboard },
-    { name: "Screener (Filtre)", href: "/screener", icon: Search },
-    { name: "Fon Takip", href: "/funds", icon: Coins, highlight: true },
-    { name: "Portföyüm", href: "/portfolio", icon: Briefcase },
-    { name: "Ekonomi Haberleri", href: "/news", icon: Newspaper },
-    { name: "Ayarlar", href: "/settings", icon: Settings },
+    { 
+      name: "Piyasa Takip", 
+      href: "/", 
+      icon: LayoutDashboard,
+      activeClass: "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_12px_rgba(168,85,247,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-purple-500/5 hover:text-purple-400",
+      iconClass: "text-purple-400"
+    },
+    { 
+      name: "Hisseler", 
+      href: "/screener", 
+      icon: Search,
+      activeClass: "bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-blue-500/5 hover:text-blue-400",
+      iconClass: "text-blue-400"
+    },
+    {
+      name: "Trade",
+      href: "/trade",
+      icon: CandlestickChart,
+      // Deliberately distinct color theme from every other menu item - the
+      // Trade module is styled as its own professional brokerage terminal
+      // (see app/trade/*), so its sidebar entry should read as its own thing
+      // at a glance rather than blending into the app's usual palette.
+      activeClass: "bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_14px_rgba(34,211,238,0.15)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-cyan-500/5 hover:text-cyan-300",
+      iconClass: "text-cyan-300"
+    },
+    {
+      name: "Fon Takip",
+      href: "/funds",
+      icon: Coins,
+      activeClass: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-emerald-500/5 hover:text-emerald-400",
+      iconClass: "text-emerald-400"
+    },
+    {
+      name: "Portföyüm",
+      href: "/portfolio", 
+      icon: Briefcase,
+      activeClass: "bg-orange-500/10 text-orange-400 border border-orange-500/20 shadow-[0_0_12px_rgba(249,115,22,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-orange-500/5 hover:text-orange-400",
+      iconClass: "text-orange-400"
+    },
+    { 
+      name: "Ekonomi Haberleri", 
+      href: "/news", 
+      icon: Newspaper,
+      activeClass: "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_12px_rgba(168,85,247,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-purple-500/5 hover:text-purple-400",
+      iconClass: "text-purple-400"
+    },
+    { 
+      name: "Ayarlar", 
+      href: "/settings", 
+      icon: Settings,
+      activeClass: "bg-zinc-800/40 text-zinc-300 border border-zinc-700/60 shadow-inner font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-zinc-800/20 hover:text-zinc-300",
+      iconClass: "text-zinc-400"
+    },
   ]
 
   return (
     <aside className="w-64 border-r border-border bg-card flex flex-col h-screen sticky top-0">
       {/* Brand Header */}
       <div className="h-16 flex items-center px-6 border-b border-border">
-        <Link href="/" className="flex items-center">
+        <div onClick={() => router.push("/")} className="flex items-center cursor-pointer">
           <Logo />
-        </Link>
+        </div>
       </div>
 
       {/* Navigation Links */}
       <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
         {menuItems.map((item) => {
-          const isActive = pathname === item.href
+          // "/" needs an exact match (otherwise it'd match every route);
+          // everything else uses startsWith so sub-routes like /trade/performance
+          // or a fund detail page still keep their parent menu item highlighted.
+          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
           const Icon = item.icon
           return (
-            <Link
+            <button
               key={item.name}
-              href={item.href}
+              onClick={() => router.push(item.href)}
               className={cn(
-                "flex items-center px-4 h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer",
-                isActive
-                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/20"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                item.highlight && !isActive && "text-emerald-400 hover:text-emerald-300 font-semibold"
+                "w-full flex items-center px-4 h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
+                isActive ? item.activeClass : item.hoverClass
               )}
             >
               <Icon className={cn(
                 "h-4 w-4 mr-3 transition-transform duration-200 group-hover:scale-110",
-                isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground",
-                item.highlight && !isActive && "text-emerald-400"
+                isActive ? item.iconClass : "text-muted-foreground group-hover:text-foreground"
               )} />
               {item.name}
-            </Link>
+            </button>
           )
         })}
       </nav>

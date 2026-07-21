@@ -1,37 +1,30 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { Newspaper, Loader2, RefreshCw, ExternalLink, Calendar } from "lucide-react"
+import { Newspaper, RefreshCw, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
+import TradingViewNewsWidget from "@/components/TradingViewNewsWidget"
+
+const MAX_BULLETIN_TICKERS = 3
 
 export default function EconomyNewsPage() {
-  const [news, setNews] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchNews = () => {
-    setLoading(true)
-    fetch("http://localhost:8000/api/v1/news/")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setNews(data)
-        }
-        setLoading(false)
-      })
-      .catch(err => {
-        console.error("Failed to load news:", err)
-        setLoading(false)
-      })
-  }
+  const [favorites, setFavorites] = useState<string[]>([])
+  // Bumping this key forces the TradingView widgets to fully remount (their
+  // own embed script keeps them live internally, so there's no fetch to
+  // "refresh" anymore - this just gives the Yenile button something useful
+  // to do if a widget ever fails to load).
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
-    fetchNews()
+    const saved = localStorage.getItem("favorites_stocks")
+    if (saved) {
+      setFavorites(JSON.parse(saved))
+    }
   }, [])
 
-  // Bloomberg style: Top first item as a major hero feature
-  const featuredArticle = news[0] || null
-  const secondaryArticles = news.slice(1)
+  const bulletinTickers = favorites.slice(0, MAX_BULLETIN_TICKERS)
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -40,167 +33,84 @@ export default function EconomyNewsPage() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
             <Newspaper className="h-7 w-7 text-primary mr-3 animate-pulse" />
-            Bloomberg-Style Ekonomi Haberleri
+            Ekonomi Haberleri
           </h1>
           <p className="text-muted-foreground mt-1.5">
-            Anlık finansal piyasa haberleri, makroekonomik duyurular ve şirket haberleri.
+            TradingView'den canlı finansal piyasa haberleri ve makroekonomik duyurular.
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={fetchNews} 
-          disabled={loading} 
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setRefreshKey(k => k + 1)}
           className="cursor-pointer font-bold text-xs"
         >
-          {loading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
+          <RefreshCw className="h-4 w-4 mr-2" />
           Yenile
         </Button>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-48 space-y-4">
-          <Loader2 className="h-10 w-10 text-primary animate-spin" />
-          <span className="text-sm text-muted-foreground font-semibold">Son Finans Haberleri Alınıyor...</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        {/* Main Column: Live TradingView news feed (Span 2) */}
+        <div className="lg:col-span-2">
+          <Card glass={true} className="border-primary/20 bg-gradient-to-br from-card via-card to-purple-950/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm uppercase tracking-wider text-muted-foreground font-black">
+                Canlı Piyasa Haberleri
+              </CardTitle>
+              <CardDescription className="text-[10px]">TradingView üzerinden anlık akış</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TradingViewNewsWidget key={`market-${refreshKey}`} height={620} />
+            </CardContent>
+          </Card>
         </div>
-      ) : news.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Main Column: Featured Hero & List (Span 2) */}
-          <div className="lg:col-span-2 space-y-8">
-            
-            {/* Featured Hero Story */}
-            {featuredArticle && (
-              <Card glass={true} className="border-primary/20 bg-gradient-to-br from-card via-card to-purple-950/5 hover:border-primary/40 transition-all duration-300">
-                <CardContent className="pt-6 space-y-4">
-                  <div className="flex items-center justify-between text-xs text-primary font-bold">
-                    <span>MANŞET HABER</span>
-                    <span className="flex items-center text-muted-foreground font-normal">
-                      <Calendar className="h-3 w-3 mr-1" />
-                      {featuredArticle.pub_date}
+
+        {/* Right Column: Economic Calendar + BİP AI Bülten (1 col) */}
+        <div className="space-y-8">
+          <Card glass={true} className="border-zinc-800 bg-zinc-950/10">
+            <CardHeader>
+              <CardTitle className="text-base uppercase tracking-wider text-muted-foreground font-black">
+                Ekonomi Takvimi
+              </CardTitle>
+              <CardDescription>Piyasa üzerinde etkili olacak kritik açıklamalar (canlı, TradingView)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EconomicCalendarWidget />
+            </CardContent>
+          </Card>
+
+          <Card glass={true} className="bg-gradient-to-br from-card to-purple-950/5 border-purple-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm uppercase tracking-wider text-purple-400 font-black flex items-center">
+                <Sparkles className="h-4 w-4 text-purple-400 mr-1.5 animate-pulse" />
+                BİP AI Bülten
+              </CardTitle>
+              <CardDescription className="text-[10px] mt-0.5">
+                Favori hisselerinize ait canlı TradingView haber akışı
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {bulletinTickers.length > 0 ? (
+                bulletinTickers.map(ticker => (
+                  <div key={ticker} className="space-y-1.5">
+                    <span className="text-[10px] font-black text-foreground bg-secondary px-2 py-0.5 rounded">
+                      {ticker}
                     </span>
+                    <TradingViewNewsWidget key={`${ticker}-${refreshKey}`} symbol={ticker} height={240} />
                   </div>
-                  <h2 className="text-2xl font-black text-foreground hover:text-primary transition-colors leading-tight">
-                    <a href={featuredArticle.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
-                      {featuredArticle.title}
-                      <ExternalLink className="h-4 w-4 shrink-0 inline-block text-muted-foreground opacity-60" />
-                    </a>
-                  </h2>
-                  <p className="text-muted-foreground text-sm leading-relaxed">
-                    {featuredArticle.summary}
-                  </p>
-                  <div className="flex items-center justify-between text-xs font-bold pt-4 border-t border-border/40">
-                    <span className="text-purple-400 uppercase tracking-wider">{featuredArticle.source}</span>
-                    <a 
-                      href={featuredArticle.link} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="text-primary hover:underline flex items-center"
-                    >
-                      Haberin Detayı <ArrowRight className="h-3 w-3 ml-1" />
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* List of other secondary news */}
-            <div className="space-y-6">
-              <h3 className="text-lg font-extrabold border-b border-border/40 pb-2">Akışta Kalanlar</h3>
-              {secondaryArticles.map((art, idx) => (
-                <div 
-                  key={idx} 
-                  className="p-4 rounded-xl border border-border/30 bg-secondary/15 hover:bg-secondary/25 hover:border-border/60 transition-all duration-200 space-y-2"
-                >
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                    <span className="font-bold text-purple-400 uppercase tracking-wider">{art.source}</span>
-                    <span>{art.pub_date}</span>
-                  </div>
-                  <h4 className="font-extrabold text-sm text-foreground hover:text-primary transition-colors">
-                    <a href={art.link} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between gap-3">
-                      {art.title}
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-                    </a>
-                  </h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{art.summary}</p>
-                </div>
-              ))}
-            </div>
-
-          </div>
-
-          {/* Right Column: News Bulletin Sidebar (1 col) */}
-          <div className="space-y-8">
-            <Card glass={true} className="border-zinc-800 bg-zinc-950/10">
-              <CardHeader>
-                <CardTitle className="text-base uppercase tracking-wider text-muted-foreground font-black">
-                  Ekonomi Takvimi
-                </CardTitle>
-                <CardDescription>Piyasa üzerinde etkili olacak kritik açıklamalar</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 text-xs">
-                {[
-                  { time: "Bugün 14:00", event: "TCMB Haftalık Para ve Banka İstatistikleri", impact: "Orta" },
-                  { time: "23 Temmuz 10:00", event: "TÜİK Tüketici Güven Endeksi (Haziran)", impact: "Yüksek" },
-                  { time: "24 Temmuz 17:00", event: "ABD Üretim PMI Öncü Verisi", impact: "Yüksek" }
-                ].map((ev, idx) => (
-                  <div key={idx} className="p-3 bg-secondary/25 border border-border/35 rounded-lg space-y-1">
-                    <div className="flex items-center justify-between font-bold text-muted-foreground text-[10px]">
-                      <span>{ev.time}</span>
-                      <span className={`px-1.5 py-0.5 rounded-[3px] text-[8px] font-black ${
-                        ev.impact === "Yüksek" ? "bg-rose-500/10 text-rose-400 border border-rose-500/15" : "bg-slate-500/10 text-slate-400 border border-slate-500/15"
-                      }`}>
-                        Etki: {ev.impact}
-                      </span>
-                    </div>
-                    <p className="font-extrabold text-foreground">{ev.event}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card glass={true} className="bg-gradient-to-br from-card to-purple-950/5">
-              <CardHeader>
-                <CardTitle className="text-base uppercase tracking-wider text-purple-400 font-black">
-                  BIP AI Bülten
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs leading-relaxed text-muted-foreground">
-                BIP Yapay Zekâ bülteni, güvenilir finans kaynaklarını anlık tarayarak portföy hisselerinizi ilgilendiren haber akışlarını akıllı alarmlarınızla otomatik eşleştirir.
-              </CardContent>
-            </Card>
-          </div>
-
+                ))
+              ) : (
+                <p className="text-[10px] text-muted-foreground leading-relaxed py-4 text-center">
+                  Favori hisselerinizle ilgili haber akışı için Hisseler sayfasında yıldız ikonuna basarak hisseleri favorilerinize ekleyebilirsiniz.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      ) : (
-        <div className="text-center py-24 text-muted-foreground">Haber akışı bulunamadı.</div>
-      )}
-    </div>
-  )
-}
 
-// Arrow component placeholder
-function ArrowRight(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-3.5 w-3.5 inline ml-1"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
+      </div>
+    </div>
   )
 }

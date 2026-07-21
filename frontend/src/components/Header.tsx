@@ -9,7 +9,10 @@ export default function Header() {
   const [indexData, setIndexData] = useState<any[]>([
     { name: "XU100", value: "10.240,50", change: "+1.42%", up: true },
     { name: "XU030", value: "11.580,20", change: "+1.68%", up: true },
+    { name: "XBANK", value: "14.250,00", change: "+2.15%", up: true },
     { name: "USD/TRY", value: "33,245", change: "-0.08%", up: false },
+    { name: "EUR/TRY", value: "36,180", change: "+0.12%", up: true },
+    { name: "BTC/USDT", value: "66.250", change: "+1.15%", up: true },
   ])
 
   const [tickersList, setTickersList] = useState<any[]>([])
@@ -18,24 +21,54 @@ export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false)
 
   // Profile states
-  const [username, setUsername] = useState("Ömer Faruk")
+  const [username, setUsername] = useState("Kullanıcı")
   const [avatarEmoji, setAvatarEmoji] = useState("💼")
   const [profilePic, setProfilePic] = useState("")
 
   // Notification states (Request 10!)
   const [showNotifications, setShowNotifications] = useState(false)
   const [activeSignals, setActiveSignals] = useState<any[]>([])
+  const [alertsList, setAlertsList] = useState<any[]>([])
+
+  // Play synthesized audio tone
+  const playBeep = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {
+      console.warn("Web Audio Play failed", e);
+    }
+  }
+
+  // Request browser permission for HTML5 notifications
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, [])
 
   useEffect(() => {
-    const checkSignals = async () => {
+    const checkSignalsAndAlarms = async () => {
+      const token = localStorage.getItem("token")
+      const headers: Record<string, string> = token ? { "Authorization": `Bearer ${token}` } : {}
+      
+      // 1. Fetch Signals
       try {
-        const token = localStorage.getItem("token")
-        const res = await fetch("http://localhost:8000/api/v1/portfolio/signals", {
-          headers: token ? { "Authorization": `Bearer ${token}` } : {}
-        })
+        const res = await fetch("http://localhost:8000/api/v1/portfolio/signals", { headers })
         const data = await res.json()
         if (data && Array.isArray(data.signals)) {
-          const filtered = data.signals.filter((s: any) => s.signal === "AL" || s.signal === "SAT")
+          const filtered = data.signals.filter((s: any) => s.signal.includes("AL") || s.signal.includes("SAT"))
           setActiveSignals(filtered)
         } else {
           setActiveSignals([])
@@ -43,9 +76,38 @@ export default function Header() {
       } catch (e) {
         setActiveSignals([])
       }
+
+      // 2. Scan & trigger custom alarms (Request 4!)
+      try {
+        const res = await fetch("http://localhost:8000/api/v1/alert/check", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...headers
+          }
+        })
+        if (res.ok) {
+          const triggered = await res.json()
+          if (Array.isArray(triggered) && triggered.length > 0) {
+            setAlertsList(prev => [...triggered, ...prev])
+            playBeep()
+            triggered.forEach(alert => {
+              if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                new Notification(`BİP Alarm: ${alert.ticker}`, {
+                  body: alert.trigger_condition.current_val_desc || `${alert.alert_type} koşulu tetiklendi.`,
+                  icon: "/favicon.ico"
+                })
+              }
+            })
+          }
+        }
+      } catch (e) {
+        console.error("Alert check failed:", e)
+      }
     }
-    checkSignals()
-    const interval = setInterval(checkSignals, 20000)
+    
+    checkSignalsAndAlarms()
+    const interval = setInterval(checkSignalsAndAlarms, 15000)
     return () => clearInterval(interval)
   }, [])
 
@@ -70,34 +132,57 @@ export default function Header() {
       fetch("http://localhost:8000/api/v1/screener/market-summary")
         .then(res => res.json())
         .then(data => {
-          if (data && data.index && data.xu030 && data.usdtry) {
-            setIndexData([
-              {
+          if (data) {
+            const items = []
+            if (data.index) {
+              items.push({
                 name: "XU100",
                 value: Number(data.index.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 change: (data.index.change_percent >= 0 ? "+" : "") + Number(data.index.change_percent).toFixed(2) + "%",
                 up: data.index.change_percent >= 0
-              },
-              {
+              })
+            }
+            if (data.xu030) {
+              items.push({
                 name: "XU030",
                 value: Number(data.xu030.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 change: (data.xu030.change_percent >= 0 ? "+" : "") + Number(data.xu030.change_percent).toFixed(2) + "%",
                 up: data.xu030.change_percent >= 0
-              },
-              {
-                name: "USD/TRY",
-                value: Number(data.usdtry.price).toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
-                change: (data.usdtry.change_percent >= 0 ? "+" : "") + Number(data.usdtry.change_percent).toFixed(2) + "%",
-                up: data.usdtry.change_percent >= 0
-              }
-            ])
+              })
+            }
+            if (data.xbank) {
+              items.push({
+                name: "XBANK",
+                value: Number(data.xbank.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                change: (data.xbank.change_percent >= 0 ? "+" : "") + Number(data.xbank.change_percent).toFixed(2) + "%",
+                up: data.xbank.change_percent >= 0
+              })
+            }
+
+            if (data.btcusdt) {
+              items.push({
+                name: "BTC/USDT",
+                value: Number(data.btcusdt.price).toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+                change: (data.btcusdt.change_percent >= 0 ? "+" : "") + Number(data.btcusdt.change_percent).toFixed(2) + "%",
+                up: data.btcusdt.change_percent >= 0
+              })
+            }
+            // Gram Altın / Ons Altın / US100 removed from the ticker - these symbols
+            // kept showing stale data regardless of source fixes, so per request they're
+            // dropped from the header rather than shown wrong.
+            if (items.length > 0) {
+              setIndexData(items)
+            }
           }
         })
         .catch(err => console.error("Failed to load header ticker feed:", err))
     }
 
     fetchIndexes()
-    const interval = setInterval(fetchIndexes, 10000)
+    // Poll every 2s: the backend reads from an in-memory TradingView WebSocket
+    // cache (no network round-trip per request), so this stays cheap while
+    // keeping the ticker feed close to real-time.
+    const interval = setInterval(fetchIndexes, 2000)
     return () => clearInterval(interval)
   }, [])
 
@@ -157,18 +242,26 @@ export default function Header() {
 
   return (
     <header className="h-16 border-b border-border bg-card/60 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
-      {/* Ticker Feed */}
-      <div className="flex items-center space-x-6">
-        {indexData.map((idx) => (
-          <div key={idx.name} className="flex items-center space-x-2 text-xs font-semibold">
-            <span className="text-muted-foreground">{idx.name}</span>
-            <span className="text-foreground font-mono">{idx.value}</span>
-            <span className={idx.up ? "text-emerald-500 flex items-center" : "text-rose-500 flex items-center"}>
-              {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-              {idx.change}
-            </span>
+      {/* Ticker Feed Container (Bloomberg Terminal Marquee Style) */}
+      <div className="relative flex-1 max-w-[450px] xl:max-w-[650px] overflow-hidden mx-4 hidden md:block bg-zinc-950/40 border border-border/30 rounded-lg py-1.5 px-3">
+        {/* Fade masks */}
+        <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-zinc-950/60 to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-zinc-950/60 to-transparent z-10 pointer-events-none" />
+        
+        <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
+          <div className="animate-ticker flex space-x-8 items-center pr-8">
+            {[...indexData, ...indexData].map((idx, i) => (
+              <div key={`${idx.name}-${i}`} className="flex items-center space-x-2 text-[10px] font-bold">
+                <span className="text-muted-foreground/95">{idx.name}</span>
+                <span className="text-foreground font-mono font-medium">{idx.value}</span>
+                <span className={idx.up ? "text-emerald-500 flex items-center" : "text-rose-500 flex items-center"}>
+                  {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
+                  {idx.change}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
 
       {/* Action Area */}
@@ -198,13 +291,21 @@ export default function Header() {
                       if (window.location.pathname === "/funds") {
                         window.dispatchEvent(new CustomEvent("select-fund", { detail: t.code }))
                       } else {
+                        // There is no standalone /funds/[code] browsing route wired up
+                        // for this - fund detail lives inside /funds itself, which now
+                        // reads this ?code= param on load (previously it silently
+                        // ignored it, always showing the default fund instead).
                         window.location.href = `/funds?code=${t.code}`
                       }
                     } else {
                       if (window.location.pathname === "/screener") {
                         window.dispatchEvent(new CustomEvent("select-stock", { detail: t.code }))
                       } else {
-                        window.location.href = `/stock/${t.code}`
+                        // Previously linked to /stock/${t.code}, a route that doesn't
+                        // exist in this app (stock detail lives inside /screener's
+                        // split view) - that 404'd, which looked like "the price
+                        // doesn't show up". /screener now reads this ?ticker= param.
+                        window.location.href = `/screener?ticker=${t.code}`
                       }
                     }
                     setShowDropdown(false)
@@ -246,8 +347,8 @@ export default function Header() {
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative cursor-pointer group"
           >
-            <Bell className={`h-4.5 w-4.5 text-amber-400 group-hover:text-amber-300 ${activeSignals.length > 0 ? "animate-bounce" : ""}`} style={{ animationDuration: '3s' }} />
-            {activeSignals.length > 0 && (
+            <Bell className={`h-4.5 w-4.5 text-amber-400 group-hover:text-amber-300 ${(activeSignals.length + alertsList.length) > 0 ? "animate-bounce" : ""}`} style={{ animationDuration: '3s' }} />
+            {(activeSignals.length + alertsList.length) > 0 && (
               <>
                 <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-card animate-ping" />
                 <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-card" />
@@ -258,41 +359,60 @@ export default function Header() {
           {showNotifications && (
             <div className="absolute right-0 top-12 w-85 bg-zinc-950/95 backdrop-blur-md border border-border/85 rounded-xl shadow-xl overflow-hidden z-50 text-xs p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-border/30 pb-2">
-                <span className="font-extrabold text-foreground">Sinyal Bildirimleri</span>
-                {activeSignals.length > 0 && (
+                <span className="font-extrabold text-foreground">Sinyaller & Alarmlar</span>
+                {(activeSignals.length + alertsList.length) > 0 && (
                   <span className="bg-rose-500/10 text-rose-400 font-mono font-bold px-1.5 py-0.5 rounded text-[10px]">
-                    {activeSignals.length} Aktif
+                    {activeSignals.length + alertsList.length} Aktif
                   </span>
                 )}
               </div>
               
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {activeSignals.length > 0 ? (
-                  activeSignals.map((sig, idx) => (
-                    <div 
-                      key={idx}
-                      onClick={() => {
-                        window.location.href = `/stock/${sig.ticker}`
-                        setShowNotifications(false)
-                      }}
-                      className={`p-2.5 rounded-lg border cursor-pointer transition-colors text-left ${
-                        sig.signal === "AL" 
-                          ? "bg-emerald-950/10 border-emerald-500/20 hover:bg-emerald-950/20" 
-                          : "bg-rose-950/10 border-rose-500/20 hover:bg-rose-950/20"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-foreground">{sig.ticker}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black border uppercase ${
-                          sig.signal === "AL" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                        }`}>
-                          {sig.signal}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-1 truncate">{sig.description}</p>
+              <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                {/* 1. Custom Triggered Alerts */}
+                {alertsList.map((alert, idx) => (
+                  <div 
+                    key={`alert-${idx}`}
+                    className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-950/10 text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-foreground">{alert.ticker}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black border uppercase bg-purple-500/10 text-purple-400 border-purple-500/20">
+                        {alert.alert_type}
+                      </span>
                     </div>
-                  ))
-                ) : (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {alert.trigger_condition.current_val_desc || "Alarm koşulu gerçekleşti."}
+                    </p>
+                  </div>
+                ))}
+
+                {/* 2. Signals */}
+                {activeSignals.map((sig, idx) => (
+                  <div 
+                    key={`sig-${idx}`}
+                    onClick={() => {
+                      window.location.href = `/stock/${sig.ticker}`
+                      setShowNotifications(false)
+                    }}
+                    className={`p-2.5 rounded-lg border cursor-pointer transition-colors text-left ${
+                      sig.signal.includes("AL") 
+                        ? "bg-emerald-950/10 border-emerald-500/20 hover:bg-emerald-950/20" 
+                        : "bg-rose-950/10 border-rose-500/20 hover:bg-rose-950/20"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-foreground">{sig.ticker}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-black border uppercase ${
+                        sig.signal.includes("AL") ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                      }`}>
+                        {sig.signal}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1 truncate">{sig.description}</p>
+                  </div>
+                ))}
+
+                {activeSignals.length === 0 && alertsList.length === 0 && (
                   <p className="text-center text-muted-foreground py-4 text-[10px]">Aktif sinyal veya bildirim bulunmuyor.</p>
                 )}
               </div>

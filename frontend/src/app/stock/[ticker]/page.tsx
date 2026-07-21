@@ -2,9 +2,19 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import { useParams } from "next/navigation"
-import { ChevronLeft, Sparkles, AlertTriangle, TrendingUp, TrendingDown, Check, Info, FileText, Loader2 } from "lucide-react"
+import { ChevronLeft, Sparkles, AlertTriangle, TrendingUp, TrendingDown, Check, Info, FileText, Loader2, Bell } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter,
+  DialogTrigger 
+} from "@/components/ui/Dialog"
 import TradingViewChart from "@/components/TradingViewChart"
 
 export default function StockDetailPage() {
@@ -14,6 +24,63 @@ export default function StockDetailPage() {
   // Ticker Details state
   const [stockDetails, setStockDetails] = useState<any>(null)
   const [detailsLoading, setDetailsLoading] = useState(true)
+  const [scoreDetails, setScoreDetails] = useState<any>(null)
+  const [scoreLoading, setScoreLoading] = useState(true)
+
+  // Alarm Modal states (Request 4!)
+  const [isOpenAlertModal, setIsOpenAlertModal] = useState(false)
+  const [alertType, setAlertType] = useState("price")
+  const [alertOperator, setAlertOperator] = useState(">")
+  const [alertValue, setAlertValue] = useState("")
+  const [alertSuccess, setAlertSuccess] = useState(false)
+
+  // Pre-fill alert value with live stock price when price is selected
+  useEffect(() => {
+    if (stockDetails && alertType === "price") {
+      setAlertValue(stockDetails.price.toString())
+    } else if (alertType === "rsi") {
+      setAlertValue("70")
+    } else if (alertType === "ai_score") {
+      setAlertValue("80")
+    } else {
+      setAlertValue("1") // fallback
+    }
+  }, [alertType, stockDetails])
+
+  const handleAddAlert = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!alertValue) return
+
+    const token = localStorage.getItem("token")
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {})
+    }
+
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/alert/", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          ticker: ticker.toUpperCase(),
+          alert_type: alertType,
+          trigger_condition: { 
+            operator: alertOperator, 
+            value: parseFloat(alertValue) || 1.0 
+          }
+        })
+      })
+      if (res.ok) {
+        setAlertSuccess(true)
+        setTimeout(() => {
+          setAlertSuccess(false)
+          setIsOpenAlertModal(false)
+        }, 1500)
+      }
+    } catch (err) {
+      console.error("Failed to add alert:", err)
+    }
+  }
 
   // Chart state
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h")
@@ -35,9 +102,12 @@ export default function StockDetailPage() {
     { label: "Aylık", value: "1mo" }
   ]
 
-  // 1. Fetch live stock info from screener endpoint
+  // 1. Fetch live stock info and AI score details (Request 7!)
   useEffect(() => {
     setDetailsLoading(true)
+    setScoreLoading(true)
+
+    // A. Fetch stock info
     fetch("http://localhost:8000/api/v1/screener/")
       .then(res => res.json())
       .then(data => {
@@ -66,6 +136,20 @@ export default function StockDetailPage() {
       .catch(err => {
         console.error("Failed to fetch stock info:", err)
         setDetailsLoading(false)
+      })
+
+    // B. Fetch detailed scoring indicators breakdown
+    fetch(`http://localhost:8000/api/v1/screener/score-details/${ticker}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && !data.detail) {
+          setScoreDetails(data)
+        }
+        setScoreLoading(false)
+      })
+      .catch(err => {
+        console.error("Failed to fetch AI score details:", err)
+        setScoreLoading(false)
       })
   }, [ticker])
 
@@ -176,17 +260,97 @@ export default function StockDetailPage() {
           </p>
         </div>
 
-        {/* Live Price & Change */}
-        <div className="flex items-baseline space-x-4">
-          <div className="text-4xl font-black font-mono">
-            ₺{stockDetails.price.toFixed(2)}
+        {/* Live Price & Change & Alarm Button (Request 4!) */}
+        <div className="flex items-center space-x-4">
+          <div className="flex items-baseline space-x-3">
+            <div className="text-4xl font-black font-mono">
+              ₺{stockDetails.price.toFixed(2)}
+            </div>
+            <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${
+              stockDetails.change_percent >= 0 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+            }`}>
+              {stockDetails.change_percent >= 0 ? <TrendingUp className="h-4.5 w-4.5 mr-1" /> : <TrendingDown className="h-4.5 w-4.5 mr-1" />}
+              {stockDetails.change_percent >= 0 ? "+" : ""}{stockDetails.change_percent.toFixed(2)}%
+            </div>
           </div>
-          <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${
-            stockDetails.change_percent >= 0 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-          }`}>
-            {stockDetails.change_percent >= 0 ? <TrendingUp className="h-4.5 w-4.5 mr-1" /> : <TrendingDown className="h-4.5 w-4.5 mr-1" />}
-            {stockDetails.change_percent >= 0 ? "+" : ""}{stockDetails.change_percent.toFixed(2)}%
-          </div>
+          
+          {/* Dialog Alarm Setup */}
+          <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="cursor-pointer border-amber-500/20 hover:border-amber-500/40 text-amber-400 bg-amber-500/5 flex items-center gap-1.5 font-bold h-9">
+                <Bell className="h-4 w-4 text-amber-400 animate-pulse" />
+                Alarm Kur
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-1.5">
+                  <Bell className="h-5 w-5 text-amber-400" />
+                  {ticker} Hissesi İçin Alarm Kur
+                </DialogTitle>
+                <DialogDescription>
+                  İndikatörler, fiyat hareketleri, AI skoru veya KAP haberleri tetiklendiğinde Windows bildirimi ve sesli uyarı alın.
+                </DialogDescription>
+              </DialogHeader>
+              {alertSuccess ? (
+                <div className="flex flex-col items-center justify-center py-8 space-y-2 text-center">
+                  <Check className="h-10 w-10 text-emerald-400 bg-emerald-500/10 p-2 rounded-full border border-emerald-500/20 animate-bounce" />
+                  <p className="font-extrabold text-foreground text-sm">Alarm Başarıyla Kuruldu!</p>
+                  <p className="text-xs text-muted-foreground">Koşul gerçekleştiğinde anlık bildirim alacaksınız.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleAddAlert} className="space-y-4 py-4">
+                  <div className="grid grid-cols-3 items-center gap-4">
+                    <label className="text-sm font-semibold text-muted-foreground text-right">Kriter</label>
+                    <select 
+                      value={alertType}
+                      onChange={(e) => setAlertType(e.target.value)}
+                      className="col-span-2 h-9 rounded-md border border-input bg-secondary px-3 text-sm focus-visible:outline-none"
+                    >
+                      <option value="price">Fiyat (₺)</option>
+                      <option value="rsi">RSI (14)</option>
+                      <option value="macd">MACD Kesişimi</option>
+                      <option value="ema">EMA (20) Kesişimi</option>
+                      <option value="sma">SMA (50) Kesişimi</option>
+                      <option value="ai_score">AI Skoru</option>
+                      <option value="kap">KAP Açıklaması</option>
+                      <option value="news">Haber Akışı</option>
+                      <option value="daily_change">Günlük Değişim (%)</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 items-center gap-4">
+                    <label className="text-sm font-semibold text-muted-foreground text-right">Koşul</label>
+                    <select 
+                      value={alertOperator}
+                      onChange={(e) => setAlertOperator(e.target.value)}
+                      className="col-span-2 h-9 rounded-md border border-input bg-secondary px-3 text-sm focus-visible:outline-none"
+                    >
+                      <option value=">">Büyüktür (&gt;)</option>
+                      <option value="<">Küçüktür (&lt;)</option>
+                      <option value="=">Eşittir (=)</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 items-center gap-4">
+                    <label className="text-sm font-semibold text-muted-foreground text-right">Hedef Değer</label>
+                    <Input 
+                      type="number"
+                      step="any"
+                      value={alertValue}
+                      onChange={(e) => setAlertValue(e.target.value)}
+                      placeholder="Ör: 320" 
+                      className="col-span-2 bg-secondary/50" 
+                      required
+                    />
+                  </div>
+                  <DialogFooter className="pt-4 border-t border-border/50">
+                    <Button type="submit" className="w-full cursor-pointer bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black border-0 font-black">
+                      Alarmı Kaydet
+                    </Button>
+                  </DialogFooter>
+                </form>
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -307,6 +471,40 @@ export default function StockDetailPage() {
                   </div>
                 </div>
               ))}
+
+              {/* Dynamic Indicator-Based Reasons (Request 7!) */}
+              <div className="border-t border-border/50 pt-4 space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-purple-400 flex items-center">
+                  <Sparkles className="h-3 w-3 mr-1.5 text-purple-400" />
+                  13 Teknik İndikatör Puan Ağırlığı
+                </h4>
+                {scoreLoading ? (
+                  <div className="space-y-2">
+                    <div className="h-8 bg-secondary/30 rounded-lg animate-pulse" />
+                    <div className="h-8 bg-secondary/30 rounded-lg animate-pulse" />
+                  </div>
+                ) : scoreDetails && scoreDetails.reasons ? (
+                  <div className="grid grid-cols-1 gap-1.5 text-[10px] max-h-60 overflow-y-auto pr-1">
+                    {scoreDetails.reasons.map((r: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between bg-zinc-950/40 p-2 rounded-lg border border-border/25">
+                        <span className="flex items-center text-muted-foreground">
+                          <span className={`mr-1.5 font-bold ${r.icon === "✔" ? "text-emerald-400" : "text-rose-500"}`}>
+                            {r.icon}
+                          </span>
+                          {r.text}
+                        </span>
+                        <span className={`font-bold font-mono ${r.value.startsWith("+") ? "text-emerald-400" : "text-rose-500"}`}>
+                          {r.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-muted-foreground text-center py-2">
+                    Teknik sinyal dökümü şu an yüklenemedi.
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -343,6 +541,88 @@ export default function StockDetailPage() {
                 </h3>
                 <p className="text-muted-foreground text-sm leading-relaxed">{aiReport.long_comment}</p>
               </div>
+
+              {/* 10 Technical AI Fields Section */}
+              {aiReport.trend && (
+                <div className="space-y-6 pt-4 border-t border-border/40">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-foreground flex items-center">
+                    <Sparkles className="h-4 w-4 mr-1.5 text-purple-400 animate-pulse" />
+                    Teknik Analiz Göstergeleri & Beklentiler
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {/* Trend */}
+                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Trend Yönü</span>
+                      <span className={`text-sm font-black mt-1 block ${
+                        aiReport.trend === "Yükseliş" ? "text-emerald-400" :
+                        aiReport.trend === "Düşüş" ? "text-rose-500" : "text-zinc-400"
+                      }`}>{aiReport.trend}</span>
+                    </div>
+
+                    {/* Support / Resistance */}
+                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Destek / Direnç</span>
+                      <span className="text-xs font-mono font-bold mt-1 block text-foreground">
+                        {aiReport.support} / {aiReport.resistance}
+                      </span>
+                    </div>
+
+                    {/* Risk */}
+                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Risk Düzeyi</span>
+                      <span className={`text-sm font-black mt-1 block ${
+                        aiReport.risk_level === "Düşük" ? "text-emerald-400" :
+                        aiReport.risk_level === "Yüksek" ? "text-rose-500" : "text-amber-500"
+                      }`}>{aiReport.risk_level}</span>
+                    </div>
+
+                    {/* Momentum */}
+                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Momentum & Güç</span>
+                      <span className="text-xs font-bold mt-1 block text-foreground">
+                        {aiReport.momentum} ({aiReport.trend_strength})
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Short & Medium Term Expectations */}
+                    <div className="bg-zinc-900/40 p-4 border border-border/30 rounded-xl flex items-center justify-between">
+                      <div>
+                        <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Kısa Vadeli Beklenti</span>
+                        <span className={`text-sm font-black mt-0.5 block ${
+                          aiReport.short_term_expectation === "Pozitif" ? "text-emerald-400" :
+                          aiReport.short_term_expectation === "Negatif" ? "text-rose-500" : "text-zinc-400"
+                        }`}>{aiReport.short_term_expectation}</span>
+                      </div>
+                      <div className="border-l border-border/40 h-8 mx-4" />
+                      <div>
+                        <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Orta Vadeli Beklenti</span>
+                        <span className={`text-sm font-black mt-0.5 block ${
+                          aiReport.medium_term_expectation === "Pozitif" ? "text-emerald-400" :
+                          aiReport.medium_term_expectation === "Negatif" ? "text-rose-500" : "text-zinc-400"
+                        }`}>{aiReport.medium_term_expectation}</span>
+                      </div>
+                    </div>
+
+                    {/* General Summary */}
+                    <div className="bg-zinc-900/40 p-4 border border-border/30 rounded-xl">
+                      <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Genel Özet</span>
+                      <p className="text-xs font-semibold mt-1 text-foreground/90">{aiReport.general_summary}</p>
+                    </div>
+                  </div>
+
+                  {/* Technical Comment */}
+                  <div className="bg-purple-950/15 border border-purple-500/25 p-4 rounded-xl space-y-1.5">
+                    <span className="text-xs font-black uppercase text-purple-400 tracking-wider flex items-center">
+                      <Sparkles className="h-3.5 w-3.5 mr-1.5 text-purple-400" />
+                      Teknik Yapay Zekâ Yorumu
+                    </span>
+                    <p className="text-muted-foreground text-xs leading-relaxed">{aiReport.ai_comment}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Strengths & Weaknesses */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border/40">

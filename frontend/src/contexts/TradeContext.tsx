@@ -1,0 +1,319 @@
+"use client"
+
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import { authFetch } from "@/lib/auth"
+
+export type InstrumentType = "stock" | "viop"
+export type Broker = "info_yatirim" | "midas"
+
+export type PositionSide = "LONG" | "SHORT"
+
+export interface TradePosition {
+  id: number
+  instrument_type: InstrumentType
+  symbol: string
+  position_side: PositionSide
+  lot: number
+  avg_cost: number
+  current_price: number
+  position_value: number
+  pnl: number
+  pnl_pct: number
+}
+
+export interface TradeAccountData {
+  id: number
+  broker: Broker
+  starting_balance: number
+  cash_balance: number
+  stock_position_value: number
+  viop_position_value: number
+  used_margin: number
+  total_portfolio_value: number
+  daily_pnl: number
+  total_pnl: number
+  unrealized_pnl: number
+  realized_pnl: number
+  return_pct: number
+  positions: TradePosition[]
+}
+
+export interface WatchlistItem {
+  symbol: string
+  name: string
+  price: number
+  change_percent: number
+  bid: number
+  ask: number
+  /** Only present for VİOP contract entries - the real underlying spot
+   * symbol this contract proxies (see backend trade_service.VIOP_CONTRACTS). */
+  underlying_symbol?: string
+}
+
+export interface TradeHistoryItem {
+  id: number
+  instrument_type: InstrumentType
+  symbol: string
+  side: "AL" | "SAT"
+  lot: number
+  price: number
+  commission: number
+  total: number
+  realized_pnl: number | null
+  executed_at: string
+}
+
+interface OrderResult {
+  ok: boolean
+  error?: string
+}
+
+interface TradeContextValue {
+  loading: boolean
+  account: TradeAccountData | null
+  watchlist: WatchlistItem[]
+  viopWatchlist: WatchlistItem[]
+  activeTab: InstrumentType
+  setActiveTab: (tab: InstrumentType) => void
+  selectedSymbol: string
+  setSelectedSymbol: (symbol: string) => void
+  history: TradeHistoryItem[]
+  createAccount: (broker: Broker, startingBalance: number) => Promise<OrderResult>
+  changeBroker: (broker: Broker) => Promise<OrderResult>
+  resetAccount: (broker: Broker, startingBalance: number) => Promise<OrderResult>
+  placeOrder: (instrumentType: InstrumentType, symbol: string, side: "AL" | "SAT", lot: number) => Promise<OrderResult>
+  refreshAccount: () => Promise<void>
+  refreshHistory: () => Promise<void>
+}
+
+const TradeContext = createContext<TradeContextValue | null>(null)
+
+export function useTrade(): TradeContextValue {
+  const ctx = useContext(TradeContext)
+  if (!ctx) throw new Error("useTrade must be used within a TradeProvider")
+  return ctx
+}
+
+export function TradeProvider({ children }: { children: React.ReactNode }) {
+  const [loading, setLoading] = useState(true)
+  const [account, setAccount] = useState<TradeAccountData | null>(null)
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
+  const [viopWatchlist, setViopWatchlist] = useState<WatchlistItem[]>([])
+  const [activeTab, setActiveTab] = useState<InstrumentType>("stock")
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("AKBNK")
+  const [history, setHistory] = useState<TradeHistoryItem[]>([])
+
+  // Tracks whether the user has manually picked a symbol yet, so the
+  // watchlist's first-load doesn't clobber their selection on every poll
+  // (same stale-closure pitfall fixed elsewhere in this app - handled here
+  // with a ref instead of state so the fetch effect doesn't need it as a dep).
+  const hasAutoSelected = useRef(false)
+
+  const refreshAccount = useCallback(async () => {
+    try {
+      const res = await authFetch("/trade/account")
+      if (res.status === 404) {
+        setAccount(null)
+        return
+      }
+      if (!res.ok) return
+      const data = await res.json()
+      setAccount(data)
+    } catch (e) {
+      console.error("Failed to load trade account:", e)
+    }
+  }, [])
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      const res = await authFetch("/trade/history?limit=100")
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data)) setHistory(data)
+    } catch (e) {
+      console.error("Failed to load trade history:", e)
+    }
+  }, [])
+
+  // Initial load
+  useEffect(() => {
+    let active = true
+    const bootstrap = async () => {
+      await refreshAccount()
+      if (active) setLoading(false)
+    }
+    bootstrap()
+    return () => {
+      active = false
+    }
+  }, [refreshAccount])
+
+  // Poll BIST30 watchlist every 2s (matches the rest of the app's live-poll
+  // rate) - the backend serves this from the already-connected TradingView
+  // websocket cache, so this doesn't add real network/API load.
+  useEffect(() => {
+    let active = true
+    const fetchWatchlist = () => {
+      fetch("http://localhost:8000/api/v1/trade/watchlist")
+        .then(res => res.json())
+        .then(data => {
+          if (!active || !Array.isArray(data)) return
+          setWatchlist(data)
+          if (!hasAutoSelected.current && data.length > 0) {
+            hasAutoSelected.current = true
+            setSelectedSymbol(data[0].symbol)
+          }
+        })
+        .catch(err => console.error("Failed to load trade watchlist:", err))
+    }
+    fetchWatchlist()
+    const interval = setInterval(fetchWatchlist, 2000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const fetchViop = () => {
+      fetch("http://localhost:8000/api/v1/trade/viop-contracts")
+        .then(res => res.json())
+        .then(data => {
+          if (active && Array.isArray(data)) setViopWatchlist(data)
+        })
+        .catch(err => console.error("Failed to load VİOP contracts:", err))
+    }
+    fetchViop()
+    const interval = setInterval(fetchViop, 2000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [])
+
+  // Poll the account (positions/P&L) every 3s once onboarded - slightly
+  // slower than the watchlist since it recomputes P&L across all positions.
+  useEffect(() => {
+    if (!account) return
+    const interval = setInterval(refreshAccount, 3000)
+    return () => clearInterval(interval)
+  }, [account, refreshAccount])
+
+  useEffect(() => {
+    if (account) refreshHistory()
+  }, [account?.id, refreshHistory]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Whenever the tab switches, default the selected symbol to something
+  // valid for that tab so the chart/order panel don't stay on a symbol from
+  // the other instrument universe.
+  useEffect(() => {
+    if (activeTab === "viop" && viopWatchlist.length > 0) {
+      setSelectedSymbol(prev => (viopWatchlist.some(c => c.symbol === prev) ? prev : viopWatchlist[0].symbol))
+    } else if (activeTab === "stock" && watchlist.length > 0) {
+      setSelectedSymbol(prev => (watchlist.some(c => c.symbol === prev) ? prev : watchlist[0].symbol))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const createAccount = useCallback(async (broker: Broker, startingBalance: number): Promise<OrderResult> => {
+    try {
+      const res = await authFetch("/trade/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker, starting_balance: startingBalance }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { ok: false, error: err.detail || "Hesap oluşturulamadı." }
+      }
+      const data = await res.json()
+      setAccount(data)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: "Sunucuya ulaşılamadı." }
+    }
+  }, [])
+
+  const changeBroker = useCallback(async (broker: Broker): Promise<OrderResult> => {
+    try {
+      const res = await authFetch("/trade/account/broker", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { ok: false, error: err.detail || "Broker değiştirilemedi." }
+      }
+      const data = await res.json()
+      setAccount(data)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: "Sunucuya ulaşılamadı." }
+    }
+  }, [])
+
+  const resetAccount = useCallback(async (broker: Broker, startingBalance: number): Promise<OrderResult> => {
+    try {
+      const res = await authFetch("/trade/account/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker, starting_balance: startingBalance }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { ok: false, error: err.detail || "Hesap sıfırlanamadı." }
+      }
+      const data = await res.json()
+      setAccount(data)
+      await refreshHistory()
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: "Sunucuya ulaşılamadı." }
+    }
+  }, [refreshHistory])
+
+  const placeOrder = useCallback(
+    async (instrumentType: InstrumentType, symbol: string, side: "AL" | "SAT", lot: number): Promise<OrderResult> => {
+      try {
+        const res = await authFetch("/trade/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instrument_type: instrumentType, symbol, side, lot }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          return { ok: false, error: err.detail || "Emir gerçekleştirilemedi." }
+        }
+        const data = await res.json()
+        setAccount(data)
+        await refreshHistory()
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: "Sunucuya ulaşılamadı." }
+      }
+    },
+    [refreshHistory]
+  )
+
+  const value: TradeContextValue = {
+    loading,
+    account,
+    watchlist,
+    viopWatchlist,
+    activeTab,
+    setActiveTab,
+    selectedSymbol,
+    setSelectedSymbol,
+    history,
+    createAccount,
+    changeBroker,
+    resetAccount,
+    placeOrder,
+    refreshAccount,
+    refreshHistory,
+  }
+
+  return <TradeContext.Provider value={value}>{children}</TradeContext.Provider>
+}

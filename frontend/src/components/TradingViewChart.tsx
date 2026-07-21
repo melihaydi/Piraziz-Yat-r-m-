@@ -234,24 +234,34 @@ export default function TradingViewChart({ data }: TradingViewChartProps) {
 
     // Synchronize zoom & pan crosshairs between main, RSI and MACD charts
     const charts = [mainChart, rsiChart, macdChart].filter((c): c is IChartApi => c !== null)
+    const handlers: { chart: IChartApi; handler: any }[] = []
+
     charts.forEach((chart, index) => {
-      chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      const handler = (range: any) => {
         if (!range) return
         charts.forEach((otherChart, otherIndex) => {
-          if (index !== otherIndex) {
-            otherChart.timeScale().setVisibleLogicalRange(range)
+          if (index !== otherIndex && otherChart) {
+            try {
+              otherChart.timeScale().setVisibleLogicalRange(range)
+            } catch (e) {}
           }
         })
-      })
+      }
+      try {
+        chart.timeScale().subscribeVisibleLogicalRangeChange(handler)
+        handlers.push({ chart, handler })
+      } catch (e) {}
     })
 
     // Resize handlers
     const resizeObserver = new ResizeObserver(entries => {
       if (entries.length === 0) return
       const { width } = entries[0].contentRect
-      mainChart.resize(width, 380)
-      if (rsiChart) rsiChart.resize(width, 100)
-      if (macdChart) macdChart.resize(width, 120)
+      try {
+        mainChart.resize(width, 380)
+        if (rsiChart) rsiChart.resize(width, 100)
+        if (macdChart) macdChart.resize(width, 120)
+      } catch (e) {}
     })
 
     if (chartContainerRef.current) {
@@ -260,10 +270,30 @@ export default function TradingViewChart({ data }: TradingViewChartProps) {
 
     // Cleanup
     return () => {
-      resizeObserver.disconnect()
-      mainChart.remove()
-      if (rsiChart) rsiChart.remove()
-      if (macdChart) macdChart.remove()
+      try {
+        resizeObserver.disconnect()
+      } catch (e) {}
+      
+      handlers.forEach(({ chart, handler }) => {
+        try {
+          chart.timeScale().unsubscribeVisibleLogicalRangeChange(handler)
+        } catch (e) {}
+      })
+
+      try {
+        mainChart.remove()
+      } catch (e) {}
+      
+      if (rsiChart) {
+        try {
+          rsiChart.remove()
+        } catch (e) {}
+      }
+      if (macdChart) {
+        try {
+          macdChart.remove()
+        } catch (e) {}
+      }
     }
   }, [data, showSMA, showEMA, showVWAP, showBB, showRSI, showMACD])
 

@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
 
+    # TradingView Real-time Data Authentication
+    TV_SESSION: Optional[str] = None
+    TV_SESSION_SIGN: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), ".env"),
         env_file_encoding="utf-8",

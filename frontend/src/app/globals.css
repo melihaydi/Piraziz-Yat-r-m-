@@ -113,3 +113,24 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--accent));
 }
+
+/* Bloomberg Ticker Marquee Animation */
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-ticker {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: ticker 35s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+

@@ -47,15 +47,17 @@ class AIAnalysisService:
             logger.error(f"Gemini API call failed: {e}")
             raise
 
+
+
     def analyze_financials(
         self, 
         ticker: str, 
         current_data: Dict[str, float], 
         previous_data: Optional[Dict[str, float]] = None,
-        sector_name: str = "Tümü"
+        sector_name: str = "Tümü",
+        candles: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Calculates exact financial ratios and feeds them to Gemini to write grounding analysis comments."""
-        # 1. Calculate actual ratios in Python to prevent LLM hallucinations
+        """Calculates financial ratios & technical indicators and feeds them to Gemini for dynamic analysis comments."""
         sales = current_data.get("sales", 0.0)
         ebitda = current_data.get("ebitda", 0.0)
         net_profit = current_data.get("net_profit", 0.0)
@@ -80,19 +82,76 @@ class AIAnalysisService:
             ebitda_growth = ((ebitda - prev_ebitda) / prev_ebitda * 100) if prev_ebitda > 0 else 0.0
             net_profit_growth = ((net_profit - prev_net_profit) / prev_net_profit * 100) if prev_net_profit > 0 else 0.0
 
-        # Ratios summary card for the prompt
+        # Calculate technical details dynamically
+        trend_status = "Yatay"
+        support_level = "Belirlenemedi"
+        resistance_level = "Belirlenemedi"
+        rsi_val = 50.0
+        macd_val = "Nötr"
+        momentum_status = "Dengeli"
+        trend_strength = "Zayıf/Yatay"
+        
+        if candles and len(candles) >= 10:
+            from app.services.technical_analysis import TechnicalAnalysisService
+            closes = [float(c["close"]) for c in candles]
+            highs = [float(c["high"]) for c in candles]
+            lows = [float(c["low"]) for c in candles]
+            
+            # Trend positioning
+            ema20 = TechnicalAnalysisService.calculate_ema(closes, 20)[-1]
+            if ema20 and closes[-1] > ema20:
+                trend_status = "Yükseliş"
+            else:
+                trend_status = "Düşüş"
+                
+            # RSI & MACD
+            rsi_list = TechnicalAnalysisService.calculate_rsi(closes, 14)
+            rsi_val = rsi_list[-1] if rsi_list and rsi_list[-1] is not None else 50.0
+            if rsi_val > 70:
+                momentum_status = "Aşırı Alım"
+            elif rsi_val < 30:
+                momentum_status = "Aşırı Satım"
+            else:
+                momentum_status = "Güçlü" if closes[-1] > ema20 else "Zayıf"
+                
+            macd_line, sig_line, _ = TechnicalAnalysisService.calculate_macd(closes)
+            if macd_line and sig_line and macd_line[-1] is not None and sig_line[-1] is not None:
+                macd_val = "AL" if macd_line[-1] > sig_line[-1] else "SAT"
+                
+            # ADX trend strength
+            adx_list = TechnicalAnalysisService.calculate_adx(highs, lows, closes, 14)
+            adx_val = adx_list[-1] if adx_list and adx_list[-1] is not None else 25.0
+            trend_strength = "Kararlı" if adx_val > 25 else "Zayıf/Yatay"
+            
+            # Support/Resistance
+            sr = TechnicalAnalysisService.detect_support_resistance(highs, lows)
+            sups = sr.get("supports", [])
+            res = sr.get("resistances", [])
+            if sups:
+                support_level = f"{sups[-1]:.2f} ₺"
+            if res:
+                resistance_level = f"{res[-1]:.2f} ₺"
+
         ratio_summary = (
             f"Şirket Kodu: {ticker}\n"
             f"Sektör: {sector_name}\n"
             f"Net Satışlar: ₺{sales:,.2f} (Büyüme: %{sales_growth:.2f})\n"
             f"FAVÖK: ₺{ebitda:,.2f} (Büyüme: %{ebitda_growth:.2f}, Marj: %{ebitda_margin:.2f})\n"
             f"Net Kâr: ₺{net_profit:,.2f} (Büyüme: %{net_profit_growth:.2f}, Marj: %{net_margin:.2f})\n"
-            f"Net Borç / FAVÖK: {net_debt_ebitda:.2f} (Net Borç: ₺{net_debt:,.2f}, Toplam Borç: ₺{total_debt:,.2f}, Nakit: ₺{cash:,.2f})"
+            f"Net Borç / FAVÖK: {net_debt_ebitda:.2f}\n"
+            f"--- Teknik İndikatör Değerleri ---\n"
+            f"Trend Durumu: {trend_status}\n"
+            f"Destek Noktası: {support_level}\n"
+            f"Direnç Noktası: {resistance_level}\n"
+            f"RSI (14) Değeri: {rsi_val:.1f}\n"
+            f"MACD Sinyali: {macd_val}\n"
+            f"Momentum: {momentum_status}\n"
+            f"Trend Gücü (ADX): {trend_strength}\n"
         )
 
         prompt = (
-            "Aşağıda bir BIST şirketinin doğruluğu hesaplanmış finansal rasyoları verilmiştir. "
-            "Bu verilere dayanarak halüsinasyon yapmadan, rasyolardan sapmadan Türkçe bir finansal analiz raporu yaz.\n\n"
+            "Aşağıda bir BIST şirketinin doğruluğu hesaplanmış finansal rasyoları ve teknik indikatör durumları verilmiştir. "
+            "Bu verilere dayanarak Türkçe kapsamlı bir yatırım analiz raporu yaz. Analizde verilen rasyolardan sapma yapma.\n\n"
             f"{ratio_summary}\n\n"
             "Analiz raporu şu yapıda olmalıdır:\n"
             "- executive_summary: 2-3 cümlelik yönetici özeti.\n"
@@ -101,7 +160,17 @@ class AIAnalysisService:
             "- strengths: Şirketin rasyolarına göre en güçlü 2-3 yönü (liste).\n"
             "- weaknesses: Şirketin rasyolarına göre en zayıf 2-3 yönü (liste).\n"
             "- risks: Önümüzdeki dönemler için en önemli 2 risk (liste).\n"
-            "- opportunities: Önümüzdeki dönemler için en önemli 2 fırsat (liste)."
+            "- opportunities: Önümüzdeki dönemler için en önemli 2 fırsat (liste).\n"
+            "- trend: Teknik trend durumu ('Yükseliş', 'Düşüş', 'Yatay').\n"
+            "- support: Destek fiyat seviyesi.\n"
+            "- resistance: Direnç fiyat seviyesi.\n"
+            "- risk_level: Risk seviyesi ('Düşük', 'Orta', 'Yüksek').\n"
+            "- ai_comment: Hisse hakkında detaylı teknik yapay zeka yorumu.\n"
+            "- momentum: Momentum durumu ('Güçlü', 'Zayıf', 'Dengeli').\n"
+            "- trend_strength: Trend gücü ('Kararlı', 'Zayıf/Yatay').\n"
+            "- short_term_expectation: Kısa vadeli beklenti ('Pozitif', 'Negatif', 'Nötr').\n"
+            "- medium_term_expectation: Orta vadeli beklenti ('Pozitif', 'Negatif', 'Nötr').\n"
+            "- general_summary: Genel özet tek cümle."
         )
 
         schema = {
@@ -113,18 +182,33 @@ class AIAnalysisService:
                 "strengths": {"type": "ARRAY", "items": {"type": "STRING"}},
                 "weaknesses": {"type": "ARRAY", "items": {"type": "STRING"}},
                 "risks": {"type": "ARRAY", "items": {"type": "STRING"}},
-                "opportunities": {"type": "ARRAY", "items": {"type": "STRING"}}
+                "opportunities": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "trend": {"type": "STRING"},
+                "support": {"type": "STRING"},
+                "resistance": {"type": "STRING"},
+                "risk_level": {"type": "STRING"},
+                "ai_comment": {"type": "STRING"},
+                "momentum": {"type": "STRING"},
+                "trend_strength": {"type": "STRING"},
+                "short_term_expectation": {"type": "STRING"},
+                "medium_term_expectation": {"type": "STRING"},
+                "general_summary": {"type": "STRING"}
             },
-            "required": ["executive_summary", "long_comment", "short_summary", "strengths", "weaknesses", "risks", "opportunities"]
+            "required": [
+                "executive_summary", "long_comment", "short_summary", "strengths", "weaknesses", "risks", "opportunities",
+                "trend", "support", "resistance", "risk_level", "ai_comment", "momentum", "trend_strength",
+                "short_term_expectation", "medium_term_expectation", "general_summary"
+            ]
         }
 
         try:
-            # 2. Call Gemini
             return self._call_gemini(prompt, schema)
         except Exception:
-            # 3. Local Rule-Based Mock Fallback Generator
             logger.info("Using local rule-based financial analysis generator.")
-            return self._generate_local_financial_analysis(ticker, sales_growth, ebitda_margin, net_debt_ebitda)
+            return self._generate_local_financial_analysis(
+                ticker, sales_growth, ebitda_margin, net_debt_ebitda,
+                trend_status, support_level, resistance_level, rsi_val, momentum_status, trend_strength
+            )
 
     def analyze_kap_announcement(self, ticker: str, title: str, content: str) -> Dict[str, Any]:
         """Summarizes and evaluates KAP disclosures using live TradingView data and company metrics."""
@@ -187,13 +271,14 @@ class AIAnalysisService:
             return self._generate_local_kap_analysis_with_live(ticker, title, live_price, change_pct)
 
     def _generate_local_financial_analysis(
-        self, ticker: str, sales_growth: float, ebitda_margin: float, net_debt_ebitda: float
+        self, ticker: str, sales_growth: float, ebitda_margin: float, net_debt_ebitda: float,
+        trend_status: str = "Yatay", support_level: str = "Belirlenemedi", resistance_level: str = "Belirlenemedi",
+        rsi_val: float = 50.0, momentum_status: str = "Dengeli", trend_strength: str = "Zayıf/Yatay"
     ) -> Dict[str, Any]:
-        """Generates high-quality mock financial analysis strictly matched to calculated metrics."""
+        """Generates high-quality mock financial and technical analysis matched to calculated metrics (Request 3!)."""
         strength_list = []
         weakness_list = []
         
-        # Determine strengths & weaknesses based on actual computed ratios
         if sales_growth > 10:
             strength_list.append(f"Net satışlar yıllık bazda %{sales_growth:.1f} büyüme kaydederek güçlü talep artışına işaret etti.")
         else:
@@ -233,6 +318,10 @@ class AIAnalysisService:
             f"Finansal görünüm {'olumlu' if net_debt_ebitda < 1.5 else 'temkinli'} seyrini koruyor."
         )
 
+        risk_level = "Düşük" if ebitda_margin > 15 and net_debt_ebitda < 1.5 else "Yüksek" if net_debt_ebitda > 3.5 else "Orta"
+        short_term_expectation = "Pozitif" if trend_status == "Yükseliş" else "Negatif" if trend_status == "Düşüş" else "Nötr"
+        medium_term_expectation = "Pozitif" if ebitda_margin > 12 else "Nötr"
+
         return {
             "executive_summary": executive_summary,
             "long_comment": long_comment,
@@ -246,7 +335,17 @@ class AIAnalysisService:
             "opportunities": [
                 "Yeni ihracat pazarlarına açılım ile döviz bazlı gelir kanallarının genişlemesi.",
                 "Operasyonel dijitalleşme ile genel yönetim giderlerinde sağlanabilecek tasarruflar."
-            ]
+            ],
+            "trend": trend_status,
+            "support": support_level,
+            "resistance": resistance_level,
+            "risk_level": risk_level,
+            "ai_comment": f"{ticker} teknik analiz göstergelerinde {trend_status} eğiliminde seyretmekte olup, RSI {rsi_val:.1f} ile {momentum_status} görünüm vermektedir. Kısa vadeli pivot seviyeler sırasıyla destek {support_level} ve direnç {resistance_level} olarak izlenmelidir.",
+            "momentum": momentum_status,
+            "trend_strength": trend_strength,
+            "short_term_expectation": short_term_expectation,
+            "medium_term_expectation": medium_term_expectation,
+            "general_summary": f"Teknik olarak {trend_status} trendi ve {trend_strength} trend gücü ile dengeli bir görünüm sergilemektedir."
         }
 
     def _generate_local_kap_analysis(self, ticker: str, title: str) -> Dict[str, Any]:

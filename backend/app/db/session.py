@@ -33,6 +33,7 @@ if DATABASE_URL.startswith("sqlite"):
         from app.models.user import User
         from app.models.portfolio import Portfolio, PortfolioAsset
         from app.models.alert import Alert
+        from app.models.trade import TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot
         Base.metadata.create_all(bind=engine)
     except Exception as e:
         import logging

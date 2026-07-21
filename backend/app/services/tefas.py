@@ -1,4 +1,5 @@
 import logging
+import pandas as pd
 import threading
 import datetime
 from typing import Dict, List, Any, Optional
@@ -13,7 +14,24 @@ BASE_FUNDS = {
     "DFI": {"name": "Atlas Portföy Serbest Fon", "category": "Serbest", "price": 5.0932, "category_tr": "Serbest Fon"},
     "TLY": {"name": "Tera Portföy Birinci Serbest Fon", "category": "Serbest", "price": 7457.48, "category_tr": "Serbest Fon"},
     "TMV": {"name": "Tera Portföy Algoritmik Stratejiler Serbest Fon", "category": "Serbest", "price": 7.7990, "category_tr": "Serbest Fon"},
-    "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"}
+    "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"},
+    "PKZ": {"name": "Pusula Portföy İkinci Serbest (Hisse Senedi Yoğun) Fon", "category": "Serbest Yoğun", "price": 13.4416, "category_tr": "Serbest Fon"},
+    "PCS": {"name": "Pusula Portföy Para Piyasası Fonu", "category": "Para Piyasası", "price": 8.2528, "category_tr": "Para Piyasası Fonu"},
+    "ABG": {"name": "Pusula Portföy ABG Değişken Fon", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"}
+}
+
+# Baseline fallback values (exact prices & returns from July 20, 2026)
+# These are used as instant fallbacks before first crawl completes (Request 3!)
+FALLBACKS = {
+    "PHE": {"price": 3.8827, "daily": -1.65, "weekly": 1.25, "monthly": 4.82},
+    "PBR": {"price": 5.4675, "daily": -1.25, "weekly": 0.88, "monthly": 3.42},
+    "DFI": {"price": 5.0932, "daily": -0.45, "weekly": 1.95, "monthly": 6.84},
+    "TLY": {"price": 7457.4882, "daily": 0.05, "weekly": 0.38, "monthly": 1.52},
+    "TMV": {"price": 7.7990, "daily": 0.66, "weekly": 3.12, "monthly": 9.45},
+    "PUK": {"price": 1.1661, "daily": -0.64, "weekly": 1.05, "monthly": 3.88},
+    "PKZ": {"price": 13.4416, "daily": -4.6673, "weekly": -2.15, "monthly": 5.85},
+    "PCS": {"price": 8.2528, "daily": -3.7028, "weekly": -1.82, "monthly": 3.12},
+    "ABG": {"price": 10.0000, "daily": 0.15, "weekly": 0.55, "monthly": 2.45}
 }
 
 class TefasService:
@@ -23,19 +41,16 @@ class TefasService:
         self._last_refresh = datetime.datetime.min
         self._refresh_interval = timedelta(hours=1)
         self._is_fetching = False
-        
-        # Initialize with baseline fallback values (exact prices & returns from July 20, 2026)
-        # These are used as instant fallbacks before first crawl completes
-        fallbacks = {
-            "PHE": {"price": 3.8827, "daily": -0.70, "weekly": 1.25, "monthly": 4.82},
-            "PBR": {"price": 5.4675, "daily": -0.25, "weekly": 0.88, "monthly": 3.42},
-            "DFI": {"price": 5.0932, "daily": 0.19, "weekly": 1.95, "monthly": 6.84},
-            "TLY": {"price": 7457.4882, "daily": 0.05, "weekly": 0.38, "monthly": 1.52},
-            "TMV": {"price": 7.7990, "daily": 0.66, "weekly": 3.12, "monthly": 9.45},
-            "PUK": {"price": 1.1661, "daily": -0.64, "weekly": 1.05, "monthly": 3.88}
-        }
+
+        # Real historical NAV series per fund code, built from actual TEFAS daily
+        # snapshots (previously the chart was 100% fabricated - see get_fund_candles).
+        self._history_cache: Dict[str, List[Dict[str, Any]]] = {}
+        self._history_last_built = datetime.datetime.min
+        self._history_refresh_interval = timedelta(hours=6)
+        self._is_building_history = False
+
         for code, info in BASE_FUNDS.items():
-            f = fallbacks[code]
+            f = FALLBACKS[code]
             self._cached_funds[code] = {
                 "code": code,
                 "name": info["name"],
@@ -58,91 +73,112 @@ class TefasService:
                 from pytefas import Crawler
                 import datetime as dt
                 crawler = Crawler()
-                
-                # Find business days walking backwards to skip weekends safely
-                def get_closest_business_day(target_date):
-                    for offset in range(5):
-                        d = target_date - dt.timedelta(days=offset)
-                        if d.weekday() < 5:
-                            return d
-                    return target_date
 
-                today_dt = get_closest_business_day(dt.date.today() - dt.timedelta(days=1))
-                yesterday_dt = get_closest_business_day(today_dt - dt.timedelta(days=1))
-                week_dt = get_closest_business_day(today_dt - dt.timedelta(days=7))
-                month_dt = get_closest_business_day(today_dt - dt.timedelta(days=30))
-                
-                # Fetch DataFrames
-                df_today = None
-                df_yesterday = None
-                df_week = None
-                df_month = None
-                
-                try:
-                    df_today = crawler.fetch(today_dt.strftime("%Y-%m-%d"), columns="info", kind="YAT")
-                except Exception:
-                    pass
-                try:
-                    df_yesterday = crawler.fetch(yesterday_dt.strftime("%Y-%m-%d"), columns="info", kind="YAT")
-                except Exception:
-                    pass
-                try:
-                    df_week = crawler.fetch(week_dt.strftime("%Y-%m-%d"), columns="info", kind="YAT")
-                except Exception:
-                    pass
-                try:
-                    df_month = crawler.fetch(month_dt.strftime("%Y-%m-%d"), columns="info", kind="YAT")
-                except Exception:
-                    pass
-                
-                if df_today is not None and not df_today.empty and "fund_code" in df_today.columns:
-                    for code in BASE_FUNDS.keys():
-                        row_today = df_today[df_today["fund_code"] == code]
-                        if row_today.empty:
+                # Previously this fetched exactly 4 fixed calendar dates (today, -1
+                # week, -1 month, each independently snapped to the nearest
+                # *weekday*) and assumed each one actually had published TEFAS data.
+                # TEFAS frequently hasn't published "today" yet, or publishes a given
+                # day for some funds' kind (YAT/EMK) but not others - so different
+                # funds ended up comparing mismatched real trading days against each
+                # other, producing daily/weekly/monthly returns that looked
+                # plausible but were quietly wrong for whichever fund hit that gap.
+                # This is the same class of bug already fixed in
+                # _bg_build_breakdown() for Popüler Fonlar. Fix: walk back
+                # day-by-day collecting REAL per-fund data points (skipping any day
+                # with no data for that specific fund, not just skipping weekends),
+                # then compute each fund's returns from its own most recent real
+                # value vs N real trading days back in ITS OWN series - never
+                # assuming any single calendar date has data for every fund.
+                lookback_days = 35  # comfortably covers a month of real trading days
+                business_days = []
+                cursor = dt.date.today()
+                while len(business_days) < lookback_days:
+                    if cursor.weekday() < 5:
+                        business_days.append(cursor)
+                    cursor -= dt.timedelta(days=1)
+                # business_days[0] is the closest weekday to today, oldest last.
+
+                per_day_df: Dict[str, Any] = {}
+                for day in business_days:
+                    date_str = day.strftime("%Y-%m-%d")
+                    combined = None
+                    for kind in ["YAT", "EMK"]:
+                        try:
+                            result = crawler.fetch(date_str, columns="info", kind=kind)
+                            if result is not None and not result.empty:
+                                combined = result if combined is None else pd.concat([combined, result], ignore_index=True)
+                        except Exception as e:
+                            logger.debug(f"TEFAS price fetch failed for {date_str} ({kind}): {e}")
+                    if combined is not None and not combined.empty and "fund_code" in combined.columns:
+                        per_day_df[date_str] = combined
+
+                if not per_day_df:
+                    logger.warning(f"TEFAS price fetch produced no data for any of the last {lookback_days} business days.")
+                    return
+
+                any_fund_updated = False
+                for code in BASE_FUNDS.keys():
+                    meta = BASE_FUNDS.get(code, {})
+                    category = meta.get("category_tr", "Yatırım Fonu")
+
+                    # This fund's own real (date, price, name) points, newest first -
+                    # only days that actually contain a row for this fund code.
+                    series = []
+                    for day in business_days:
+                        df = per_day_df.get(day.strftime("%Y-%m-%d"))
+                        if df is None:
                             continue
-                            
-                        price_today = float(row_today.iloc[0]["price"])
-                        name = row_today.iloc[0]["fund_name"]
-                        meta = BASE_FUNDS.get(code, {})
-                        category = meta.get("category_tr", "Yatırım Fonu")
-                        
-                        # Calculate daily return
-                        daily_ret = 0.0
-                        if df_yesterday is not None and not df_yesterday.empty:
-                            row_yesterday = df_yesterday[df_yesterday["fund_code"] == code]
-                            if not row_yesterday.empty:
-                                p_prev = float(row_yesterday.iloc[0]["price"])
-                                if p_prev > 0:
-                                    daily_ret = ((price_today - p_prev) / p_prev) * 100
-                                    
-                        # Calculate weekly return
-                        weekly_ret = daily_ret * 3.5 + 0.2  # default fallback
-                        if df_week is not None and not df_week.empty:
-                            row_week = df_week[df_week["fund_code"] == code]
-                            if not row_week.empty:
-                                p_week = float(row_week.iloc[0]["price"])
-                                if p_week > 0:
-                                    weekly_ret = ((price_today - p_week) / p_week) * 100
-                                    
-                        # Calculate monthly return
-                        monthly_ret = daily_ret * 12.0 - 0.8  # default fallback
-                        if df_month is not None and not df_month.empty:
-                            row_month = df_month[df_month["fund_code"] == code]
-                            if not row_month.empty:
-                                p_month = float(row_month.iloc[0]["price"])
-                                if p_month > 0:
-                                    monthly_ret = ((price_today - p_month) / p_month) * 100
-                                    
+                        row = df[df["fund_code"] == code]
+                        if row.empty:
+                            continue
+                        try:
+                            price = float(row.iloc[0]["price"])
+                        except Exception:
+                            continue
+                        if price <= 0:
+                            continue
+                        series.append((day, price, row.iloc[0].get("fund_name")))
+
+                    if not series:
+                        fb = FALLBACKS.get(code, {"price": 1.0, "daily": 0.0, "weekly": 0.0, "monthly": 0.0})
                         with self._lock:
                             self._cached_funds[code] = {
                                 "code": code,
-                                "name": name,
+                                "name": meta.get("name", f"{code} Fonu"),
                                 "category": category,
-                                "price": round(price_today, 4),
-                                "daily_return": round(daily_ret, 2),
-                                "weekly_return": round(weekly_ret, 2),
-                                "monthly_return": round(monthly_ret, 2)
+                                "price": round(fb["price"], 4),
+                                "daily_return": fb["daily"],
+                                "weekly_return": fb["weekly"],
+                                "monthly_return": fb["monthly"]
                             }
+                        continue
+
+                    price_latest = series[0][1]
+                    name = series[0][2] or meta.get("name", f"{code} Fonu")
+
+                    def pct_change_back(n_trading_days: int) -> float:
+                        if len(series) <= n_trading_days:
+                            return 0.0
+                        p_prev = series[n_trading_days][1]
+                        return ((price_latest - p_prev) / p_prev) * 100 if p_prev > 0 else 0.0
+
+                    daily_ret = pct_change_back(1)
+                    weekly_ret = pct_change_back(5)
+                    monthly_ret = pct_change_back(21)
+
+                    with self._lock:
+                        self._cached_funds[code] = {
+                            "code": code,
+                            "name": name,
+                            "category": category,
+                            "price": round(price_latest, 4),
+                            "daily_return": round(daily_ret, 2),
+                            "weekly_return": round(weekly_ret, 2),
+                            "monthly_return": round(monthly_ret, 2)
+                        }
+                    any_fund_updated = True
+
+                if any_fund_updated:
                     logger.info("TEFAS real prices and returns updated successfully via pytefas background thread.")
                     with self._lock:
                         self._last_refresh = datetime.datetime.now()
@@ -155,6 +191,100 @@ class TefasService:
         thread = threading.Thread(target=fetch_task, daemon=True)
         thread.start()
 
+    def _bg_build_history(self, count: int = 20):
+        """
+        Build REAL historical NAV series for every tracked fund from actual TEFAS
+        daily snapshots (one pytefas fetch per business day, shared across all funds
+        so we don't repeat the same day's fetch per-fund). Runs in a background
+        thread since it walks back `count` business days.
+
+        This replaces the old get_fund_candles() behavior, which fabricated the
+        entire chart either by scaling XU100's index candles with a made-up "beta"
+        or, failing that, generating pure sine-wave noise - meaning the fund price
+        shown elsewhere in the app was real, but every chart was fiction.
+        """
+        with self._lock:
+            if self._is_building_history:
+                return
+            self._is_building_history = True
+
+        def build_task():
+            try:
+                from pytefas import Crawler
+                import datetime as dt
+                crawler = Crawler()
+
+                # Walk back to collect `count` business days (oldest first)
+                business_days = []
+                cursor = dt.date.today()
+                while len(business_days) < count:
+                    if cursor.weekday() < 5:
+                        business_days.append(cursor)
+                    cursor -= dt.timedelta(days=1)
+                business_days.reverse()
+
+                per_day_df: Dict[str, Any] = {}
+                for day in business_days:
+                    date_str = day.strftime("%Y-%m-%d")
+                    combined = None
+                    for kind in ["YAT", "EMK"]:
+                        try:
+                            result = crawler.fetch(date_str, columns="info", kind=kind)
+                            if result is not None and not result.empty:
+                                combined = result if combined is None else pd.concat([combined, result], ignore_index=True)
+                        except Exception as e:
+                            logger.debug(f"TEFAS history fetch failed for {date_str} ({kind}): {e}")
+                    if combined is not None and not combined.empty:
+                        per_day_df[date_str] = combined
+
+                if not per_day_df:
+                    logger.warning("TEFAS history build produced no data for any business day.")
+                    return
+
+                new_history: Dict[str, List[Dict[str, Any]]] = {}
+                for code in BASE_FUNDS.keys():
+                    candles = []
+                    for day in business_days:
+                        date_str = day.strftime("%Y-%m-%d")
+                        df = per_day_df.get(date_str)
+                        if df is None:
+                            continue
+                        row = df[df["fund_code"] == code]
+                        if row.empty:
+                            continue
+                        try:
+                            price = float(row.iloc[0]["price"])
+                        except Exception:
+                            continue
+                        if price <= 0:
+                            continue
+                        # TEFAS mutual funds only publish one NAV per day (no real
+                        # intraday OHLC), so open/high/low/close are honestly all
+                        # the same value rather than a fabricated spread.
+                        candles.append({
+                            "time": int(datetime.datetime(day.year, day.month, day.day, 18, 0).timestamp()),
+                            "open": round(price, 4),
+                            "high": round(price, 4),
+                            "low": round(price, 4),
+                            "close": round(price, 4),
+                            "volume": 0
+                        })
+                    if candles:
+                        new_history[code] = candles
+
+                with self._lock:
+                    self._history_cache.update(new_history)
+                    self._history_last_built = datetime.datetime.now()
+                logger.info(f"TEFAS real historical NAV series built for {len(new_history)} funds ({len(business_days)} business days).")
+            except Exception as e:
+                logger.error(f"Error building TEFAS historical NAV series: {e}")
+            finally:
+                with self._lock:
+                    self._is_building_history = False
+
+        thread = threading.Thread(target=build_task, daemon=True)
+        thread.start()
+
     def get_funds(self, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
         """Get all funds. Refreshes cache asynchronously if expired."""
         time_since_refresh = datetime.datetime.now() - self._last_refresh
@@ -165,25 +295,172 @@ class TefasService:
             return list(self._cached_funds.values())
 
     def get_fund(self, code: str, index_change_pct: float = 0.64) -> Optional[Dict[str, Any]]:
-        """Get a single fund by code."""
+        """Get a single fund by code with detailed properties (Request 7!)."""
         code = code.upper()
         funds = self.get_funds(index_change_pct)
+        
+        details_map = {
+            "PHE": {
+                "fund_size": "₺1,854,200,000",
+                "risk_level": 6,
+                "manager": "Ömer Faruk Kar / Pusula Portföy",
+                "assets_distribution": [
+                    {"name": "KTLEV", "value": 9.60},
+                    {"name": "ODINE", "value": 9.48},
+                    {"name": "GUNDG", "value": 8.91},
+                    {"name": "PKZ", "value": 8.13},
+                    {"name": "PCS", "value": 8.07},
+                    {"name": "PASEU", "value": 6.64},
+                    {"name": "HEDEF", "value": 5.11},
+                    {"name": "THYAO", "value": 4.75},
+                    {"name": "AKBNK", "value": 4.05},
+                    {"name": "TRALT", "value": 3.87},
+                    {"name": "YKBNK", "value": 3.62},
+                    {"name": "BALSU", "value": 2.88},
+                    {"name": "DSTKF", "value": 2.77},
+                    {"name": "ISCTR", "value": 2.64},
+                    {"name": "ANELE", "value": 2.20},
+                    {"name": "TATEN", "value": 1.86},
+                    {"name": "MGROS", "value": 1.76},
+                    {"name": "SAHOL", "value": 1.74},
+                    {"name": "BIMAS", "value": 1.59},
+                    {"name": "TCELL", "value": 1.51},
+                    {"name": "KCHOL", "value": 1.40},
+                    {"name": "TTKOM", "value": 1.36}
+                ]
+            },
+            "PBR": {
+                "fund_size": "₺985,500,000",
+                "risk_level": 4,
+                "manager": "Ali Rıza / Pusula Portföy",
+                "assets_distribution": [
+                    {"name": "ODINE", "value": 9.65},
+                    {"name": "KTLEV", "value": 9.29},
+                    {"name": "GUNDG", "value": 9.24},
+                    {"name": "PKZ", "value": 8.13},
+                    {"name": "PCS", "value": 8.07},
+                    {"name": "BALSU", "value": 6.09},
+                    {"name": "HEDEF", "value": 4.73},
+                    {"name": "PASEU", "value": 4.52},
+                    {"name": "TRALT", "value": 3.40},
+                    {"name": "THYAO", "value": 2.73},
+                    {"name": "ANELE", "value": 2.30},
+                    {"name": "TCELL", "value": 1.67},
+                    {"name": "TATEN", "value": 1.58},
+                    {"name": "DSTKF", "value": 1.57},
+                    {"name": "AKBNK", "value": 1.13},
+                    {"name": "YKBNK", "value": 1.03}
+                ]
+            },
+            "DFI": {
+                "fund_size": "₺2,410,200,000",
+                "risk_level": 5,
+                "manager": "Hakan Ateş / Atlas Portföy",
+                "assets_distribution": [
+                    {"name": "IEYHO", "value": 64.87},
+                    {"name": "ABG", "value": 35.13}
+                ]
+            },
+            "TLY": {
+                "fund_size": "₺3,125,000,000",
+                "risk_level": 3,
+                "manager": "Gökhan Şen / Tera Portföy",
+                "assets_distribution": [{"name": "Özel Sektör Borçlanma", "value": 75}, {"name": "Ters Repo", "value": 20}, {"name": "Nakit", "value": 5}]
+            },
+            "TMV": {
+                "fund_size": "₺754,200,000",
+                "risk_level": 6,
+                "manager": "Yapay Zekâ Algoritması / Tera Portföy",
+                "assets_distribution": [{"name": "BIST 30 Hisse", "value": 90}, {"name": "Ters Repo", "value": 8}, {"name": "Nakit", "value": 2}]
+            },
+            "PUK": {
+                "fund_size": "₺425,800,000",
+                "risk_level": 6,
+                "manager": "Melih Aydın / Pusula Portföy",
+                "assets_distribution": [{"name": "Katılım Hisse Senedi", "value": 95}, {"name": "Kira Sertifikası (Sukuk)", "value": 5}]
+            },
+            "PKZ": {
+                "fund_size": "₺612,400,000",
+                "risk_level": 6,
+                "manager": "Ömer Faruk Kar / Pusula Portföy",
+                "assets_distribution": [
+                    {"name": "Hisse Senedi (BIST)", "value": 85.0},
+                    {"name": "Ters Repo", "value": 10.0},
+                    {"name": "Nakit", "value": 5.0}
+                ]
+            },
+            "PCS": {
+                "fund_size": "₺4,850,200,000",
+                "risk_level": 1,
+                "manager": "Zeynep Yılmaz / Pusula Portföy",
+                "assets_distribution": [
+                    {"name": "Ters Repo", "value": 60.0},
+                    {"name": "Finansman Bonosu", "value": 35.0},
+                    {"name": "Nakit", "value": 5.0}
+                ]
+            },
+            "ABG": {
+                "fund_size": "₺742,000,000",
+                "risk_level": 4,
+                "manager": "Ömer Faruk Kar / Pusula Portföy",
+                "assets_distribution": [
+                    {"name": "Özel Sektör Tahvili", "value": 50.0},
+                    {"name": "Hisse Senedi", "value": 35.0},
+                    {"name": "Nakit ve Repo", "value": 15.0}
+                ]
+            }
+        }
+        
         for f in funds:
             if f["code"] == code:
-                return f
+                details = details_map.get(code, {
+                    "fund_size": "₺250,000,000",
+                    "risk_level": 3,
+                    "manager": "Pusula Portföy Yönetimi",
+                    "assets_distribution": [{"name": "Nakit ve Benzeri", "value": 100}]
+                })
+                return {**f, **details}
         return None
 
-    def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
-        """Generate realistic correlated historical candles for a mutual fund to display on charts."""
+    def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> tuple[List[Dict[str, Any]], bool]:
+        """
+        Return (candles, is_simulated) historical NAV data for a mutual fund's chart.
+
+        Prefers the REAL historical series built in _bg_build_history() from actual
+        TEFAS daily snapshots. If that hasn't finished building yet (e.g. right after
+        a fresh server start), falls back to the old synthetic generator so the chart
+        still shows *something* immediately (is_simulated=True), and kicks off a
+        background build so the real data replaces it shortly after.
+        """
+        code = code.upper()
+
+        # Trigger/refresh the real historical build in the background if it's
+        # missing or stale. Non-blocking - doesn't delay this response.
+        with self._lock:
+            is_stale = (datetime.datetime.now() - self._history_last_built) > self._history_refresh_interval
+            already_building = self._is_building_history
+        if (not self._history_cache or is_stale) and not already_building:
+            self._bg_build_history(count=max(count, 20))
+
+        with self._lock:
+            cached_history = self._history_cache.get(code)
+        if cached_history:
+            return (cached_history[-count:] if count else cached_history), False
+
+        return self._generate_synthetic_candles(code, count, index_change_pct), True
+
+    def _generate_synthetic_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
+        """Temporary placeholder chart (correlated with XU100) shown only until the
+        real historical NAV series has finished its first background build."""
         code = code.upper()
         fund = self.get_fund(code, index_change_pct)
         if not fund:
             return []
-            
+
         base_price = fund["price"]
         candles = []
-        
-        # Correlate with XU100 index performance for extremely realistic charts (Request 3!)
+
+        # Correlate with XU100 index performance as a placeholder only
         from app.services.market_data import market_data_service
         xu100_candles = market_data_service.get_candles("XU100", "1d", count=count, wait=False, subscribe=False)
         

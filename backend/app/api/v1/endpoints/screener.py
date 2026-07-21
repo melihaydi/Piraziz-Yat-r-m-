@@ -267,149 +267,129 @@ def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")
             "bb_upper": bb_upper[i] if i < len(bb_upper) else None,
             "bb_lower": bb_lower[i] if i < len(bb_lower) else None
         })
-        
     response.headers.setdefault("X-Chart-Simulated", "false")
     return response_candles
 
 @router.get("/market-summary")
 def get_market_summary():
-    """Calculate and return dynamic BIST market sentiment and sector performances using live quotes."""
+    """Calculate and return dynamic Bloomberg-style market tickers, sentiment, and sector performances using live quotes."""
     cached_quotes = market_data_service.get_all_quotes()
     
-    # Get live index details
-    index_quote = market_data_service.get_quote("XU100")
-    index_price = 10240.50
-    index_change_pct = 1.42
-    if index_quote:
-        index_price = index_quote.get("last") or index_price
-        index_change_pct = index_quote.get("change_percent") or index_change_pct
-
-    xu030_quote = market_data_service.get_quote("XU030")
-    xu030_price = 11580.20
-    xu030_change_pct = 1.68
-    if xu030_quote:
-        xu030_price = xu030_quote.get("last") or xu030_price
-        xu030_change_pct = xu030_quote.get("change_percent") or xu030_change_pct
-
-    xbank_quote = market_data_service.get_quote("XBANK")
-    xbank_price = 14250.00
-    xbank_change_pct = 2.15
-    if xbank_quote:
-        xbank_price = xbank_quote.get("last") or xbank_price
-        xbank_change_pct = xbank_quote.get("change_percent") or xbank_change_pct
-
-    usdtry_quote = market_data_service.get_quote("USDTRY")
-    usdtry_price = 33.245
-    usdtry_change_pct = -0.08
-    if usdtry_quote:
-        usdtry_price = usdtry_quote.get("last") or usdtry_price
-        usdtry_change_pct = usdtry_quote.get("change_percent") or usdtry_change_pct
-
-    if not cached_quotes:
-        # If stream not fully cached yet, return standard neutral-positive baseline
-        return {
-            "sentiment": {
-                "bullish": 52,
-                "neutral": 28,
-                "bearish": 20
-            },
-            "sectors": [
-                { "name": "Teknoloji", "change": "+1.20%", "up": True },
-                { "name": "Bankacılık", "change": "+0.85%", "up": True },
-                { "name": "Ulaştırma", "change": "+0.50%", "up": True },
-                { "name": "Metal Sanayi", "change": "-0.15%", "up": False }
-            ],
-            "index": {
-                "price": index_price,
-                "change_percent": index_change_pct
-            },
-            "xu030": {
-                "price": xu030_price,
-                "change_percent": xu030_change_pct
-            },
-            "xbank": {
-                "price": xbank_price,
-                "change_percent": xbank_change_pct
-            },
-            "usdtry": {
-                "price": usdtry_price,
-                "change_percent": usdtry_change_pct
+    # Unified helper to get live index/parity/commodity prices with defaults
+    def get_market_quote(symbol: str, default_p: float, default_c: float) -> dict:
+        q = market_data_service.get_quote(symbol)
+        if q and q.get("last") is not None:
+            return {
+                "price": float(q.get("last")),
+                "change_percent": float(q.get("change_percent") or 0.0)
             }
+        return {"price": default_p, "change_percent": default_c}
+
+    # Fetch all 8 Bloomberg Terminal tickers
+    xu100 = get_market_quote("XU100", 10240.50, 1.42)
+    xu030 = get_market_quote("XU030", 11580.20, 1.68)
+    xbank = get_market_quote("XBANK", 14250.00, 2.15)
+    usdtry = get_market_quote("USDTRY", 33.245, -0.08)
+    eurtry = get_market_quote("EURTRY", 36.180, 0.12)
+    xauusd = get_market_quote("XAUUSD", 2410.60, 0.22)
+    btcusdt = get_market_quote("BTCUSDT", 66250.00, 1.15)
+    us100 = get_market_quote("US100", 19820.00, -0.45)
+    
+    # Gram GoldTRY calculation (Formula: (Ons GoldUSD / troy ounce) * USDTRY)
+    xautryg = get_market_quote("XAUTRYG", 2550.40, 0.35)
+    # If TradingView direct quote is empty, compute dynamically (Request 1!)
+    if xautryg["price"] == 2550.40 or not market_data_service.stream.get_quote("XAUTRYG"):
+        calculated_gold = (xauusd["price"] / 31.1034768) * usdtry["price"]
+        xautryg = {
+            "price": round(calculated_gold, 2),
+            "change_percent": round(xauusd["change_percent"] + usdtry["change_percent"], 2)
         }
+
+    # Default structure in case stream is not fully ready
+    sentiment = {"bullish": 52, "neutral": 28, "bearish": 20}
+    cleaned_sectors = [
+        { "name": "Teknoloji", "change": "+1.20%", "up": True },
+        { "name": "Bankacılık", "change": "+0.85%", "up": True },
+        { "name": "Ulaştırma", "change": "+0.50%", "up": True },
+        { "name": "Metal Sanayi", "change": "-0.15%", "up": False }
+    ]
+
+    if cached_quotes:
+        # 1. Calculate real-time market sentiment
+        total_tracked = len(cached_quotes)
+        bullish_count = 0
+        bearish_count = 0
         
-    # 1. Calculate real-time market sentiment
-    total_tracked = len(cached_quotes)
-    bullish_count = 0
-    bearish_count = 0
-    
-    for symbol, quote in cached_quotes.items():
-        change_pct = quote.get("change_percent") or 0.0
-        if change_pct > 0.3:
-            bullish_count += 1
-        elif change_pct < -0.3:
-            bearish_count += 1
-            
-    neutral_count = total_tracked - bullish_count - bearish_count
-    
-    bullish_pct = max(5, round(bullish_count / total_tracked * 100))
-    bearish_pct = max(5, round(bearish_count / total_tracked * 100))
-    neutral_pct = 100 - bullish_pct - bearish_pct
-    
-    # 2. Calculate dynamic sector performance
-    sector_changes = {}
-    for symbol, quote in cached_quotes.items():
-        change_pct = quote.get("change_percent") or 0.0
-        sec = get_sector(symbol)
-        if sec not in sector_changes:
-            sector_changes[sec] = []
-        sector_changes[sec].append(change_pct)
-        
-    sectors_list = []
-    for sec_name, changes in sector_changes.items():
-        avg_change = sum(changes) / len(changes)
-        sectors_list.append({
-            "name": sec_name,
-            "change": f"{avg_change:+.2f}%",
-            "up": avg_change >= 0,
-            "raw_val": avg_change
-        })
-        
-    # Sort sectors by absolute highest performant first
-    sectors_list = sorted(sectors_list, key=lambda x: x["raw_val"], reverse=True)
-    
-    # Return top sectors (limit to 6 for clean UI)
-    cleaned_sectors = []
-    for s in sectors_list[:6]:
-        cleaned_sectors.append({
-            "name": s["name"],
-            "change": s["change"],
-            "up": s["up"]
-        })
-        
-    return {
-        "sentiment": {
+        for symbol, quote in cached_quotes.items():
+            change_pct = quote.get("change_percent") or 0.0
+            if change_pct > 0.3:
+                bullish_count += 1
+            elif change_pct < -0.3:
+                bearish_count += 1
+                
+        neutral_count = total_tracked - bullish_count - bearish_count
+        bullish_pct = max(5, round(bullish_count / total_tracked * 100))
+        bearish_pct = max(5, round(bearish_count / total_tracked * 100))
+        neutral_pct = 100 - bullish_pct - bearish_pct
+        sentiment = {
             "bullish": bullish_pct,
             "neutral": neutral_pct,
             "bearish": bearish_pct
-        },
-        "sectors": cleaned_sectors,
-        "index": {
-            "price": index_price,
-            "change_percent": index_change_pct
-        },
-        "xu030": {
-            "price": xu030_price,
-            "change_percent": xu030_change_pct
-        },
-        "xbank": {
-            "price": xbank_price,
-            "change_percent": xbank_change_pct
-        },
-        "usdtry": {
-            "price": usdtry_price,
-            "change_percent": usdtry_change_pct
         }
+        
+        # 2. Calculate dynamic sector performance
+        sector_changes = {}
+        for symbol, quote in cached_quotes.items():
+            change_pct = quote.get("change_percent") or 0.0
+            sec = get_sector(symbol)
+            if sec not in sector_changes:
+                sector_changes[sec] = []
+            sector_changes[sec].append(change_pct)
+            
+        sectors_list = []
+        for sec_name, changes in sector_changes.items():
+            avg_change = sum(changes) / len(changes)
+            sectors_list.append({
+                "name": sec_name,
+                "change": f"{avg_change:+.2f}%",
+                "up": avg_change >= 0,
+                "raw_val": avg_change
+            })
+            
+        sectors_list = sorted(sectors_list, key=lambda x: x["raw_val"], reverse=True)
+        cleaned_sectors = []
+        for s in sectors_list[:6]:
+            cleaned_sectors.append({
+                "name": s["name"],
+                "change": s["change"],
+                "up": s["up"]
+            })
+        
+    return {
+        "sentiment": sentiment,
+        "sectors": cleaned_sectors,
+        "index": xu100,       # XU100 Index details
+        "xu030": xu030,       # XU030 Index details
+        "xbank": xbank,       # XBANK Index details
+        "usdtry": usdtry,     # USD/TRY Exchange rate
+        "eurtry": eurtry,     # EUR/TRY Exchange rate
+        "xautryg": xautryg,   # Gram Gold TRY
+        "xauusd": xauusd,     # Ons Gold USD
+        "btcusdt": btcusdt,   # Bitcoin USDT
+        "us100": us100        # NASDAQ 100 (US100)
     }
+
+@router.get("/score-details/{symbol}")
+def get_stock_score_details(symbol: str):
+    """Retrieve detailed AI scoring breakdown for a specific stock using 13 technical indicators."""
+    symbol = symbol.upper()
+    quote = market_data_service.get_quote(symbol)
+    if not quote:
+        raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found on TradingView stream.")
+        
+    candles = market_data_service.get_candles(symbol, "1d", wait=False, subscribe=False)
+    score_details = ScoringService.calculate_ai_score_details(symbol, quote, candles)
+    return score_details
 
 @router.post("/analyze/{symbol}")
 def analyze_stock_ai(symbol: str):
@@ -458,14 +438,16 @@ def analyze_stock_ai(symbol: str):
         "net_profit": net_profit * 0.78
     }
     
-    # 3. Call AI Analysis service to analyze using live parameters
+    # 3. Call AI Analysis service to analyze using live parameters and candles
     from app.services.ai_analysis import ai_analysis_service
     try:
+        candles = market_data_service.get_candles(symbol, "1d", wait=False, subscribe=False)
         report = ai_analysis_service.analyze_financials(
             ticker=symbol,
             current_data=current_financials,
             previous_data=previous_financials,
-            sector_name=get_sector(symbol)
+            sector_name=get_sector(symbol),
+            candles=candles
         )
         return report
     except Exception as e:

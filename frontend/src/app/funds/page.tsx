@@ -19,8 +19,17 @@ export default function FundsPage() {
   const [favorites, setFavorites] = useState<string[]>([])
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false)
 
-  // Split-view selected fund
-  const [selectedCode, setSelectedCode] = useState("PHE")
+  // Split-view selected fund - defaults to a "?code=" URL param if the header
+  // search sent us here (see the matching /screener?ticker= fix - this page
+  // was already reachable via /funds?code=CODE but never actually read the
+  // param, so it silently ignored it and showed whatever fund was default).
+  const [selectedCode, setSelectedCode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const param = new URLSearchParams(window.location.search).get("code")
+      if (param) return param.toUpperCase()
+    }
+    return "PHE"
+  })
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(false)
 
@@ -60,23 +69,58 @@ export default function FundsPage() {
     return () => window.removeEventListener("select-fund", handleSelectFund)
   }, [])
 
-  // Fetch live TEFAS fund data on mount
+  // If we arrived here via a "?code=" URL param (header search, from a page
+  // other than /funds), scroll the detail pane into view once on mount.
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/funds/")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setFunds(data)
-          if (data.length > 0) {
-            setSelectedCode(data[0].code)
+    const param = new URLSearchParams(window.location.search).get("code")
+    if (param) {
+      const detailEl = document.getElementById("fund-detail-pane")
+      if (detailEl) detailEl.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [])
+
+  // Fetch live TEFAS fund data on mount + auto-refresh
+  useEffect(() => {
+    // BUG FIX: this effect has an empty dependency array (runs once), but the
+    // old code checked the `loading` *state* inside fetchFunds - that reads
+    // the stale value captured when the effect was created (always `true`,
+    // since it never re-runs), not the latest value. That meant EVERY 10s
+    // poll re-triggered "set selected fund to the first item in the list",
+    // silently yanking the user back to whatever fund happens to be first
+    // regardless of what they'd actually selected - which is exactly why the
+    // fund detail pane's price/daily-change/chart appeared to "randomly bug
+        // out" every ~10 seconds. Use a plain flag instead so this only ever
+    // fires once, on the true first successful load (same fix already
+    // applied to the analogous bug on the Hisseler/screener page).
+    let hasSetInitialFund = false
+    // Respect an explicit "?code=" URL param - don't let the first load
+    // silently override it with the first fund in the list.
+    const urlHadCode = !!new URLSearchParams(window.location.search).get("code")
+
+    const fetchFunds = () => {
+      fetch("http://localhost:8000/api/v1/funds/")
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setFunds(data)
+            if (data.length > 0 && !hasSetInitialFund) {
+              hasSetInitialFund = true
+              if (!urlHadCode) {
+                setSelectedCode(data[0].code)
+              }
+            }
           }
-        }
-        setLoading(false)
-      })
-      .catch(err => {
-        console.error("Failed to load TEFAS funds:", err)
-        setLoading(false)
-      })
+          setLoading(false)
+        })
+        .catch(err => {
+          console.error("Failed to load TEFAS funds:", err)
+          setLoading(false)
+        })
+    }
+
+    fetchFunds()
+    const interval = setInterval(fetchFunds, 10000)
+    return () => clearInterval(interval)
   }, [])
 
   // Fetch fund candles when selectedCode changes
@@ -394,8 +438,18 @@ export default function FundsPage() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-border/40 text-[10px] text-muted-foreground text-center">
-                  * Veriler TEFAS üzerinden anlık endeks değişim çarpanlarına göre simüle edilmiştir.
+                <div className="pt-3 border-t border-border/30 flex flex-col space-y-2">
+                  <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={() => window.location.href = `/funds/${selectedCode.toLowerCase()}`}
+                    className="w-full text-xs font-black cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-black border-0 shadow-md shadow-emerald-500/10"
+                  >
+                    Detaylı Analiz & Varlık Kırılımı (Premium)
+                  </Button>
+                  <div className="text-[9px] text-muted-foreground text-center">
+                    * Veriler TEFAS üzerinden anlık endeks değişim çarpanlarına göre simüle edilmiştir.
+                  </div>
                 </div>
               </CardContent>
             </Card>

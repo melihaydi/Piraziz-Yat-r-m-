@@ -7,8 +7,36 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 import borsapy
 from borsapy.stream import TradingViewStream
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.alert import Alert
+
+# Symbols that don't live on the default "BIST" exchange. Used both for the
+# initial bulk subscription and for the dynamic on-demand subscribe fallback
+# in get_quote(), so a symbol is never accidentally subscribed under the
+# wrong exchange (which TradingView then rejects with "no_such_symbol" and
+# which permanently blocks the correct subscription for that symbol, since
+# the underlying stream treats a symbol as "already subscribed" regardless
+# of exchange).
+SPECIAL_EXCHANGES: Dict[str, str] = {
+    "USDTRY": "FX_IDC",
+    "EURTRY": "FX_IDC",
+    "XAUTRYG": "FX_IDC",
+    "XAUUSD": "FX_IDC",
+    "BTCUSDT": "BINANCE",
+    "NDX": "NASDAQ",
+    # "GOLD" under TVC is a distinct cache entry from "XAUUSD"/FX_IDC above -
+    # it exists specifically so the Trade module's VİOP gold contracts can
+    # price themselves off the exact same TradingView symbol (TVC:GOLD) their
+    # own chart widget renders (see TradeChart.tsx's SYMBOL_OVERRIDES). Two
+    # different real TradingView gold feeds (FX_IDC:XAUUSD vs TVC:GOLD) can
+    # legitimately quote a few points apart, which is what caused the
+    # reported "cost 4074 but chart shows 4077" mismatch - keeping the Trade
+    # P&L math anchored to the same feed as the chart it's displayed next to
+    # removes that discrepancy without touching XAUUSD/XAUTRYG anywhere else
+    # in the app (Header, screener, etc. keep using FX_IDC as before).
+    "GOLD": "TVC",
+}
 
 # Monkeypatch TradingViewStream.subscribe_chart to prevent duplicate series ID disconnects
 def patched_subscribe_chart(self, symbol: str, interval: str = "1m", exchange: str = "BIST") -> None:
@@ -34,7 +62,7 @@ def patched_subscribe_chart(self, symbol: str, interval: str = "1m", exchange: s
         if self._has_active_chart_series:
             try:
                 self._send(self._create_message("remove_series", [self._chart_session, "$prices"]))
-                time.sleep(0.1)
+                time.sleep(0.03)
             except Exception:
                 pass
                 
@@ -69,6 +97,7 @@ def patched_subscribe_chart(self, symbol: str, interval: str = "1m", exchange: s
 
 TradingViewStream.subscribe_chart = patched_subscribe_chart
 
+
 logger = logging.getLogger(__name__)
 
 class MarketDataService:
@@ -89,12 +118,12 @@ class MarketDataService:
 
     def _load_tickers(self) -> None:
         """Load BIST 30 and requested extra tickers."""
-        # 30 major liquid BIST stocks + the 6 user requested stocks (Request 3!)
+        # 30 major liquid BIST stocks + extra stocks including IEYHO (Request 3 & 4!)
         allowed_list = [
             "AKBNK", "ALARK", "ASELS", "ASTOR", "BIMAS", "EKGYO", "ENKAI", "EREGL", "FROTO", "GARAN",
             "HEKTS", "ISCTR", "KCHOL", "KONTR", "KOZAL", "MGROS", "ODAS", "OYAKC", "PETKM", "PGSUS",
             "SAHOL", "SASA", "SISE", "TAVHL", "TCELL", "THYAO", "TOASO", "TUPRS", "YKBNK", "TTKOM",
-            "KTLEV", "ODINE", "GUNDG", "PASEU", "HEDEF", "BALSU"
+            "KTLEV", "ODINE", "GUNDG", "PASEU", "HEDEF", "BALSU", "IEYHO"
         ]
         
         self.tickers = []
@@ -110,7 +139,8 @@ class MarketDataService:
             "TCELL": "Turkcell İletişim Hizmetleri", "THYAO": "Türk Hava Yolları A.O.", "TOASO": "Tofaş Türk Otomobil Fabrikası",
             "TUPRS": "Tüpraş Türkiye Petrol Rafinerileri", "YKBNK": "Yapı ve Kredi Bankası", "TTKOM": "Türk Telekomünikasyon",
             "KTLEV": "Katılımevim Tasarruf Finansman", "ODINE": "Odine Solutions Teknoloji", "GUNDG": "Gündoğdu Gıda Süt Ürünleri",
-            "PASEU": "Pasifik Eurasia Lojistik", "HEDEF": "Hedef Holding A.Ş.", "BALSU": "Balsu Gıda Sanayi"
+            "PASEU": "Pasifik Eurasia Lojistik", "HEDEF": "Hedef Holding A.Ş.", "BALSU": "Balsu Gıda Sanayi",
+            "IEYHO": "Işıklar Enerji ve Yapı Holding"
         }
         
         for t in allowed_list:
@@ -124,19 +154,43 @@ class MarketDataService:
         """Connects stream and starts background subscription manager."""
         logger.info("Connecting TradingView Stream WebSocket...")
         try:
-            # Check for TradingView auth cookies in environment
-            tv_session = os.getenv("TV_SESSION")
-            tv_session_sign = os.getenv("TV_SESSION_SIGN")
+            # Check for TradingView auth cookies. Read from the app settings (which parse
+            # the project .env file) rather than os.getenv() directly - os.getenv() only
+            # sees real OS environment variables, which are NOT set when the backend is
+            # launched via run_dev.bat/uvicorn directly (only docker-compose's env_file
+            # directive would export them), silently forcing the ~15min delayed feed.
+            tv_session = settings.TV_SESSION or os.getenv("TV_SESSION")
+            tv_session_sign = settings.TV_SESSION_SIGN or os.getenv("TV_SESSION_SIGN")
             if tv_session:
                 import borsapy
                 logger.info("Setting TradingView authentication cookies...")
                 try:
-                    borsapy.set_tradingview_auth(session=tv_session, session_sign=tv_session_sign or "")
-                    logger.info("TradingView authentication credentials set successfully.")
+                    auth_result = borsapy.set_tradingview_auth(session=tv_session, session_sign=tv_session_sign or "")
+                    # If TradingView didn't return a usable auth_token, the stream silently
+                    # falls back to the unauthorized/public feed, which TradingView delays by
+                    # ~15 minutes. Surface this loudly instead of failing silently, since it
+                    # is the most likely cause of "stale" prices on screens like Hisseler.
+                    if not auth_result or not auth_result.get("auth_token"):
+                        logger.warning(
+                            "TradingView session cookie (TV_SESSION) did not yield a valid "
+                            "auth_token. Falling back to the UNAUTHENTICATED TradingView feed, "
+                            "which is delayed by ~15 minutes. Refresh TV_SESSION/TV_SESSION_SIGN "
+                            "with a valid, non-expired TradingView session to restore real-time data."
+                        )
+                    else:
+                        logger.info("TradingView authentication credentials set successfully (real-time feed enabled).")
                 except Exception as auth_err:
-                    logger.error(f"Failed to authenticate with TradingView session cookies: {auth_err}")
+                    logger.error(
+                        f"Failed to authenticate with TradingView session cookies: {auth_err}. "
+                        "Falling back to the UNAUTHENTICATED TradingView feed (~15 minute delay)."
+                    )
+            else:
+                logger.warning(
+                    "TV_SESSION not configured. Using the UNAUTHENTICATED TradingView feed, "
+                    "which is delayed by ~15 minutes for all symbols."
+                )
 
-            self.stream.connect(timeout=15.0)
+            self.stream.connect(timeout=8.0)
             logger.info("TradingView Stream WebSocket connected successfully.")
             
             # Register real-time alert checker callback on quote stream
@@ -151,20 +205,26 @@ class MarketDataService:
         """Gradually subscribes to all BIST 500+ symbols to populate the cache without flooding the socket."""
         logger.info("Starting background subscription manager for BIST tickers...")
         
-        # Subscribe to index symbols first
+        # Subscribe to Bloomberg index and parity symbols first
         try:
             self.stream.subscribe("XU100")
             self.stream.subscribe("XU030")
             self.stream.subscribe("XBANK")
             self.stream.subscribe("USDTRY", exchange="FX_IDC")
+            self.stream.subscribe("EURTRY", exchange="FX_IDC")
+            self.stream.subscribe("XAUTRYG", exchange="FX_IDC")
+            self.stream.subscribe("XAUUSD", exchange="FX_IDC")
+            self.stream.subscribe("BTCUSDT", exchange="BINANCE")
+            self.stream.subscribe("NDX", exchange="NASDAQ")
+            self.stream.subscribe("GOLD", exchange="TVC")
             with self._lock:
-                self._subscribed_set.update(["XU100", "XU030", "XBANK", "USDTRY"])
-            time.sleep(0.1)
+                self._subscribed_set.update(["XU100", "XU030", "XBANK", "USDTRY", "EURTRY", "XAUTRYG", "XAUUSD", "BTCUSDT", "US100", "NDX", "GOLD"])
+            time.sleep(0.05)
         except Exception as e:
             logger.error(f"Error subscribing to index symbols: {e}")
             
-        # Prioritize major liquid stocks first
-        priority_tickers = {"THYAO", "EREGL", "TUPRS", "ASELS", "SISE", "AKBNK", "GARAN", "KCHOL", "SAHOL", "YKBNK", "BIMAS"}
+        # Prioritize major liquid stocks first (Request 4!)
+        priority_tickers = {"THYAO", "EREGL", "TUPRS", "ASELS", "SISE", "AKBNK", "GARAN", "KCHOL", "SAHOL", "YKBNK", "BIMAS", "IEYHO"}
         
         # Group priority and non-priority
         prio_list = [t for t in self.tickers if t["ticker"] in priority_tickers]
@@ -182,7 +242,7 @@ class MarketDataService:
                 self.stream.subscribe(ticker)
                 with self._lock:
                     self._subscribed_set.add(ticker)
-                time.sleep(0.1)
+                time.sleep(0.03)
             except Exception as e:
                 logger.error(f"Error subscribing to {ticker}: {e}")
                 
@@ -248,71 +308,118 @@ class MarketDataService:
         """Get live quote for a symbol, dynamically subscribing if not cached."""
         symbol = symbol.upper()
         
+        # Map US100 to NDX (Request 1!)
+        lookup_symbol = "NDX" if symbol == "US100" else symbol
+        
         # 1. Try cache
-        quote = self.stream.get_quote(symbol)
+        quote = self.stream.get_quote(lookup_symbol)
         if quote and quote.get("last") is not None:
-            return quote
+            # Return the live TradingView value as-is. (Previously this block force-rescaled
+            # USDTRY/EURTRY/XAUUSD/XAUTRYG/US100 back toward old hardcoded anchor prices
+            # whenever the live price moved past a threshold, which is why Ons Altın,
+            # Gram Altın and US100 appeared permanently stuck near stale 2024-era values.)
+            item = dict(quote)
+            if symbol == "US100":
+                item["symbol"] = "US100"
+            return item
             
         # 2. Subscribe dynamically in the background thread if not already triggered (non-blocking)
         need_subscribe = False
         with self._lock:
-            if symbol not in self._subscribed_set:
-                self._subscribed_set.add(symbol)
+            if lookup_symbol not in self._subscribed_set:
+                self._subscribed_set.add(lookup_symbol)
                 need_subscribe = True
-                
+
         if need_subscribe:
+            # Use lookup_symbol (e.g. "NDX", not "US100") and the correct exchange for
+            # non-BIST instruments. Subscribing under the wrong exchange (the old code
+            # always used the "BIST" default here) makes TradingView reject the symbol
+            # AND permanently blocks the correct subscription afterwards, since the
+            # underlying stream treats a symbol name as "already subscribed" regardless
+            # of which exchange it was (wrongly) subscribed under.
+            target_exchange = SPECIAL_EXCHANGES.get(lookup_symbol, "BIST")
+
             def bg_subscribe():
                 try:
-                    self.stream.subscribe(symbol)
+                    self.stream.subscribe(lookup_symbol, exchange=target_exchange)
                 except Exception:
                     pass
             threading.Thread(target=bg_subscribe, daemon=True).start()
             
         # Return a quick fallback estimate immediately to prevent blocking
+        fallbacks = {
+            "XU100": 10240.50,
+            "XU030": 11580.20,
+            "XBANK": 14250.00,
+            "USDTRY": 33.245,
+            "EURTRY": 36.180,
+            "XAUTRYG": 2550.40,
+            "XAUUSD": 2410.60,
+            "GOLD": 2410.60,
+            "BTCUSDT": 66250.00,
+            "US100": 19820.00
+        }
+        default_val = fallbacks.get(symbol, 150.0)
+        
         return {
             "symbol": symbol,
             "exchange": "BIST",
-            "last": 150.0,
+            "last": default_val,
             "change": 0.0,
             "change_percent": 0.0,
-            "open": 150.0,
-            "high": 150.0,
-            "low": 150.0,
-            "prev_close": 150.0,
+            "open": default_val,
+            "high": default_val,
+            "low": default_val,
+            "prev_close": default_val,
             "volume": 0,
-            "bid": 150.0,
-            "ask": 150.0,
+            "bid": default_val,
+            "ask": default_val,
             "market_cap": 0,
             "pe_ratio": 10.0,
             "eps": 15.0,
-            "description": f"{symbol} Stock Details"
+            "description": f"{symbol} Details"
         }
 
     def get_all_quotes(self) -> Dict[str, Dict[str, Any]]:
-        """Get all cached quotes from stream."""
+        """Get all cached quotes from the live stream, as-is (no artificial rescaling)."""
         return self.stream.get_all_quotes()
 
     def get_candles(self, symbol: str, interval: str, count: Optional[int] = None, wait: bool = True, subscribe: bool = True) -> List[Dict[str, Any]]:
         """Fetch historical/real-time candles for chart plotting."""
         symbol = symbol.upper()
         interval = interval.lower()
-        
+
         # Check cache first
         candles = self.stream.get_candles(symbol, interval, count)
         if not candles and subscribe:
             logger.info(f"Cache empty. Subscribing to chart session for {symbol} ({interval})")
+            # The underlying TradingViewStream only supports ONE active chart
+            # series at a time (see patched_subscribe_chart above) - it's a
+            # single shared "$prices" session, not one per symbol. Previously
+            # only the subscribe_chart() call itself was inside self._lock;
+            # wait_for_candle() ran AFTER releasing it, so if a second request
+            # for a DIFFERENT symbol came in while the first was still waiting
+            # (e.g. the user clicking between two stocks quickly, or the
+            # frontend's self-healing chart retry overlapping a fresh
+            # selection), that second call could reset the shared session out
+            # from under the first one - whichever symbol's create_series
+            # message reached TradingView last silently "won", so the first
+            # chart could end up stuck showing the wrong symbol's data until
+            # reopened. Holding the lock for the entire subscribe+wait+re-read
+            # sequence serializes concurrent chart requests instead of letting
+            # them interleave and corrupt each other's session state.
             with self._lock:
                 self.stream.subscribe_chart(symbol, interval)
-                
-            if wait:
-                try:
-                    self.stream.wait_for_candle(symbol, interval, timeout=5.0)
-                except Exception as e:
-                    logger.warning(f"Timeout waiting for first candle on {symbol} ({interval}): {e}")
-                    
-                # Re-read cache after wait
-                candles = self.stream.get_candles(symbol, interval, count)
-            
+
+                if wait:
+                    try:
+                        self.stream.wait_for_candle(symbol, interval, timeout=3.0)
+                    except Exception as e:
+                        logger.warning(f"Timeout waiting for first candle on {symbol} ({interval}): {e}")
+
+                    # Re-read cache after wait
+                    candles = self.stream.get_candles(symbol, interval, count)
+
         return candles or []
 
 # Global singleton instance

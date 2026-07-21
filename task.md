@@ -1,23 +1,42 @@
-# Piraziz Yatırım Terminali TODO List
+# Geliştirme Görev Listesi (Sürüm 3.0)
 
-- [x] Call Stack Zum Hatalarını Bitir (isSyncing Guard)
-- [x] AI Crossover Sinyalleri Altyapısını ve Portföy Entegrasyonunu Ekle
-- [x] Canlı Seans Veri Akışını Kontrol Et (USDTRY FX_IDC Düzeltmesi)
-- [x] Kurumsal Markalama: BIP BIST -> Piraziz Yatırım Dönüşümü
-- [x] Kurumsal Degrade Zümrüt Logosu Oluştur ve Sitelere Entegre Et
-- [x] AI KAP Analizi Bölümlerini Temizle (Kaldır)
-- [x] Ekonomi Takvimini Piyasa Takip Paneline Ekle
-- [x] Ayarlar Arayüzünü Yap (Profil Emojisi, İsim Değiştirme, Mock Giriş)
-- [x] Canlı Bildirim Zili ve Ping Efekti Ekle
-- [x] Hisse Arama Bölümünü Screener İçerisinde Split-View ile Bütünleştir
-- [x] Favoriler Sistemi Ekle (Yıldızlama, Süzme ve Dashboard Listesi)
-- [x] İletişim & Destek Bilgilerini Settings'e Ekle
-- [x] TEFAS Fon Takip Sayfasını (`/funds`) ve Grafik Alt Yapısını Kur
-- [x] Portföy Sayfasında Fon Ekleme Desteğini Aktif Et (3 Harfli Kod Entegrasyonu)
-- [x] Lightweight Charts Ayarlarını Güncelle (RSI/MACD Default Gizle, Hacim Kaldır)
-- [x] Electron Masaüstü EXE Konfigürasyonunu Tamamla
-- [x] TEFAS Fonlarını Yalnızca PHE, PBR, DFI, TLY, TMV, PUK Olacak Şekilde Kısıtla
-- [x] Screener Fiyat Getirme Hızlandırması (get_quote'u Tamamen Non-Blocking Yaparak Milisaniyelere Çekme)
-- [x] Default Stock Grafiğini 1 Saatlik ("1h") Yaparak İlk Yüklemede Anında Grafik Getirme
-- [x] Sol Alttaki Yardım/Sorunlar Linkini Kaldırma, Ayrı Bir Menü Düzeni Yapma
-- [x] Profil Fotoğrafı Yükleme (Gerçek Image Upload + Base64 LocalStorage Entegrasyonu)
+- [ ] **Üst Bilgi Çubuğu (Bloomberg Terminal Görünümü)**
+  - [ ] USD/TRY verisini düzelt
+  - [ ] XU100, XU030, USD/TRY, EUR/TRY, Gram Altın, Ons Altın, BTCUSDT, US100 paritelerini backend/frontend entegre et
+  - [ ] Yatay akan premium borsa ticker şeridini yerleştir
+
+- [ ] **TradingView Performans & Bellek Yönetimi**
+  - [ ] Memory leak ve event listener temizliklerini yap
+  - [ ] Widget unmount lifecycle kontrolünü iyileştir
+
+- [ ] **Algoritmik AI Skoru (100 Üzerinden)**
+  - [ ] 13 indikatörlü (EMA, SMA, RSI, MACD, ADX vb.) gerçek puanlama kodunu backend'e ekle
+  - [ ] Frontend'de AI Skoru Breakdown (puanlama detayları) panelini tasarla
+  - [ ] Otomatik AI Analiz raporlama metin şablonlarını ve Gemini entegrasyonunu kur
+
+- [ ] **Çok İndikatörlü Sinyal Üreteci**
+  - [ ] 11 indikatörlü portföy sinyal sistemini yaz (Güçlü AL, AL, Takip Et, SAT, Güçlü SAT)
+  - [ ] Frontend sinyal kartı metinlerini güncelle
+
+- [ ] **Sesli ve Bildirimli Alarm Sistemi**
+  - [ ] Fiyat, RSI, MACD, AI Skoru vb. alarm kurma panelini yap
+  - [ ] Kriter sağlandığında ses çalma ve Windows/tarayıcı bildirimi tetikleme motorunu kur
+
+- [ ] **KAP Disclosures & Haber Sistemi (MKK API Mock)**
+  - [ ] MKK API formatında canlı KAP takibi ve AI özet çıkarıcıyı entegre et
+  - [ ] Haber analizi ve favori hisseler için **BIP AI Bülten** paneli
+
+- [ ] **Ekonomi Takvimi & Sol Menü**
+  - [ ] Ekonomi takvimi kartını daha premium, okunabilir ve hover efektli yap
+  - [ ] Sol menüdeki her öğeye özel vurgu rengi (Mor, Mavi, Yeşil, Turuncu vb.) ata ve aktif menüyü parlat
+
+- [ ] **Gelişmiş Portföy Metrikleri**
+  - [ ] Sharpe, Beta, Volatilite, Risk analizi, Sektör Dağılımı ve Kazanan/Kaybeden listeleri
+
+- [ ] **Fon Takip Yenilikleri**
+  - [ ] `PKZ` ve `PCS` fonlarını ekle
+  - [ ] Fon Detay Sayfası oluştur (Fon büyüklüğü, risk seviyesi, yönetici, dağılim grafiği)
+
+- [ ] **Local Üyelik & Skeleton Loading**
+  - [ ] LocalStorage tabanlı gerçekçi login/register modalı
+  - [ ] Skeleton loading animasyonları yerleştirerek boş ekranları engelle
