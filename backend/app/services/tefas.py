@@ -7,6 +7,19 @@ from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
+# TEFAS's own API (via pytefas) partitions ALL funds into 5 separate "kind"
+# buckets: YAT (yatırım fonları), EMK (emeklilik), BYF (borsa yatırım/ETF),
+# GYF (gayrimenkul/real estate) and GSYF (girişim sermayesi/venture capital) -
+# a fund only exists under exactly one of these, and a query for the wrong
+# kind returns nothing for it, silently, with no error. The price/return and
+# chart-history fetchers below previously only ever tried YAT and EMK, so any
+# tracked fund that happens to actually be filed under BYF/GYF/GSYF (several
+# "Serbest"/"Değişken" funds are) NEVER found real data and permanently fell
+# back to the hardcoded placeholder numbers/synthetic chart - this is what
+# caused PHE/PBR/DFI's returns and charts to be specifically, persistently
+# wrong. Every fetch now tries all 5 kinds.
+TEFAS_FUND_KINDS = ["YAT", "EMK", "BYF", "GYF", "GSYF"]
+
 # Real fallback prices from TEFAS (July 2026)
 BASE_FUNDS = {
     "PHE": {"name": "Pusula Portföy Hisse Senedi Fonu", "category": "Hisse Senedi", "price": 3.8827, "category_tr": "Hisse Senedi"},
@@ -102,7 +115,7 @@ class TefasService:
                 for day in business_days:
                     date_str = day.strftime("%Y-%m-%d")
                     combined = None
-                    for kind in ["YAT", "EMK"]:
+                    for kind in TEFAS_FUND_KINDS:
                         try:
                             result = crawler.fetch(date_str, columns="info", kind=kind)
                             if result is not None and not result.empty:
@@ -227,7 +240,7 @@ class TefasService:
                 for day in business_days:
                     date_str = day.strftime("%Y-%m-%d")
                     combined = None
-                    for kind in ["YAT", "EMK"]:
+                    for kind in TEFAS_FUND_KINDS:
                         try:
                             result = crawler.fetch(date_str, columns="info", kind=kind)
                             if result is not None and not result.empty:

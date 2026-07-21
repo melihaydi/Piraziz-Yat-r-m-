@@ -3,6 +3,15 @@
 import React, { useEffect, useRef, useState } from "react"
 import { ExternalLink } from "lucide-react"
 
+// NOTE: trade/page.tsx only ever mounts this component for gold/FX
+// instruments (see its TV_WIDGET_CAPABLE set) - BIST-exchange symbols
+// (regular BIST30 stocks, XU030, etc.) are routed to TradeBistChart instead,
+// because TradingView's free embeddable widget cannot display BIST data at
+// all (confirmed with TradingView: some exchanges simply aren't licensed for
+// the widget product, even though the same symbol is fully viewable on
+// tradingview.com itself). That's what the "Bu sembol sadece TradingView'de
+// bulunabilir" popup on BIST:AKBNK actually was - not a fixable config issue.
+//
 // Maps our internal symbol naming to a TradingView chart symbol. Previously
 // this force-prefixed every non-BIST symbol with "FX_IDC:", which doesn't
 // actually resolve for gold on TradingView (FX_IDC has no XAUUSD/XAUTRYG

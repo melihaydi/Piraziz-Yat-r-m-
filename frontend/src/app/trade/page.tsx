@@ -2,17 +2,27 @@
 
 import React, { useState } from "react"
 import Link from "next/link"
-import { Settings, BarChart3, Loader2, Maximize2, Minimize2, PanelLeftOpen } from "lucide-react"
+import { Settings, BarChart3, Loader2, Maximize2, Minimize2, PanelLeftOpen, ArrowLeft } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
 import BrokerSelection from "@/components/trade/BrokerSelection"
 import InstrumentTabs from "@/components/trade/InstrumentTabs"
 import AccountSummaryBar from "@/components/trade/AccountSummaryBar"
 import Watchlist from "@/components/trade/Watchlist"
 import TradeChart from "@/components/trade/TradeChart"
+import TradeBistChart from "@/components/trade/TradeBistChart"
 import OrderPanel from "@/components/trade/OrderPanel"
 import PositionsTable from "@/components/trade/PositionsTable"
 import TradeHistoryTable from "@/components/trade/TradeHistoryTable"
 import AccountSettingsModal from "@/components/trade/AccountSettingsModal"
+
+// Underlyings TradingView's free embed widget actually CAN display (gold via
+// TVC, USDTRY/EURTRY via FX_IDC) - anything else routed through Trade is a
+// real BIST-exchange instrument (a BIST30 stock, or the XU030 index), which
+// TradingView's widget product is not licensed to show at all (confirmed:
+// their own support states some exchanges "are not allowed... in any
+// timeframe in the widgets" even though visible on tradingview.com itself).
+// That's what caused the "Bu sembol sadece TradingView'de bulunabilir" popup.
+const TV_WIDGET_CAPABLE = new Set(["XAUUSD", "XAUTRYG", "USDTRY", "EURTRY"])
 
 export default function TradePage() {
   const { loading, account, activeTab, watchlist, viopWatchlist, selectedSymbol } = useTrade()
@@ -22,7 +32,7 @@ export default function TradePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
         <Loader2 className="h-8 w-8 text-cyan-400 animate-spin" />
       </div>
     )
@@ -30,7 +40,7 @@ export default function TradePage() {
 
   if (!account) {
     return (
-      <div className="p-8">
+      <div className="p-8 min-h-screen bg-slate-950">
         <BrokerSelection />
       </div>
     )
@@ -41,20 +51,32 @@ export default function TradePage() {
       ? viopWatchlist.find(c => c.symbol === selectedSymbol)?.underlying_symbol || selectedSymbol
       : selectedSymbol
   const chartLabel = activeTab === "viop" ? selectedSymbol : undefined
+  const isTvWidgetCapable = TV_WIDGET_CAPABLE.has(chartSymbol.toUpperCase())
 
-  // Fullscreen here is a CSS-only overlay (fixed inset-0, above the app
-  // shell/sidebar) rather than the browser Fullscreen API - this keeps it
-  // instant and permission-free inside the Electron shell, and lets us hide
-  // the positions/history tables so the watchlist+chart+order-panel trio
-  // gets the entire viewport, matching a real trading terminal's "focus mode".
+  // Fullscreen here is a CSS-only overlay (fixed inset-0) rather than the
+  // browser Fullscreen API - instant and permission-free inside the Electron
+  // shell, and hides the positions/history tables so the watchlist+chart+
+  // order-panel trio gets the entire viewport, matching a real trading
+  // terminal's "focus mode".
   const chartColSpan = watchlistCollapsed ? "xl:col-span-9" : "xl:col-span-6"
 
   return (
-    <div className={isFullscreen ? "fixed inset-0 z-50 bg-slate-950 p-4 overflow-y-auto space-y-4" : "p-6 space-y-5"}>
-      <>
-        {/* Header row */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className={isFullscreen ? "fixed inset-0 z-50 bg-slate-950 overflow-y-auto" : "min-h-screen bg-slate-950"}>
+      {/* Terminal chrome - replaces the app's global Header for this route,
+       * so it carries its own brand mark + a way back to the main app. */}
+      <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 shadow-[0_1px_0_rgba(34,211,238,0.08)]">
+        <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-3">
           <div className="flex items-center gap-4">
+            {!isFullscreen && (
+              <Link
+                href="/"
+                title="Ana uygulamaya dön"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-cyan-300 transition-colors pr-3 border-r border-slate-800"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="text-[11px] font-bold hidden sm:inline">Piraziz</span>
+              </Link>
+            )}
             <h1 className="text-xl font-black tracking-tight text-slate-100 flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
               Trade
@@ -88,7 +110,9 @@ export default function TradePage() {
             )}
           </div>
         </div>
+      </div>
 
+      <div className="p-6 space-y-5">
         <AccountSummaryBar />
 
         {/* Main 3-column terminal layout */}
@@ -109,7 +133,11 @@ export default function TradePage() {
             </div>
           )}
           <div className={`${chartColSpan} h-[600px] rounded-xl overflow-hidden border border-slate-800`}>
-            <TradeChart symbol={chartSymbol} displayLabel={chartLabel} />
+            {isTvWidgetCapable ? (
+              <TradeChart symbol={chartSymbol} displayLabel={chartLabel} />
+            ) : (
+              <TradeBistChart symbol={chartSymbol} displayLabel={chartLabel} />
+            )}
           </div>
           <div className="xl:col-span-3 h-[600px]">
             <OrderPanel />
@@ -122,7 +150,7 @@ export default function TradePage() {
             <TradeHistoryTable />
           </>
         )}
-      </>
+      </div>
 
       {showSettings && <AccountSettingsModal onClose={() => setShowSettings(false)} />}
     </div>

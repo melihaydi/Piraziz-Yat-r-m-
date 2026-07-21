@@ -1,9 +1,8 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import Sidebar from "@/components/Sidebar"
-import Header from "@/components/Header"
 import AuthGate from "@/components/AuthGate"
+import AppChrome from "@/components/AppChrome"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -21,16 +20,7 @@ export default function RootLayout({
     <html lang="tr" className="h-full dark">
       <body className={`${inter.className} bg-background text-foreground h-full overflow-hidden flex`}>
         <AuthGate>
-          {/* Sidebar */}
-          <Sidebar />
-          
-          {/* Main Content Area */}
-          <div className="flex-1 flex flex-col overflow-hidden h-screen">
-            <Header />
-            <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-8">
-              {children}
-            </main>
-          </div>
+          <AppChrome>{children}</AppChrome>
         </AuthGate>
       </body>
     </html>
