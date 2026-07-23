@@ -24,15 +24,16 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
   DialogFooter,
-  DialogTrigger 
+  DialogTrigger
 } from "@/components/ui/Dialog"
+import { API_BASE_URL } from "@/lib/config"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
 
@@ -84,7 +85,7 @@ export default function PortfolioPage() {
         const userName = localStorage.getItem("bip_username") || ""
 
         // Try logging in
-        const loginRes = await fetch("http://localhost:8000/api/v1/auth/login", {
+        const loginRes = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
@@ -97,7 +98,7 @@ export default function PortfolioPage() {
           localStorage.setItem("token", loginData.access_token)
         } else {
           // Register first
-          const regRes = await fetch("http://localhost:8000/api/v1/auth/register", {
+          const regRes = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -109,7 +110,7 @@ export default function PortfolioPage() {
           })
           if (regRes.ok) {
             // Login now
-            const loginRes2 = await fetch("http://localhost:8000/api/v1/auth/login", {
+            const loginRes2 = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
               method: "POST",
               headers: { "Content-Type": "application/x-www-form-urlencoded" },
               body: new URLSearchParams({
@@ -130,7 +131,7 @@ export default function PortfolioPage() {
 
     try {
       // 1. Fetch portfolios
-      const portRes = await fetch("http://localhost:8000/api/v1/portfolio/", {
+      const portRes = await fetch(`${API_BASE_URL}/api/v1/portfolio/`, {
         headers: getHeaders()
       })
       if (portRes.ok) {
@@ -139,7 +140,7 @@ export default function PortfolioPage() {
         
         // Auto-create a default portfolio if user has none
         if (portData.length === 0) {
-          const createRes = await fetch("http://localhost:8000/api/v1/portfolio/", {
+          const createRes = await fetch(`${API_BASE_URL}/api/v1/portfolio/`, {
             method: "POST",
             headers: getHeaders(),
             body: JSON.stringify({ name: "Ana Portföyüm" })
@@ -152,7 +153,7 @@ export default function PortfolioPage() {
       }
 
       // 2. Fetch alerts
-      const alertRes = await fetch("http://localhost:8000/api/v1/alert/", {
+      const alertRes = await fetch(`${API_BASE_URL}/api/v1/alert/`, {
         headers: getHeaders()
       })
       if (alertRes.ok) {
@@ -244,7 +245,7 @@ export default function PortfolioPage() {
     if (!activePortfolio || !assetTicker || !assetShares || !assetCost) return
 
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/portfolio/${activePortfolio.id}/assets`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/${activePortfolio.id}/assets`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -268,7 +269,7 @@ export default function PortfolioPage() {
   // Delete Asset Handler
   const handleDeleteAsset = async (assetId: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/portfolio/assets/${assetId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/assets/${assetId}`, {
         method: "DELETE",
         headers: getHeaders()
       })
@@ -286,7 +287,7 @@ export default function PortfolioPage() {
     if (!selectedAsset || !editShares || !editCost) return
 
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/portfolio/assets/${selectedAsset.id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/assets/${selectedAsset.id}`, {
         method: "PUT",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -310,7 +311,7 @@ export default function PortfolioPage() {
     if (!selectedAsset || !sellShares) return
 
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/portfolio/assets/${selectedAsset.id}/sell`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/assets/${selectedAsset.id}/sell`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -339,7 +340,7 @@ export default function PortfolioPage() {
     const value = match ? parseFloat(match[2]) : parseFloat(alertCondition) || 0.0
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/alert/", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/alert/`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({
@@ -362,7 +363,7 @@ export default function PortfolioPage() {
   // Toggle Alert Status Handler
   const handleToggleAlert = async (id: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/alert/${id}/toggle`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/alert/${id}/toggle`, {
         method: "POST",
         headers: getHeaders()
       })
@@ -377,7 +378,7 @@ export default function PortfolioPage() {
   // Delete Alert Handler
   const handleDeleteAlert = async (id: number) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/alert/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/alert/${id}`, {
         method: "DELETE",
         headers: getHeaders()
       })

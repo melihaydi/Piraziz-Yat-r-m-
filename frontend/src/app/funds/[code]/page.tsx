@@ -5,17 +5,18 @@ import { useParams } from "next/navigation"
 import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  ResponsiveContainer, 
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
   Tooltip,
   AreaChart,
   Area,
   XAxis,
   YAxis
 } from "recharts"
+import { API_BASE_URL } from "@/lib/config"
 
 const COLORS = ["#3b82f6", "#10b981", "#fbbf24", "#a855f7", "#ec4899", "#f97316"]
 
@@ -37,13 +38,13 @@ export default function FundDetailPage() {
 
     const fetchDetails = async () => {
       try {
-        const detailsRes = await fetch(`http://localhost:8000/api/v1/funds/${code}`)
+        const detailsRes = await fetch(`${API_BASE_URL}/api/v1/funds/${code}`)
         if (detailsRes.ok) {
           const detailData = await detailsRes.json()
           if (active) setFund(detailData)
         }
 
-        const chartRes = await fetch(`http://localhost:8000/api/v1/funds/chart/${code}?count=40`)
+        const chartRes = await fetch(`${API_BASE_URL}/api/v1/funds/chart/${code}?count=40`)
         if (chartRes.ok) {
           const isSimulated = chartRes.headers.get("X-Chart-Simulated") === "true"
           const chartData = await chartRes.json()

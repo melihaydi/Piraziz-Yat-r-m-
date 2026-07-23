@@ -4,16 +4,39 @@ import React, { useState, useEffect, useMemo } from "react"
 import { Bell, Search, TrendingUp, TrendingDown, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
+import { API_BASE_URL } from "@/lib/config"
+
+const HEADER_TICKERS_CACHE_KEY = "bip_header_tickers"
+
+const DEFAULT_INDEX_DATA = [
+  { name: "XU100", value: "10.240,50", change: "+1.42%", up: true },
+  { name: "XU030", value: "11.580,20", change: "+1.68%", up: true },
+  { name: "XBANK", value: "14.250,00", change: "+2.15%", up: true },
+  { name: "USD/TRY", value: "33,245", change: "-0.08%", up: false },
+  { name: "EUR/TRY", value: "36,180", change: "+0.12%", up: true },
+  { name: "BTC/USDT", value: "66.250", change: "+1.15%", up: true },
+]
+
+// Read the last real ticker values from localStorage synchronously on first
+// render, instead of always starting from the hardcoded placeholder array
+// above - otherwise every page load flashed those stale numbers for the ~1-2s
+// it takes the first /market-summary response to arrive.
+function loadCachedIndexData(): any[] {
+  if (typeof window === "undefined") return DEFAULT_INDEX_DATA
+  try {
+    const raw = localStorage.getItem(HEADER_TICKERS_CACHE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch (e) {
+    // fall through to default
+  }
+  return DEFAULT_INDEX_DATA
+}
 
 export default function Header() {
-  const [indexData, setIndexData] = useState<any[]>([
-    { name: "XU100", value: "10.240,50", change: "+1.42%", up: true },
-    { name: "XU030", value: "11.580,20", change: "+1.68%", up: true },
-    { name: "XBANK", value: "14.250,00", change: "+2.15%", up: true },
-    { name: "USD/TRY", value: "33,245", change: "-0.08%", up: false },
-    { name: "EUR/TRY", value: "36,180", change: "+0.12%", up: true },
-    { name: "BTC/USDT", value: "66.250", change: "+1.15%", up: true },
-  ])
+  const [indexData, setIndexData] = useState<any[]>(loadCachedIndexData)
 
   const [tickersList, setTickersList] = useState<any[]>([])
   const [fundsList, setFundsList] = useState<any[]>([])
@@ -65,7 +88,7 @@ export default function Header() {
       
       // 1. Fetch Signals
       try {
-        const res = await fetch("http://localhost:8000/api/v1/portfolio/signals", { headers })
+        const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/signals`, { headers })
         const data = await res.json()
         if (data && Array.isArray(data.signals)) {
           const filtered = data.signals.filter((s: any) => s.signal.includes("AL") || s.signal.includes("SAT"))
@@ -79,7 +102,7 @@ export default function Header() {
 
       // 2. Scan & trigger custom alarms (Request 4!)
       try {
-        const res = await fetch("http://localhost:8000/api/v1/alert/check", {
+        const res = await fetch(`${API_BASE_URL}/api/v1/alert/check`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -129,7 +152,7 @@ export default function Header() {
   // 1. Fetch live market indexes
   useEffect(() => {
     const fetchIndexes = () => {
-      fetch("http://localhost:8000/api/v1/screener/market-summary")
+      fetch(`${API_BASE_URL}/api/v1/screener/market-summary`)
         .then(res => res.json())
         .then(data => {
           if (data) {
@@ -172,6 +195,11 @@ export default function Header() {
             // dropped from the header rather than shown wrong.
             if (items.length > 0) {
               setIndexData(items)
+              try {
+                localStorage.setItem(HEADER_TICKERS_CACHE_KEY, JSON.stringify(items))
+              } catch (e) {
+                // Storage full/unavailable - not critical, just skip persisting.
+              }
             }
           }
         })
@@ -188,7 +216,7 @@ export default function Header() {
 
   // 2. Fetch all tickers (stocks) for search autocomplete
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/screener/")
+    fetch(`${API_BASE_URL}/api/v1/screener/`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -200,7 +228,7 @@ export default function Header() {
 
   // 3. Fetch all TEFAS mutual funds for search autocomplete
   useEffect(() => {
-    fetch("http://localhost:8000/api/v1/funds/")
+    fetch(`${API_BASE_URL}/api/v1/funds/`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {

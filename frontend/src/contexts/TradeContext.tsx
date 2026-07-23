@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { authFetch } from "@/lib/auth"
+import { API_BASE_URL } from "@/lib/config"
 
 export type InstrumentType = "stock" | "viop"
 export type Broker = "info_yatirim" | "midas"
@@ -154,7 +155,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
     const fetchWatchlist = () => {
-      fetch("http://localhost:8000/api/v1/trade/watchlist")
+      fetch(`${API_BASE_URL}/api/v1/trade/watchlist`)
         .then(res => res.json())
         .then(data => {
           if (!active || !Array.isArray(data)) return
@@ -177,7 +178,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
     const fetchViop = () => {
-      fetch("http://localhost:8000/api/v1/trade/viop-contracts")
+      fetch(`${API_BASE_URL}/api/v1/trade/viop-contracts`)
         .then(res => res.json())
         .then(data => {
           if (active && Array.isArray(data)) setViopWatchlist(data)

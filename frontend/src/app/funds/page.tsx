@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import TradingViewChart from "@/components/TradingViewChart"
+import { API_BASE_URL } from "@/lib/config"
 
 export default function FundsPage() {
   const [funds, setFunds] = useState<any[]>([])
@@ -98,7 +99,7 @@ export default function FundsPage() {
     const urlHadCode = !!new URLSearchParams(window.location.search).get("code")
 
     const fetchFunds = () => {
-      fetch("http://localhost:8000/api/v1/funds/")
+      fetch(`${API_BASE_URL}/api/v1/funds/`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -126,7 +127,7 @@ export default function FundsPage() {
   // Fetch fund candles when selectedCode changes
   useEffect(() => {
     setChartLoading(true)
-    fetch(`http://localhost:8000/api/v1/funds/chart/${selectedCode}?count=30`)
+    fetch(`${API_BASE_URL}/api/v1/funds/chart/${selectedCode}?count=30`)
       .then(res => {
         if (!res.ok) {
           console.warn("No chart data from server");

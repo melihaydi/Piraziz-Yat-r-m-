@@ -26,6 +26,7 @@
     "directories": {
       "output": "dist"
     },
+    "afterPack": "./scripts/afterPack.js",
     "files": [
       "electron-main.js",
       "package.json"
@@ -47,6 +48,7 @@
           "!**/__pycache__/**",
           "!*.db",
           "!*.sqlite",
+          "!tefas_cache.json",
           "!tests/**",
           "!test_*.py"
         ]

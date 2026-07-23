@@ -33,6 +33,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Skeleton } from "@/components/ui/Skeleton"
+import { API_BASE_URL } from "@/lib/config"
 
 // Fallback index chart points in case of connection limits
 const marketData = [
@@ -76,7 +77,7 @@ export default function Home() {
 
   // Fetch index chart data dynamically when selectedIndex changes (Request 4!)
   useEffect(() => {
-    fetch(`http://localhost:8000/api/v1/screener/chart/${selectedIndex}?interval=1d`)
+    fetch(`${API_BASE_URL}/api/v1/screener/chart/${selectedIndex}?interval=1d`)
       .then(res => {
         if (!res.ok) {
           console.warn("Index chart data not available from server");
@@ -103,7 +104,7 @@ export default function Home() {
   useEffect(() => {
     // 1. Fetch market summary
     const fetchMarketSummary = () => {
-      fetch("http://localhost:8000/api/v1/screener/market-summary")
+      fetch(`${API_BASE_URL}/api/v1/screener/market-summary`)
         .then(res => res.json())
         .then(data => {
           if (data && data.sentiment) {
@@ -131,14 +132,14 @@ export default function Home() {
 
       try {
         // Attempt registration (fine if it fails because the account already exists)
-        await fetch("http://localhost:8000/api/v1/auth/register", {
+        await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: userEmail, password: userPass, full_name: userName })
         })
 
         // Login to get a fresh token
-        const loginRes = await fetch("http://localhost:8000/api/v1/auth/login", {
+        const loginRes = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ username: userEmail, password: userPass })
@@ -162,7 +163,7 @@ export default function Home() {
       }
 
       const fetchSignals = async (authToken: string | null) => {
-        const res = await fetch("http://localhost:8000/api/v1/portfolio/signals", {
+        const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/signals`, {
           headers: (authToken ? { "Authorization": `Bearer ${authToken}` } : {}) as Record<string, string>
         })
         return res
@@ -202,7 +203,7 @@ export default function Home() {
 
       if (favStockTickers.length > 0) {
         try {
-          const res = await fetch("http://localhost:8000/api/v1/screener/")
+          const res = await fetch(`${API_BASE_URL}/api/v1/screener/`)
           const stocks = await res.json()
           if (Array.isArray(stocks)) {
             const matched = stocks.filter(s => favStockTickers.includes(s.ticker))
@@ -217,7 +218,7 @@ export default function Home() {
 
       if (favFundCodes.length > 0) {
         try {
-          const res = await fetch("http://localhost:8000/api/v1/funds/")
+          const res = await fetch(`${API_BASE_URL}/api/v1/funds/`)
           const funds = await res.json()
           if (Array.isArray(funds)) {
             const matched = funds.filter(f => favFundCodes.includes(f.code))

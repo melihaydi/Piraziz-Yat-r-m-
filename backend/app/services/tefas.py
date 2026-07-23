@@ -1,6 +1,9 @@
+import json
 import logging
+import os
 import pandas as pd
 import threading
+import time
 import datetime
 from typing import Dict, List, Any, Optional
 from datetime import timedelta
@@ -54,6 +57,7 @@ class TefasService:
         self._last_refresh = datetime.datetime.min
         self._refresh_interval = timedelta(hours=1)
         self._is_fetching = False
+        self._scheduler_started = False
 
         # Real historical NAV series per fund code, built from actual TEFAS daily
         # snapshots (previously the chart was 100% fabricated - see get_fund_candles).
@@ -61,6 +65,14 @@ class TefasService:
         self._history_last_built = datetime.datetime.min
         self._history_refresh_interval = timedelta(hours=6)
         self._is_building_history = False
+
+        # Shared raw-data snapshot cache: price-refresh and history-build need
+        # almost the same TEFAS date range, so they reuse one fetch instead of
+        # each hitting TEFAS independently (see _get_snapshot).
+        self._snapshot_cache: Dict[str, Any] = {}
+        self._snapshot_cache_days = 0
+        self._snapshot_fetched_at = datetime.datetime.min
+        self._snapshot_ttl = timedelta(minutes=10)
 
         for code, info in BASE_FUNDS.items():
             f = FALLBACKS[code]
@@ -74,142 +86,178 @@ class TefasService:
                 "monthly_return": f["monthly"]
             }
 
+        # Persisted on disk (relative to cwd, same convention as the sqlite
+        # dev DB - see app/db/session.py) so a fresh backend process (every
+        # single app launch, since nothing stays running between sessions)
+        # starts from the last real TEFAS fetch instead of the hardcoded
+        # FALLBACKS above - otherwise every app restart showed months-old
+        # placeholder numbers for the ~5 minutes it takes to re-fetch from
+        # TEFAS, even if a real fetch had already completed minutes earlier.
+        self._cache_file = "tefas_cache.json"
+        self._load_persisted_cache()
+
+    def _load_persisted_cache(self):
+        if not os.path.exists(self._cache_file):
+            return
+        try:
+            with open(self._cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("cached_funds"):
+                self._cached_funds.update(data["cached_funds"])
+            if data.get("history_cache"):
+                self._history_cache.update(data["history_cache"])
+            if data.get("last_refresh"):
+                self._last_refresh = datetime.datetime.fromisoformat(data["last_refresh"])
+            if data.get("history_last_built"):
+                self._history_last_built = datetime.datetime.fromisoformat(data["history_last_built"])
+            logger.info(f"Loaded persisted TEFAS cache from {self._cache_file} (last refresh: {self._last_refresh}).")
+        except Exception as e:
+            logger.warning(f"Could not load persisted TEFAS cache: {e}")
+
+    def _persist_cache(self):
+        try:
+            with self._lock:
+                data = {
+                    "cached_funds": self._cached_funds,
+                    "history_cache": self._history_cache,
+                    "last_refresh": self._last_refresh.isoformat(),
+                    "history_last_built": self._history_last_built.isoformat(),
+                }
+            with open(self._cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Could not persist TEFAS cache: {e}")
+
     def _bg_fetch_prices(self):
-        """Fetch prices and calculate returns from TEFAS in background thread using pytefas."""
+        """Fetch prices and calculate returns from TEFAS in a background thread."""
+        with self._lock:
+            if self._is_fetching:
+                return
+        thread = threading.Thread(target=self._fetch_prices_sync, daemon=True)
+        thread.start()
+
+    def _fetch_prices_sync(self):
+        """Actual TEFAS price/return fetch. Runs on whatever thread calls it -
+        used both by the fire-and-forget _bg_fetch_prices() (request-triggered)
+        and by the daily scheduler thread (start_daily_scheduler) so returns get
+        refreshed once a day even if nobody opens the funds page."""
         with self._lock:
             if self._is_fetching:
                 return
             self._is_fetching = True
-            
-        def fetch_task():
-            try:
-                from pytefas import Crawler
-                import datetime as dt
-                crawler = Crawler()
+        try:
+            # Previously this fetched exactly 4 fixed calendar dates (today, -1
+            # week, -1 month, each independently snapped to the nearest
+            # *weekday*) and assumed each one actually had published TEFAS data.
+            # TEFAS frequently hasn't published "today" yet, or publishes a given
+            # day for some funds' kind (YAT/EMK) but not others - so different
+            # funds ended up comparing mismatched real trading days against each
+            # other, producing daily/weekly/monthly returns that looked
+            # plausible but were quietly wrong for whichever fund hit that gap.
+            # This is the same class of bug already fixed in
+            # _bg_build_breakdown() for Popüler Fonlar. Fix: walk back
+            # day-by-day collecting REAL per-fund data points (skipping any day
+            # with no data for that specific fund, not just skipping weekends),
+            # then compute each fund's returns from its own most recent real
+            # value vs N real trading days back in ITS OWN series - never
+            # assuming any single calendar date has data for every fund.
+            #
+            # This used to fetch one (day, kind) pair at a time - up to 35*5=175
+            # separate TEFAS requests per run. TEFAS caps at 6 requests/minute,
+            # so that reliably tripped rate-limiting partway through, leaving
+            # returns silently stuck on stale/fallback data - the actual root
+            # cause of daily returns never updating. _get_snapshot() now fetches
+            # the whole date range per kind in one request (TEFAS/pytefas
+            # auto-chunks at 28 days), cutting this to ~15 requests total, and
+            # shares the result with _build_history_sync() so a scheduler run
+            # doing both doesn't fetch the same range twice.
+            lookback_days = 35  # comfortably covers a month of real trading days
+            per_day_df = self._get_snapshot(lookback_days)
+            business_days = sorted(per_day_df.keys(), reverse=True)
+            # business_days[0] is the most recent real trading day, oldest last.
 
-                # Previously this fetched exactly 4 fixed calendar dates (today, -1
-                # week, -1 month, each independently snapped to the nearest
-                # *weekday*) and assumed each one actually had published TEFAS data.
-                # TEFAS frequently hasn't published "today" yet, or publishes a given
-                # day for some funds' kind (YAT/EMK) but not others - so different
-                # funds ended up comparing mismatched real trading days against each
-                # other, producing daily/weekly/monthly returns that looked
-                # plausible but were quietly wrong for whichever fund hit that gap.
-                # This is the same class of bug already fixed in
-                # _bg_build_breakdown() for Popüler Fonlar. Fix: walk back
-                # day-by-day collecting REAL per-fund data points (skipping any day
-                # with no data for that specific fund, not just skipping weekends),
-                # then compute each fund's returns from its own most recent real
-                # value vs N real trading days back in ITS OWN series - never
-                # assuming any single calendar date has data for every fund.
-                lookback_days = 35  # comfortably covers a month of real trading days
-                business_days = []
-                cursor = dt.date.today()
-                while len(business_days) < lookback_days:
-                    if cursor.weekday() < 5:
-                        business_days.append(cursor)
-                    cursor -= dt.timedelta(days=1)
-                # business_days[0] is the closest weekday to today, oldest last.
+            if not per_day_df:
+                logger.warning(f"TEFAS price fetch produced no data for any of the last {lookback_days} business days.")
+                return
 
-                per_day_df: Dict[str, Any] = {}
-                for day in business_days:
-                    date_str = day.strftime("%Y-%m-%d")
-                    combined = None
-                    for kind in TEFAS_FUND_KINDS:
-                        try:
-                            result = crawler.fetch(date_str, columns="info", kind=kind)
-                            if result is not None and not result.empty:
-                                combined = result if combined is None else pd.concat([combined, result], ignore_index=True)
-                        except Exception as e:
-                            logger.debug(f"TEFAS price fetch failed for {date_str} ({kind}): {e}")
-                    if combined is not None and not combined.empty and "fund_code" in combined.columns:
-                        per_day_df[date_str] = combined
+            any_fund_updated = False
+            for code in BASE_FUNDS.keys():
+                meta = BASE_FUNDS.get(code, {})
+                category = meta.get("category_tr", "Yatırım Fonu")
 
-                if not per_day_df:
-                    logger.warning(f"TEFAS price fetch produced no data for any of the last {lookback_days} business days.")
-                    return
-
-                any_fund_updated = False
-                for code in BASE_FUNDS.keys():
-                    meta = BASE_FUNDS.get(code, {})
-                    category = meta.get("category_tr", "Yatırım Fonu")
-
-                    # This fund's own real (date, price, name) points, newest first -
-                    # only days that actually contain a row for this fund code.
-                    series = []
-                    for day in business_days:
-                        df = per_day_df.get(day.strftime("%Y-%m-%d"))
-                        if df is None:
-                            continue
-                        row = df[df["fund_code"] == code]
-                        if row.empty:
-                            continue
-                        try:
-                            price = float(row.iloc[0]["price"])
-                        except Exception:
-                            continue
-                        if price <= 0:
-                            continue
-                        series.append((day, price, row.iloc[0].get("fund_name")))
-
-                    if not series:
-                        fb = FALLBACKS.get(code, {"price": 1.0, "daily": 0.0, "weekly": 0.0, "monthly": 0.0})
-                        with self._lock:
-                            self._cached_funds[code] = {
-                                "code": code,
-                                "name": meta.get("name", f"{code} Fonu"),
-                                "category": category,
-                                "price": round(fb["price"], 4),
-                                "daily_return": fb["daily"],
-                                "weekly_return": fb["weekly"],
-                                "monthly_return": fb["monthly"]
-                            }
+                # This fund's own real (date, price, name) points, newest first -
+                # only days that actually contain a row for this fund code.
+                series = []
+                for date_str in business_days:
+                    df = per_day_df.get(date_str)
+                    if df is None:
                         continue
+                    row = df[df["fund_code"] == code]
+                    if row.empty:
+                        continue
+                    try:
+                        price = float(row.iloc[0]["price"])
+                    except Exception:
+                        continue
+                    if price <= 0:
+                        continue
+                    series.append((date_str, price, row.iloc[0].get("fund_name")))
 
-                    price_latest = series[0][1]
-                    name = series[0][2] or meta.get("name", f"{code} Fonu")
-
-                    def pct_change_back(n_trading_days: int) -> float:
-                        if len(series) <= n_trading_days:
-                            return 0.0
-                        p_prev = series[n_trading_days][1]
-                        return ((price_latest - p_prev) / p_prev) * 100 if p_prev > 0 else 0.0
-
-                    daily_ret = pct_change_back(1)
-                    weekly_ret = pct_change_back(5)
-                    monthly_ret = pct_change_back(21)
-
+                if not series:
+                    fb = FALLBACKS.get(code, {"price": 1.0, "daily": 0.0, "weekly": 0.0, "monthly": 0.0})
                     with self._lock:
                         self._cached_funds[code] = {
                             "code": code,
-                            "name": name,
+                            "name": meta.get("name", f"{code} Fonu"),
                             "category": category,
-                            "price": round(price_latest, 4),
-                            "daily_return": round(daily_ret, 2),
-                            "weekly_return": round(weekly_ret, 2),
-                            "monthly_return": round(monthly_ret, 2)
+                            "price": round(fb["price"], 4),
+                            "daily_return": fb["daily"],
+                            "weekly_return": fb["weekly"],
+                            "monthly_return": fb["monthly"]
                         }
-                    any_fund_updated = True
+                    continue
 
-                if any_fund_updated:
-                    logger.info("TEFAS real prices and returns updated successfully via pytefas background thread.")
-                    with self._lock:
-                        self._last_refresh = datetime.datetime.now()
-            except Exception as e:
-                logger.error(f"Error fetching TEFAS prices/returns in background: {e}")
-            finally:
+                price_latest = series[0][1]
+                name = series[0][2] or meta.get("name", f"{code} Fonu")
+
+                def pct_change_back(n_trading_days: int) -> float:
+                    if len(series) <= n_trading_days:
+                        return 0.0
+                    p_prev = series[n_trading_days][1]
+                    return ((price_latest - p_prev) / p_prev) * 100 if p_prev > 0 else 0.0
+
+                daily_ret = pct_change_back(1)
+                weekly_ret = pct_change_back(5)
+                monthly_ret = pct_change_back(21)
+
                 with self._lock:
-                    self._is_fetching = False
+                    self._cached_funds[code] = {
+                        "code": code,
+                        "name": name,
+                        "category": category,
+                        "price": round(price_latest, 4),
+                        "daily_return": round(daily_ret, 2),
+                        "weekly_return": round(weekly_ret, 2),
+                        "monthly_return": round(monthly_ret, 2)
+                    }
+                any_fund_updated = True
 
-        thread = threading.Thread(target=fetch_task, daemon=True)
-        thread.start()
+            if any_fund_updated:
+                logger.info("TEFAS real prices and returns updated successfully via pytefas fetch.")
+                with self._lock:
+                    self._last_refresh = datetime.datetime.now()
+                self._persist_cache()
+        except Exception as e:
+            logger.error(f"Error fetching TEFAS prices/returns: {e}")
+        finally:
+            with self._lock:
+                self._is_fetching = False
 
     def _bg_build_history(self, count: int = 20):
         """
         Build REAL historical NAV series for every tracked fund from actual TEFAS
-        daily snapshots (one pytefas fetch per business day, shared across all funds
-        so we don't repeat the same day's fetch per-fund). Runs in a background
-        thread since it walks back `count` business days.
+        daily snapshots (one shared date-range fetch per fund kind via
+        _get_snapshot(), not per fund). Runs in a background thread.
 
         This replaces the old get_fund_candles() behavior, which fabricated the
         entire chart either by scaling XU100's index candles with a made-up "beta"
@@ -219,84 +267,157 @@ class TefasService:
         with self._lock:
             if self._is_building_history:
                 return
-            self._is_building_history = True
-
-        def build_task():
-            try:
-                from pytefas import Crawler
-                import datetime as dt
-                crawler = Crawler()
-
-                # Walk back to collect `count` business days (oldest first)
-                business_days = []
-                cursor = dt.date.today()
-                while len(business_days) < count:
-                    if cursor.weekday() < 5:
-                        business_days.append(cursor)
-                    cursor -= dt.timedelta(days=1)
-                business_days.reverse()
-
-                per_day_df: Dict[str, Any] = {}
-                for day in business_days:
-                    date_str = day.strftime("%Y-%m-%d")
-                    combined = None
-                    for kind in TEFAS_FUND_KINDS:
-                        try:
-                            result = crawler.fetch(date_str, columns="info", kind=kind)
-                            if result is not None and not result.empty:
-                                combined = result if combined is None else pd.concat([combined, result], ignore_index=True)
-                        except Exception as e:
-                            logger.debug(f"TEFAS history fetch failed for {date_str} ({kind}): {e}")
-                    if combined is not None and not combined.empty:
-                        per_day_df[date_str] = combined
-
-                if not per_day_df:
-                    logger.warning("TEFAS history build produced no data for any business day.")
-                    return
-
-                new_history: Dict[str, List[Dict[str, Any]]] = {}
-                for code in BASE_FUNDS.keys():
-                    candles = []
-                    for day in business_days:
-                        date_str = day.strftime("%Y-%m-%d")
-                        df = per_day_df.get(date_str)
-                        if df is None:
-                            continue
-                        row = df[df["fund_code"] == code]
-                        if row.empty:
-                            continue
-                        try:
-                            price = float(row.iloc[0]["price"])
-                        except Exception:
-                            continue
-                        if price <= 0:
-                            continue
-                        # TEFAS mutual funds only publish one NAV per day (no real
-                        # intraday OHLC), so open/high/low/close are honestly all
-                        # the same value rather than a fabricated spread.
-                        candles.append({
-                            "time": int(datetime.datetime(day.year, day.month, day.day, 18, 0).timestamp()),
-                            "open": round(price, 4),
-                            "high": round(price, 4),
-                            "low": round(price, 4),
-                            "close": round(price, 4),
-                            "volume": 0
-                        })
-                    if candles:
-                        new_history[code] = candles
-
-                with self._lock:
-                    self._history_cache.update(new_history)
-                    self._history_last_built = datetime.datetime.now()
-                logger.info(f"TEFAS real historical NAV series built for {len(new_history)} funds ({len(business_days)} business days).")
-            except Exception as e:
-                logger.error(f"Error building TEFAS historical NAV series: {e}")
-            finally:
-                with self._lock:
-                    self._is_building_history = False
-
-        thread = threading.Thread(target=build_task, daemon=True)
+        thread = threading.Thread(target=self._build_history_sync, args=(count,), daemon=True)
         thread.start()
+
+    def _build_history_sync(self, count: int = 20):
+        """Actual TEFAS history build. Runs on whatever thread calls it - used by
+        both the fire-and-forget _bg_build_history() and the daily scheduler."""
+        with self._lock:
+            if self._is_building_history:
+                return
+            self._is_building_history = True
+        try:
+            # Shares the fetch with _fetch_prices_sync() via _get_snapshot() -
+            # see the comment there for why this no longer fetches one (day,
+            # kind) pair at a time.
+            per_day_df = self._get_snapshot(count)
+            business_days = sorted(per_day_df.keys())[-count:]
+
+            if not per_day_df:
+                logger.warning("TEFAS history build produced no data for any business day.")
+                return
+
+            new_history: Dict[str, List[Dict[str, Any]]] = {}
+            for code in BASE_FUNDS.keys():
+                candles = []
+                for date_str in business_days:
+                    df = per_day_df.get(date_str)
+                    if df is None:
+                        continue
+                    row = df[df["fund_code"] == code]
+                    if row.empty:
+                        continue
+                    try:
+                        price = float(row.iloc[0]["price"])
+                    except Exception:
+                        continue
+                    if price <= 0:
+                        continue
+                    day = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+                    # TEFAS mutual funds only publish one NAV per day (no real
+                    # intraday OHLC), so open/high/low/close are honestly all
+                    # the same value rather than a fabricated spread.
+                    candles.append({
+                        "time": int(datetime.datetime(day.year, day.month, day.day, 18, 0).timestamp()),
+                        "open": round(price, 4),
+                        "high": round(price, 4),
+                        "low": round(price, 4),
+                        "close": round(price, 4),
+                        "volume": 0
+                    })
+                if candles:
+                    new_history[code] = candles
+
+            with self._lock:
+                self._history_cache.update(new_history)
+                self._history_last_built = datetime.datetime.now()
+            self._persist_cache()
+            logger.info(f"TEFAS real historical NAV series built for {len(new_history)} funds ({len(business_days)} business days).")
+        except Exception as e:
+            logger.error(f"Error building TEFAS historical NAV series: {e}")
+        finally:
+            with self._lock:
+                self._is_building_history = False
+
+    def _get_snapshot(self, days: int) -> Dict[str, Any]:
+        """Returns {date_str: combined_df} covering at least the last `days`
+        real trading days, reusing a short-lived shared fetch so a price
+        refresh followed by a history build (the daily scheduler does exactly
+        this) fetch TEFAS once instead of twice. Reused as long as a fetch for
+        at least this many days is still within _snapshot_ttl."""
+        now = datetime.datetime.now()
+        with self._lock:
+            if (self._snapshot_cache and self._snapshot_cache_days >= days
+                    and now - self._snapshot_fetched_at < self._snapshot_ttl):
+                return self._snapshot_cache
+
+        snapshot = self._fetch_tefas_snapshot(days)
+
+        with self._lock:
+            if snapshot:
+                self._snapshot_cache = snapshot
+                self._snapshot_cache_days = days
+                self._snapshot_fetched_at = datetime.datetime.now()
+            return self._snapshot_cache
+
+    def _fetch_tefas_snapshot(self, days: int) -> Dict[str, Any]:
+        """Fetch TEFAS 'info' data for all 5 fund kinds across the last `days`
+        real trading days, using pytefas's native date-RANGE fetch (one
+        request per kind, auto-chunked at 28 days by pytefas) instead of one
+        request per (day, kind) pair. TEFAS caps at 6 requests/minute, so the
+        old per-day loop (up to 35*5=175 requests) reliably got rate-limited
+        partway through and silently left returns/charts on stale data - this
+        cuts a typical run to ~10-15 requests total.
+        Returns {date_str: combined_df_for_that_date}.
+        """
+        from pytefas import Crawler
+        import datetime as dt
+        crawler = Crawler()
+
+        end_date = dt.date.today()
+        # Generous calendar-day padding so `days` real trading days are covered
+        # even across weekends/holidays.
+        start_date = end_date - dt.timedelta(days=int(days * 1.6) + 10)
+
+        per_day_df: Dict[str, Any] = {}
+        for kind in TEFAS_FUND_KINDS:
+            try:
+                df = crawler.fetch(
+                    start_date.strftime("%Y-%m-%d"),
+                    end_date.strftime("%Y-%m-%d"),
+                    columns="info",
+                    kind=kind,
+                )
+            except Exception as e:
+                logger.warning(f"TEFAS range fetch failed for kind {kind}: {e}")
+                continue
+            if df is None or df.empty or "date" not in df.columns or "fund_code" not in df.columns:
+                continue
+            for date_val, group in df.groupby("date"):
+                date_str = pd.Timestamp(date_val).strftime("%Y-%m-%d")
+                existing = per_day_df.get(date_str)
+                per_day_df[date_str] = group if existing is None else pd.concat([existing, group], ignore_index=True)
+
+        return per_day_df
+
+    def start_daily_scheduler(self, hour: int = 19, minute: int = 30):
+        """Guarantee at least one real TEFAS check per day, independent of user
+        traffic. Previously funds/returns only refreshed lazily inside get_funds()
+        when someone happened to open the funds page AND the 1h cache had expired -
+        so on a quiet day, or right after a backend restart, the numbers stayed
+        stuck on stale/placeholder data indefinitely. This runs a fetch immediately
+        on startup and then once every day at `hour`:`minute` local time (TEFAS
+        publishes end-of-day NAVs in the evening, so the default targets after
+        that), in one dedicated daemon thread that outlives the app.
+        """
+        if self._scheduler_started:
+            return
+        self._scheduler_started = True
+
+        def loop():
+            self._fetch_prices_sync()
+            self._build_history_sync(count=20)
+            while True:
+                now = datetime.datetime.now()
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target <= now:
+                    target += timedelta(days=1)
+                time.sleep(max((target - now).total_seconds(), 1))
+                self._fetch_prices_sync()
+                self._build_history_sync(count=20)
+
+        threading.Thread(target=loop, daemon=True).start()
 
     def get_funds(self, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
         """Get all funds. Refreshes cache asynchronously if expired."""

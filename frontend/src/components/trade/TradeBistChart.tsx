@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import TradingViewChart from "@/components/TradingViewChart"
+import { API_BASE_URL } from "@/lib/config"
 
 // TradingView's free "Advanced Chart" embed widget (used for gold/FX/crypto
 // in TradeChart.tsx) cannot display BIST-exchange symbols at all - TradingView
@@ -41,7 +42,7 @@ export default function TradeBistChart({ symbol, displayLabel }: TradeBistChartP
     let active = true
     setLoading(true)
     setFailed(false)
-    fetch(`http://localhost:8000/api/v1/screener/chart/${symbol}?interval=${interval}`)
+    fetch(`${API_BASE_URL}/api/v1/screener/chart/${symbol}?interval=${interval}`)
       .then(res => {
         if (!res.ok) throw new Error("chart fetch failed")
         return res.json()

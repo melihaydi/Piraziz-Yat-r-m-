@@ -19,6 +19,10 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    # Netlify assigns a *.netlify.app subdomain per site (and per preview
+    # deploy) - allowed by pattern so the frontend doesn't need a backend
+    # redeploy every time its exact Netlify URL changes.
+    allow_origin_regex=r"https://.*\.netlify\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,6 +30,11 @@ app.add_middleware(
 
 from app.api.v1.api import api_router
 app.include_router(api_router, prefix="/api/v1")
+
+@app.on_event("startup")
+async def start_background_jobs():
+    from app.services.tefas import tefas_service
+    tefas_service.start_daily_scheduler()
 
 @app.get("/")
 async def root():

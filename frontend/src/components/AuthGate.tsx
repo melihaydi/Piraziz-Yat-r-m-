@@ -5,6 +5,7 @@ import { Sparkles, User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2 } 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { authenticate } from "@/lib/auth"
 
 interface AuthGateProps {
   children: React.ReactNode
@@ -48,25 +49,12 @@ export default function AuthGate({ children }: AuthGateProps) {
       localStorage.setItem("bip_logged_in", "true")
       localStorage.setItem("bip_username", fullName)
       
-      // Auto login in backend to populate JWT token
-      try {
-        const regRes = await fetch("http://localhost:8000/api/v1/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: email,
-            password: password,
-            full_name: fullName
-          })
-        })
-        if (regRes.ok) {
-          const regData = await regRes.json()
-          localStorage.setItem("token", regData.access_token)
-        }
-      } catch (err) {
-        console.warn("Backend auth registration failed, using local token mock")
-        localStorage.setItem("token", "local_mock_token_success")
-      }
+      // Auto login in backend to populate JWT token. Retries transparently
+      // (see lib/auth.ts) if the backend hasn't finished starting yet - if it
+      // still fails, no token is stored at all rather than a fake one, so
+      // authFetch() naturally re-authenticates on the first real API call
+      // instead of silently failing with an invalid token.
+      await authenticate()
 
       setIsLoggedIn(true)
       window.dispatchEvent(new Event("profile-updated"))
@@ -98,26 +86,10 @@ export default function AuthGate({ children }: AuthGateProps) {
       localStorage.setItem("bip_user_password", password)
       localStorage.setItem("bip_username", savedUser.fullName)
       
-      // Perform backend login to fetch live JWT token
-      try {
-        const loginRes = await fetch("http://localhost:8000/api/v1/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            username: email,
-            password: password
-          })
-        })
-        if (loginRes.ok) {
-          const loginData = await loginRes.json()
-          if (loginData.access_token) {
-            localStorage.setItem("token", loginData.access_token)
-          }
-        }
-      } catch (err) {
-        console.warn("Backend auth token generation failed, using local token mock")
-        localStorage.setItem("token", "local_mock_token_success")
-      }
+      // Perform backend login to fetch live JWT token (retries transparently,
+      // see lib/auth.ts - stores no token at all on failure rather than a
+      // fake one, so authFetch() re-authenticates on the first real API call).
+      await authenticate()
 
       setIsLoggedIn(true)
       window.dispatchEvent(new Event("profile-updated"))

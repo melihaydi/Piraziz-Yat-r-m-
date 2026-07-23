@@ -16,6 +16,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/Dialog"
 import TradingViewChart from "@/components/TradingViewChart"
+import { API_BASE_URL } from "@/lib/config"
 
 export default function StockDetailPage() {
   const params = useParams()
@@ -58,7 +59,7 @@ export default function StockDetailPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/v1/alert/", {
+      const res = await fetch(`${API_BASE_URL}/api/v1/alert/`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -108,7 +109,7 @@ export default function StockDetailPage() {
     setScoreLoading(true)
 
     // A. Fetch stock info
-    fetch("http://localhost:8000/api/v1/screener/")
+    fetch(`${API_BASE_URL}/api/v1/screener/`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -139,7 +140,7 @@ export default function StockDetailPage() {
       })
 
     // B. Fetch detailed scoring indicators breakdown
-    fetch(`http://localhost:8000/api/v1/screener/score-details/${ticker}`)
+    fetch(`${API_BASE_URL}/api/v1/screener/score-details/${ticker}`)
       .then(res => res.json())
       .then(data => {
         if (data && !data.detail) {
@@ -161,7 +162,7 @@ export default function StockDetailPage() {
     const loadChart = () => {
       if (!ticker) return;
       
-      fetch(`http://localhost:8000/api/v1/screener/chart/${ticker}?interval=${selectedTimeframe}`)
+      fetch(`${API_BASE_URL}/api/v1/screener/chart/${ticker}?interval=${selectedTimeframe}`)
         .then(res => {
           if (!res.ok) {
             console.warn("No chart data from server");
@@ -202,7 +203,7 @@ export default function StockDetailPage() {
   // 3. Fetch AI financial analysis report
   useEffect(() => {
     setAiLoading(true)
-    fetch(`http://localhost:8000/api/v1/screener/analyze/${ticker}`, {
+    fetch(`${API_BASE_URL}/api/v1/screener/analyze/${ticker}`, {
       method: "POST"
     })
       .then(res => {

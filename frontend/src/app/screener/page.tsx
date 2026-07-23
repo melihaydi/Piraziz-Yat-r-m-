@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Skeleton } from "@/components/ui/Skeleton"
 import TradingViewChart from "@/components/TradingViewChart"
+import { API_BASE_URL } from "@/lib/config"
 
 // Memoized row: only re-renders when this specific stock's own data (or its
 // favorite/selected state) actually changes, instead of every row re-rendering
@@ -169,7 +170,7 @@ export default function ScreenerPage() {
     const urlHadTicker = !!new URLSearchParams(window.location.search).get("ticker")
 
     const fetchStocks = () => {
-      fetch("http://localhost:8000/api/v1/screener/")
+      fetch(`${API_BASE_URL}/api/v1/screener/`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -206,7 +207,7 @@ export default function ScreenerPage() {
     const loadChart = () => {
       if (!selectedTicker) return;
       
-      fetch(`http://localhost:8000/api/v1/screener/chart/${selectedTicker}?interval=${selectedTimeframe}`)
+      fetch(`${API_BASE_URL}/api/v1/screener/chart/${selectedTicker}?interval=${selectedTimeframe}`)
         .then(res => {
           if (!res.ok) {
             console.warn("Chart data not available from server");
@@ -249,7 +250,7 @@ export default function ScreenerPage() {
   useEffect(() => {
     if (!selectedTicker) return
     setScoreLoading(true)
-    fetch(`http://localhost:8000/api/v1/screener/score-details/${selectedTicker}`)
+    fetch(`${API_BASE_URL}/api/v1/screener/score-details/${selectedTicker}`)
       .then(res => res.json())
       .then(data => {
         setScoreDetails(data)
