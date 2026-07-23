@@ -1,0 +1,14 @@
+# Netlify (for monorepos) expects netlify.toml at the repository root, not
+# inside the app subdirectory - having it under frontend/ (previous attempt)
+# conflicted with the dashboard's "Base directory: frontend" setting and
+# Netlify silently ignored both, detected "0 framework(s)", ran no build
+# command at all, and just published the raw repo root (hence every route
+# 404ing). `base` here is the authoritative equivalent of that dashboard
+# setting once a netlify.toml exists.
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
