@@ -9,7 +9,13 @@ const nextConfig: NextConfig = {
   // shipping the entire node_modules folder (hundreds of MB, plus the full
   // Next.js CLI) just to run `next start`. Doesn't change anything about
   // `next dev` / `next start` in normal development.
-  output: "standalone",
+  //
+  // Skipped when deploying on Netlify (which sets NETLIFY=true during every
+  // build automatically) - Netlify's own Next.js Runtime has its own
+  // serverless bundling and doesn't support "standalone" output; leaving it
+  // on there produced a build that looked successful but 404'd on every
+  // route.
+  output: process.env.NETLIFY ? undefined : "standalone",
 };
 
 export default nextConfig;
