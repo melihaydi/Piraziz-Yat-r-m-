@@ -8,12 +8,18 @@ import {
   Settings,
   Coins,
   Newspaper,
-  CandlestickChart
+  CandlestickChart,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
 
-export default function Sidebar() {
+interface SidebarProps {
+  open?: boolean
+  onClose?: () => void
+}
+
+export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -80,41 +86,69 @@ export default function Sidebar() {
     },
   ]
 
-  return (
-    <aside className="w-64 border-r border-border bg-card flex flex-col h-screen sticky top-0">
-      {/* Brand Header */}
-      <div className="h-16 flex items-center px-6 border-b border-border">
-        <div onClick={() => router.push("/")} className="flex items-center cursor-pointer">
-          <Logo />
-        </div>
-      </div>
+  const handleNav = (href: string) => {
+    router.push(href)
+    onClose?.()
+  }
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-        {menuItems.map((item) => {
-          // "/" needs an exact match (otherwise it'd match every route);
-          // everything else uses startsWith so sub-routes like /trade/performance
-          // or a fund detail page still keep their parent menu item highlighted.
-          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
-          const Icon = item.icon
-          return (
-            <button
-              key={item.name}
-              onClick={() => router.push(item.href)}
-              className={cn(
-                "w-full flex items-center px-4 h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
-                isActive ? item.activeClass : item.hoverClass
-              )}
-            >
-              <Icon className={cn(
-                "h-4 w-4 mr-3 transition-transform duration-200 group-hover:scale-110",
-                isActive ? item.iconClass : "text-muted-foreground group-hover:text-foreground"
-              )} />
-              {item.name}
-            </button>
-          )
-        })}
-      </nav>
-    </aside>
+  return (
+    <>
+      {/* Backdrop - mobile/tablet only, closes the drawer on tap outside */}
+      {open && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      <aside
+        className={cn(
+          "w-64 border-r border-border bg-card flex flex-col h-screen z-40 transition-transform duration-200 ease-out",
+          "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Brand Header */}
+        <div className="h-16 flex items-center justify-between px-6 border-b border-border">
+          <div onClick={() => handleNav("/")} className="flex items-center cursor-pointer">
+            <Logo />
+          </div>
+          <button
+            onClick={onClose}
+            className="lg:hidden text-muted-foreground hover:text-foreground cursor-pointer"
+            aria-label="Menüyü kapat"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Navigation Links */}
+        <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+          {menuItems.map((item) => {
+            // "/" needs an exact match (otherwise it'd match every route);
+            // everything else uses startsWith so sub-routes like /trade/performance
+            // or a fund detail page still keep their parent menu item highlighted.
+            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
+            const Icon = item.icon
+            return (
+              <button
+                key={item.name}
+                onClick={() => handleNav(item.href)}
+                className={cn(
+                  "w-full flex items-center px-4 h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
+                  isActive ? item.activeClass : item.hoverClass
+                )}
+              >
+                <Icon className={cn(
+                  "h-4 w-4 mr-3 transition-transform duration-200 group-hover:scale-110",
+                  isActive ? item.iconClass : "text-muted-foreground group-hover:text-foreground"
+                )} />
+                {item.name}
+              </button>
+            )
+          })}
+        </nav>
+      </aside>
+    </>
   )
 }

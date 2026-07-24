@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
-import { Bell, Search, TrendingUp, TrendingDown, Sparkles } from "lucide-react"
+import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
@@ -35,7 +35,11 @@ function loadCachedIndexData(): any[] {
   return DEFAULT_INDEX_DATA
 }
 
-export default function Header() {
+interface HeaderProps {
+  onMenuClick?: () => void
+}
+
+export default function Header({ onMenuClick }: HeaderProps) {
   const [indexData, setIndexData] = useState<any[]>(loadCachedIndexData)
 
   const [tickersList, setTickersList] = useState<any[]>([])
@@ -269,13 +273,22 @@ export default function Header() {
   }, [searchQuery, tickersList, fundsList])
 
   return (
-    <header className="h-16 border-b border-border bg-card/60 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
+    <header className="h-16 border-b border-border bg-card/60 backdrop-blur-md flex items-center justify-between px-3 md:px-8 sticky top-0 z-20 gap-2">
+      {/* Mobile/tablet menu toggle - opens the off-canvas Sidebar drawer */}
+      <button
+        onClick={onMenuClick}
+        className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2 -ml-2"
+        aria-label="Menüyü aç"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
       {/* Ticker Feed Container (Bloomberg Terminal Marquee Style) */}
       <div className="relative flex-1 max-w-[450px] xl:max-w-[650px] overflow-hidden mx-4 hidden md:block bg-zinc-950/40 border border-border/30 rounded-lg py-1.5 px-3">
         {/* Fade masks */}
         <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-zinc-950/60 to-transparent z-10 pointer-events-none" />
         <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-zinc-950/60 to-transparent z-10 pointer-events-none" />
-        
+
         <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
           <div className="animate-ticker flex space-x-8 items-center pr-8">
             {[...indexData, ...indexData].map((idx, i) => (
@@ -293,12 +306,12 @@ export default function Header() {
       </div>
 
       {/* Action Area */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-2 md:space-x-4 min-w-0">
         {/* Search Autocomplete */}
-        <div className="relative w-64">
+        <div className="relative w-28 sm:w-44 md:w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Hisse veya fon ara..." 
+          <Input
+            placeholder="Ara..."
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value)
@@ -385,7 +398,7 @@ export default function Header() {
           </Button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-12 w-85 bg-zinc-950/95 backdrop-blur-md border border-border/85 rounded-xl shadow-xl overflow-hidden z-50 text-xs p-4 space-y-3">
+            <div className="absolute right-0 top-12 w-[min(85vw,340px)] bg-zinc-950/95 backdrop-blur-md border border-border/85 rounded-xl shadow-xl overflow-hidden z-50 text-xs p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-border/30 pb-2">
                 <span className="font-extrabold text-foreground">Sinyaller & Alarmlar</span>
                 {(activeSignals.length + alertsList.length) > 0 && (
