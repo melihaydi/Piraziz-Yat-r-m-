@@ -30,7 +30,7 @@ class TradePosition(Base):
     """An open position within a TradeAccount. Stock and VİOP positions are
     tracked separately via instrument_type, even for the same account."""
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("trade_account.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("trade_account.id", ondelete="CASCADE"), nullable=False, index=True)
     instrument_type = Column(String(10), nullable=False)  # "stock" | "viop"
     symbol = Column(String(30), nullable=False)
     lot = Column(Float, nullable=False, default=0.0)
@@ -44,7 +44,7 @@ class TradeOrder(Base):
     trade *history*, not a pending-order queue, since orders always fill
     immediately at the live quote per the module's design."""
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("trade_account.id", ondelete="CASCADE"), nullable=False)
+    account_id = Column(Integer, ForeignKey("trade_account.id", ondelete="CASCADE"), nullable=False, index=True)
     instrument_type = Column(String(10), nullable=False)
     symbol = Column(String(30), nullable=False)
     side = Column(String(4), nullable=False)  # "AL" | "SAT"

@@ -16,22 +16,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-def calculate_asset_metrics(asset: PortfolioAsset) -> dict:
-    """Helper to compute real-time value and profit metrics for an asset."""
-    ticker = asset.ticker.upper()
-    live_price = None
-    
+def _fetch_live_price(ticker: str) -> Optional[float]:
+    """Fetch a single ticker's live price - a fund NAV (3-char codes) or a
+    BIST stock quote. Split out of calculate_asset_metrics so callers with
+    several assets (get_user_portfolios) can fetch them all concurrently
+    instead of one blocking network/cache call per asset in sequence."""
+    ticker = ticker.upper()
     if len(ticker) == 3:
-        # Fetch from TEFAS Mutual Funds Service
         fund = tefas_service.get_fund(ticker)
-        if fund:
-            live_price = fund["price"]
-    else:
-        # Fetch from BIST Stocks Service
-        quote = market_data_service.get_quote(ticker)
-        if quote:
-            live_price = quote.get("last")
-            
+        return fund["price"] if fund else None
+    quote = market_data_service.get_quote(ticker)
+    return quote.get("last") if quote else None
+
+def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None) -> dict:
+    """Helper to compute real-time value and profit metrics for an asset.
+    Pass a pre-fetched `live_price` (see _fetch_live_price) to skip the
+    network/cache lookup this would otherwise do itself."""
+    if live_price is None:
+        live_price = _fetch_live_price(asset.ticker)
+
     if live_price is None or live_price == 0:
         live_price = asset.average_cost
 
@@ -61,15 +64,25 @@ def get_user_portfolios(
 ):
     """Retrieve all portfolios for the current user, calculating real-time valuations."""
     portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
-    
+
+    # Fetch every distinct ticker's live price once, concurrently, instead of
+    # once per asset in sequence across every portfolio (each lookup is a
+    # blocking TEFAS/market-data call).
+    all_tickers = sorted({asset.ticker.upper() for p in portfolios for asset in p.assets})
+    price_by_ticker = {}
+    if all_tickers:
+        with ThreadPoolExecutor(max_workers=min(len(all_tickers), 8)) as pool:
+            for ticker, price in zip(all_tickers, pool.map(_fetch_live_price, all_tickers)):
+                price_by_ticker[ticker] = price
+
     response_list = []
     for p in portfolios:
         assets_responses = []
         total_cost = 0.0
         total_value = 0.0
-        
+
         for asset in p.assets:
-            metrics = calculate_asset_metrics(asset)
+            metrics = calculate_asset_metrics(asset, live_price=price_by_ticker.get(asset.ticker.upper()))
             assets_responses.append(PortfolioAssetResponse(**metrics))
             
             total_cost += asset.shares * asset.average_cost

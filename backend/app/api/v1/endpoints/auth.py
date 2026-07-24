@@ -23,14 +23,18 @@ def register_user(user_in: UserCreate, db: Session = Depends(deps.get_db)):
             detail="The user with this email already exists in the system.",
         )
     
-    # Hash password and create user
+    # Hash password and create user. `role`/`is_active` are deliberately NOT
+    # taken from user_in here even though UserCreate has those fields (they
+    # exist for admin update flows) - self-registration must never be able
+    # to grant itself a paid tier or pre-activate an account by just sending
+    # {"role": "institutional"} in the request body.
     hashed_password = security.get_password_hash(user_in.password)
     db_user = User(
         email=user_in.email,
         hashed_password=hashed_password,
         full_name=user_in.full_name,
-        role=user_in.role or "free",
-        is_active=user_in.is_active if user_in.is_active is not None else True,
+        role="free",
+        is_active=True,
         is_superuser=False
     )
     db.add(db_user)

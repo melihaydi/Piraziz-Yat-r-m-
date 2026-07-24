@@ -70,3 +70,14 @@ class Settings(BaseSettings):
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
 settings = Settings()
+
+# SECRET_KEY signs every JWT (see core/security.py) - its hardcoded fallback
+# above exists only so local dev works without a .env file. Refuse to boot
+# in production with that fallback still in place, since anyone who reads
+# this public source code would then be able to forge valid auth tokens for
+# any user.
+if settings.ENVIRONMENT == "production" and settings.SECRET_KEY == "supersecretjwtkeyforlocaldevelopmentonly12345":
+    raise RuntimeError(
+        "SECRET_KEY is still the hardcoded development default in a production "
+        "environment - set a real random SECRET_KEY in the deploy's .env before starting."
+    )

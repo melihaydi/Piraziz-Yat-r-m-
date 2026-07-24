@@ -1,4 +1,5 @@
 from typing import List
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -84,22 +85,38 @@ def check_and_trigger_alerts(
         Alert.is_active == True,
         Alert.is_triggered == False
     ).all()
-    
+
+    # Fetch each distinct ticker's quote/candles once, concurrently, instead
+    # of once per alert sequentially - a user with several alerts on the
+    # same or different tickers previously paid for N sequential network
+    # round-trips every 15s (Header.tsx polls this endpoint), one per alert.
+    needs_candles_types = {"rsi", "macd", "ema", "sma", "ai_score"}
+    tickers = sorted({alert.ticker for alert in active_alerts if alert.ticker})
+
+    def _fetch_ticker_data(ticker: str):
+        quote = market_data_service.get_quote(ticker)
+        candles = market_data_service.get_candles(ticker, "1d", wait=False, subscribe=False) if quote else None
+        return ticker, quote, candles
+
+    data_by_ticker = {}
+    if tickers:
+        with ThreadPoolExecutor(max_workers=min(len(tickers), 5)) as pool:
+            for ticker, quote, candles in pool.map(_fetch_ticker_data, tickers):
+                data_by_ticker[ticker] = (quote, candles)
+
     triggered_alerts = []
-    
+
     for alert in active_alerts:
         ticker = alert.ticker
         if not ticker:
             continue
-            
-        quote = market_data_service.get_quote(ticker)
+
+        quote, all_candles = data_by_ticker.get(ticker, (None, None))
         if not quote:
             continue
-            
-        candles = None
-        if alert.alert_type in ["rsi", "macd", "ema", "sma", "ai_score"]:
-            candles = market_data_service.get_candles(ticker, "1d", wait=False, subscribe=False)
-            
+
+        candles = all_candles if alert.alert_type in needs_candles_types else None
+
         is_triggered = False
         current_val_desc = ""
         
@@ -197,9 +214,12 @@ def check_and_trigger_alerts(
                 **alert.trigger_condition,
                 "current_val_desc": current_val_desc
             }
-            db.commit()
-            db.refresh(alert)
             triggered_alerts.append(alert)
-            
+
+    if triggered_alerts:
+        db.commit()
+        for alert in triggered_alerts:
+            db.refresh(alert)
+
     return triggered_alerts
 

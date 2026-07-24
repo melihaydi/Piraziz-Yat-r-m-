@@ -195,11 +195,16 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
 
   // Poll the account (positions/P&L) every 3s once onboarded - slightly
   // slower than the watchlist since it recomputes P&L across all positions.
+  // Depends on hasAccount (a boolean), not `account` itself - `account` gets
+  // a new object reference on every one of these very polls, which used to
+  // re-run this effect (tearing down + recreating the interval) on every
+  // single tick instead of ever letting one run on its own cadence.
+  const hasAccount = !!account
   useEffect(() => {
-    if (!account) return
+    if (!hasAccount) return
     const interval = setInterval(refreshAccount, 3000)
     return () => clearInterval(interval)
-  }, [account, refreshAccount])
+  }, [hasAccount, refreshAccount])
 
   useEffect(() => {
     if (account) refreshHistory()

@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.core.config import settings
 from app.models.user import User
 from app.schemas.subscription import CheckoutSessionCreate, CheckoutSessionResponse, WebhookPayload
 
@@ -24,9 +26,24 @@ def create_checkout_session(
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 def payment_webhook(
     payload: WebhookPayload,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db),
+    x_webhook_secret: Optional[str] = Header(default=None),
 ):
-    """Receive async payment success webhooks to upgrade user tier."""
+    """Receive async payment success webhooks to upgrade user tier.
+
+    Requires a shared secret (STRIPE_WEBHOOK_SECRET) matching the
+    X-Webhook-Secret header. There's no real payment gateway wired up yet
+    (checkout is mocked above), so this previously had zero verification -
+    anyone could POST {"user_id": <any>, "tier": "institutional", ...} here
+    directly and upgrade any account for free. Fails closed: if the secret
+    isn't configured, every call is rejected rather than trusted.
+    """
+    if not settings.STRIPE_WEBHOOK_SECRET or x_webhook_secret != settings.STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing webhook secret",
+        )
+
     if payload.event_type != "payment_intent.succeeded":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
