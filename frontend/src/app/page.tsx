@@ -34,6 +34,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
 
 // Fallback index chart points in case of connection limits
 const marketData = [
@@ -118,69 +119,13 @@ export default function Home() {
         })
     }
 
-    // 3. Fetch portfolio signals with auth bootstrapping (Request 2!)
-    // Re-authenticates automatically if the stored token is missing, expired, or
-    // otherwise invalid (401) - previously a stale token from an old session (or a
-    // backend restart with a fresh DB) would silently break this panel forever,
-    // since a *present* token was trusted without ever being validated.
-    const authenticate = async (): Promise<string | null> => {
-      const userEmail = localStorage.getItem("bip_user_email") || ""
-      const userPass = localStorage.getItem("bip_user_password") || ""
-      const userName = localStorage.getItem("bip_username") || ""
-
-      if (!userEmail || !userPass) return null
-
-      try {
-        // Attempt registration (fine if it fails because the account already exists)
-        await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail, password: userPass, full_name: userName })
-        })
-
-        // Login to get a fresh token
-        const loginRes = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ username: userEmail, password: userPass })
-        })
-        if (!loginRes.ok) return null
-        const loginData = await loginRes.json()
-        if (loginData.access_token) {
-          localStorage.setItem("token", loginData.access_token)
-          return loginData.access_token as string
-        }
-      } catch (e) {
-        console.error("Auth bootstrapping failed:", e)
-      }
-      return null
-    }
-
+    // 3. Fetch portfolio signals. AuthGate guarantees a valid token exists
+    // by the time this page renders; authFetch (lib/auth.ts) logs the
+    // session out on a 401 rather than silently retrying with no
+    // credentials to retry with.
     const bootstrapAndLoad = async () => {
-      let token = localStorage.getItem("token")
-      if (!token) {
-        token = await authenticate()
-      }
-
-      const fetchSignals = async (authToken: string | null) => {
-        const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/signals`, {
-          headers: (authToken ? { "Authorization": `Bearer ${authToken}` } : {}) as Record<string, string>
-        })
-        return res
-      }
-
       try {
-        let res = await fetchSignals(token)
-
-        // Token missing/expired/invalid - re-authenticate once and retry.
-        if (res.status === 401) {
-          localStorage.removeItem("token")
-          const freshToken = await authenticate()
-          if (freshToken) {
-            res = await fetchSignals(freshToken)
-          }
-        }
-
+        const res = await authFetch("/portfolio/signals")
         const data = await res.json()
         if (data && Array.isArray(data.signals)) {
           setSignals(data.signals)

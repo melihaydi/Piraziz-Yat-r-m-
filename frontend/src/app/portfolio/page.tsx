@@ -34,6 +34,7 @@ import {
   DialogTrigger
 } from "@/components/ui/Dialog"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
 
@@ -74,75 +75,23 @@ export default function PortfolioPage() {
     }
   }
 
-  // Load portfolios and alerts
+  // Load portfolios and alerts. AuthGate guarantees a valid session by the
+  // time this page renders, so this just needs authFetch (lib/auth.ts),
+  // which attaches the token and logs the session out on a 401 - no more
+  // local login/register bootstrapping here (that previously even sent
+  // {"role": "premium"} on self-registration, since fixed server-side too).
   const loadData = async () => {
-    // 0. Auto login/register mock user if token not present
-    let token = typeof window !== "undefined" ? localStorage.getItem("token") : null
-    if (!token) {
-      try {
-        const userEmail = localStorage.getItem("bip_user_email") || ""
-        const userPass = localStorage.getItem("bip_user_password") || ""
-        const userName = localStorage.getItem("bip_username") || ""
-
-        // Try logging in
-        const loginRes = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            username: userEmail,
-            password: userPass
-          })
-        })
-        if (loginRes.ok) {
-          const loginData = await loginRes.json()
-          localStorage.setItem("token", loginData.access_token)
-        } else {
-          // Register first
-          const regRes = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: userEmail,
-              password: userPass,
-              full_name: userName,
-              role: "premium"
-            })
-          })
-          if (regRes.ok) {
-            // Login now
-            const loginRes2 = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: new URLSearchParams({
-                username: userEmail,
-                password: userPass
-              })
-            })
-            if (loginRes2.ok) {
-              const loginData2 = await loginRes2.json()
-              localStorage.setItem("token", loginData2.access_token)
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Auto registration/login failed:", err)
-      }
-    }
-
     try {
-      // 1. Fetch portfolios
-      const portRes = await fetch(`${API_BASE_URL}/api/v1/portfolio/`, {
-        headers: getHeaders()
-      })
+      const portRes = await authFetch("/portfolio/")
       if (portRes.ok) {
         const portData = await portRes.json()
         setPortfolios(portData)
-        
+
         // Auto-create a default portfolio if user has none
         if (portData.length === 0) {
-          const createRes = await fetch(`${API_BASE_URL}/api/v1/portfolio/`, {
+          const createRes = await authFetch("/portfolio/", {
             method: "POST",
-            headers: getHeaders(),
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name: "Ana Portföyüm" })
           })
           if (createRes.ok) {
@@ -153,9 +102,7 @@ export default function PortfolioPage() {
       }
 
       // 2. Fetch alerts
-      const alertRes = await fetch(`${API_BASE_URL}/api/v1/alert/`, {
-        headers: getHeaders()
-      })
+      const alertRes = await authFetch("/alert/")
       if (alertRes.ok) {
         const alertData = await alertRes.json()
         setAlerts(alertData)

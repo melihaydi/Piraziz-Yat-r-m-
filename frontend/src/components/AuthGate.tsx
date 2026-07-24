@@ -5,7 +5,7 @@ import { Sparkles, User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2 } 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { authenticate } from "@/lib/auth"
+import { login, register, fetchCurrentUser } from "@/lib/auth"
 
 interface AuthGateProps {
   children: React.ReactNode
@@ -13,6 +13,7 @@ interface AuthGateProps {
 
 export default function AuthGate({ children }: AuthGateProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
   const [isRegister, setIsRegister] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -22,80 +23,56 @@ export default function AuthGate({ children }: AuthGateProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
+  // Validate any stored token against the backend on load, instead of
+  // trusting a "bip_logged_in" flag that (previously) was set once and
+  // never re-checked - a token can be missing/expired/revoked.
   useEffect(() => {
-    const logged = localStorage.getItem("bip_logged_in")
-    if (logged === "true") {
-      setIsLoggedIn(true)
+    const verifySession = async () => {
+      const user = await fetchCurrentUser()
+      if (user) {
+        localStorage.setItem("bip_username", user.full_name || user.email)
+        setIsLoggedIn(true)
+      }
+      setCheckingSession(false)
     }
+    verifySession()
+
+    const onExpired = () => setIsLoggedIn(false)
+    window.addEventListener("bip:session-expired", onExpired)
+    return () => window.removeEventListener("bip:session-expired", onExpired)
   }, [])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
-    setLoading(true)
 
-    if (isRegister) {
-      if (!fullName || !email || !password) {
-        setError("Lütfen tüm alanları doldurun.")
-        setLoading(false)
-        return
-      }
-
-      // Save user profile locally
-      const userProfile = { fullName, email, password }
-      localStorage.setItem(`bip_user_${email}`, JSON.stringify(userProfile))
-      localStorage.setItem("bip_user_email", email)
-      localStorage.setItem("bip_user_password", password)
-      localStorage.setItem("bip_logged_in", "true")
-      localStorage.setItem("bip_username", fullName)
-      
-      // Auto login in backend to populate JWT token. Retries transparently
-      // (see lib/auth.ts) if the backend hasn't finished starting yet - if it
-      // still fails, no token is stored at all rather than a fake one, so
-      // authFetch() naturally re-authenticates on the first real API call
-      // instead of silently failing with an invalid token.
-      await authenticate()
-
-      setIsLoggedIn(true)
-      window.dispatchEvent(new Event("profile-updated"))
-    } else {
-      if (!email || !password) {
-        setError("Lütfen tüm alanları doldurun.")
-        setLoading(false)
-        return
-      }
-
-      // Check credentials
-      const savedUserStr = localStorage.getItem(`bip_user_${email}`)
-      if (!savedUserStr) {
-        // Fallback for default mock profile
-        setError("Kullanıcı bulunamadı. Lütfen kayıt olun.")
-        setLoading(false)
-        return
-      }
-
-      const savedUser = JSON.parse(savedUserStr)
-      if (savedUser.password !== password) {
-        setError("Hatalı şifre. Lütfen tekrar deneyin.")
-        setLoading(false)
-        return
-      }
-
-      localStorage.setItem("bip_logged_in", "true")
-      localStorage.setItem("bip_user_email", email)
-      localStorage.setItem("bip_user_password", password)
-      localStorage.setItem("bip_username", savedUser.fullName)
-      
-      // Perform backend login to fetch live JWT token (retries transparently,
-      // see lib/auth.ts - stores no token at all on failure rather than a
-      // fake one, so authFetch() re-authenticates on the first real API call).
-      await authenticate()
-
-      setIsLoggedIn(true)
-      window.dispatchEvent(new Event("profile-updated"))
+    if (!email || !password || (isRegister && !fullName)) {
+      setError("Lütfen tüm alanları doldurun.")
+      return
     }
 
+    setLoading(true)
+    const result = isRegister
+      ? await register(email, password, fullName)
+      : await login(email, password)
     setLoading(false)
+
+    if (!result.ok) {
+      setError(result.error || "Bir hata oluştu.")
+      return
+    }
+
+    localStorage.setItem("bip_username", fullName || email)
+    setIsLoggedIn(true)
+    window.dispatchEvent(new Event("profile-updated"))
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950">
+        <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+      </div>
+    )
   }
 
   if (isLoggedIn) {

@@ -7,7 +7,7 @@ from app.core import security
 from app.core.config import settings
 from app.api import deps
 from app.models.user import User
-from app.schemas.user import UserOut, UserCreate
+from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.schemas.token import Token
 
 router = APIRouter()
@@ -68,4 +68,33 @@ def login_access_token(
 @router.get("/me", response_model=UserOut)
 def read_user_me(current_user: User = Depends(deps.get_current_user)):
     """Get current user details."""
+    return current_user
+
+@router.put("/me", response_model=UserOut)
+def update_user_me(
+    user_in: UserUpdate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Update the current user's own email/full_name/password. Like
+    register, deliberately ignores role/is_active from the payload - this
+    can only ever update the caller's own profile fields, never tier or
+    account status."""
+    if user_in.email and user_in.email != current_user.email:
+        existing = db.query(User).filter(User.email == user_in.email).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bu e-posta adresi başka bir hesap tarafından kullanılıyor.",
+            )
+        current_user.email = user_in.email
+
+    if user_in.full_name is not None:
+        current_user.full_name = user_in.full_name
+
+    if user_in.password:
+        current_user.hashed_password = security.get_password_hash(user_in.password)
+
+    db.commit()
+    db.refresh(current_user)
     return current_user

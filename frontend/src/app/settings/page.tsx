@@ -8,6 +8,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { authFetch, fetchCurrentUser } from "@/lib/auth"
 
 // Content for the "Güvenlik & Yetkiler" section (Request: professional security/permissions overview)
 const SECURITY_ITEMS = [
@@ -93,17 +94,22 @@ export default function SettingsPage() {
   const [password, setPassword] = useState("••••••••")
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [authSuccess, setAuthSuccess] = useState(false)
+  const [authError, setAuthError] = useState("")
+  const [authSubmitting, setAuthSubmitting] = useState(false)
 
-  // Load user data from localStorage on mount
+  // Load display prefs from localStorage, but the email is the backend's -
+  // it's the real source of truth for the account, not a local cache.
   useEffect(() => {
     const savedName = localStorage.getItem("bip_username")
     const savedEmoji = localStorage.getItem("bip_avatar_emoji")
     const savedPic = localStorage.getItem("bip_profile_pic")
-    const savedEmail = localStorage.getItem("bip_user_email")
     if (savedName) setUsername(savedName)
     if (savedEmoji) setAvatarEmoji(savedEmoji)
     if (savedPic) setProfilePic(savedPic)
-    if (savedEmail) setEmail(savedEmail)
+
+    fetchCurrentUser().then(user => {
+      if (user?.email) setEmail(user.email)
+    })
   }, [])
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -118,27 +124,56 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     localStorage.setItem("bip_username", username)
     localStorage.setItem("bip_avatar_emoji", avatarEmoji)
     localStorage.setItem("bip_profile_pic", profilePic)
-    if (email) localStorage.setItem("bip_user_email", email)
-    
-    // Dispatch custom event to notify Header of changes
+
+    // Display name lives on the real account too (Header etc. read the
+    // localStorage copy for instant display, but the backend is the source
+    // of truth other devices/sessions would see).
+    await authFetch("/auth/me", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, full_name: username }),
+    }).catch(() => {})
+
     window.dispatchEvent(new Event("profile-updated"))
 
     setSaveSuccess(true)
     setTimeout(() => setSaveSuccess(false), 3000)
   }
 
-  const handleMockAuth = (e: React.FormEvent) => {
+  const handleUpdateAuth = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (email) localStorage.setItem("bip_user_email", email)
-    if (password && password !== "••••••••") localStorage.setItem("bip_user_password", password)
-    window.dispatchEvent(new Event("profile-updated"))
-    setAuthSuccess(true)
-    setTimeout(() => setAuthSuccess(false), 3000)
+    setAuthError("")
+    setAuthSubmitting(true)
+    try {
+      const res = await authFetch("/auth/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          // Only send a password if the user actually typed a new one -
+          // the field shows a "••••••••" placeholder value otherwise.
+          ...(password && password !== "••••••••" ? { password } : {}),
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setAuthError(err.detail || "Güncelleme başarısız oldu.")
+        setAuthSubmitting(false)
+        return
+      }
+      setPassword("••••••••")
+      window.dispatchEvent(new Event("profile-updated"))
+      setAuthSuccess(true)
+      setTimeout(() => setAuthSuccess(false), 3000)
+    } catch (err) {
+      setAuthError("Sunucuya ulaşılamadı.")
+    }
+    setAuthSubmitting(false)
   }
 
   const [activeSection, setActiveSection] = useState<"profile" | "security" | "help">("profile")
@@ -287,20 +322,21 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Login / Sign Up Form */}
+          {/* Account email/password update - a real call against the
+              backend account (PUT /auth/me), not a local-only mock. */}
           <Card glass={true}>
             <CardHeader>
               <CardTitle className="text-base flex items-center">
                 <Lock className="h-4.5 w-4.5 mr-2 text-primary" />
-                Giriş & Yetkilendirme
+                Hesap Bilgileri
               </CardTitle>
-              <CardDescription>Piraziz Yatırım kullanıcı hesabınızı doğrulayın.</CardDescription>
+              <CardDescription>E-posta adresinizi veya şifrenizi güncelleyin.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleMockAuth} className="space-y-4">
+              <form onSubmit={handleUpdateAuth} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground font-semibold">E-posta Adresi</label>
-                  <Input 
+                  <Input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -309,27 +345,31 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs text-muted-foreground font-semibold">Şifre</label>
-                  <Input 
+                  <label className="text-xs text-muted-foreground font-semibold">Yeni Şifre (değiştirmek istemiyorsanız boş bırakın)</label>
+                  <Input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="bg-secondary/30"
-                    required
                   />
                 </div>
+
+                {authError && (
+                  <div className="flex items-center space-x-2 text-rose-400 text-xs font-semibold bg-rose-500/10 p-3 rounded-lg border border-rose-500/15">
+                    <span>{authError}</span>
+                  </div>
+                )}
 
                 {authSuccess && (
                   <div className="flex items-center space-x-2 text-emerald-400 text-xs font-semibold bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/15">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Giriş / Kayıt başarıyla doğrulandı!</span>
+                    <span>Hesap bilgileriniz güncellendi!</span>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <Button type="submit" className="w-full cursor-pointer font-bold text-xs h-10">Giriş Yap</Button>
-                  <Button type="button" variant="outline" onClick={() => setAuthSuccess(true)} className="w-full cursor-pointer font-bold text-xs h-10">Kayıt Ol</Button>
-                </div>
+                <Button type="submit" disabled={authSubmitting} className="w-full cursor-pointer font-bold text-xs h-10">
+                  {authSubmitting ? "Güncelleniyor..." : "Bilgileri Güncelle"}
+                </Button>
               </form>
             </CardContent>
           </Card>
