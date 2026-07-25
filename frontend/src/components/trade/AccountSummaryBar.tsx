@@ -46,9 +46,9 @@ export default function AccountSummaryBar() {
 
   return (
     <>
-      <div className="flex items-center gap-2 bg-[#0E0E13] border border-white/5 rounded-xl p-2">
+      <div className="flex items-center gap-2 bg-[#101015] border border-white/5 rounded-xl p-2">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 flex-1 min-w-0">
-          <StatBlock icon={Wallet} label="Toplam Portföy" value={`₺${fmt(account.total_portfolio_value)}`} iconColorClass="text-blue-300" />
+          <StatBlock icon={Wallet} label="Toplam Portföy" value={`₺${fmt(account.total_portfolio_value)}`} iconColorClass="text-white" />
           <StatBlock icon={PieChart} label="Nakit" value={`₺${fmt(account.cash_balance)}`} iconColorClass="text-slate-400" />
           <StatBlock icon={ShieldHalf} label="Kullanılan Teminat" value={`₺${fmt(account.used_margin)}`} iconColorClass="text-amber-400" />
           <StatBlock
@@ -76,7 +76,7 @@ export default function AccountSummaryBar() {
 
         <button
           onClick={() => setShowDeposit(true)}
-          className="shrink-0 inline-flex items-center gap-1.5 h-full self-stretch px-3.5 rounded-lg bg-[#16171E] border border-blue-500/30 text-blue-300 hover:bg-[#1c1d26] text-xs font-bold transition-colors cursor-pointer"
+          className="shrink-0 inline-flex items-center gap-1.5 h-full self-stretch px-3.5 rounded-lg bg-[#16171E] border border-white/10 text-white hover:bg-[#232530] text-xs font-bold transition-colors cursor-pointer"
         >
           <PlusCircle className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Bakiye Ekle</span>

@@ -11,7 +11,7 @@ export default function TradeHistoryTable() {
   return (
     <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-        <History className="h-3.5 w-3.5 text-blue-400" />
+        <History className="h-3.5 w-3.5 text-white" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">İşlem Geçmişi</span>
         {filtered.length > 0 && (
           <span className="ml-auto text-[10px] font-bold text-slate-500 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
@@ -21,7 +21,7 @@ export default function TradeHistoryTable() {
       </div>
       <div className="overflow-x-auto max-h-72 overflow-y-auto">
         <table className="w-full text-xs text-left">
-          <thead className="sticky top-0 bg-[#0E0E13]">
+          <thead className="sticky top-0 bg-[#101015]">
             <tr className="text-slate-500 font-bold border-b border-slate-800 h-8">
               <th className="px-4">Tarih</th>
               <th className="px-4">Saat</th>
@@ -59,11 +59,11 @@ export default function TradeHistoryTable() {
                         {item.side}
                       </span>
                     </td>
-                    <td className="px-4 font-bold text-slate-200">{item.symbol}</td>
-                    <td className="px-4 text-right font-mono text-slate-300">{item.lot}</td>
-                    <td className="px-4 text-right font-mono text-slate-300">{item.price.toFixed(2)}</td>
-                    <td className="px-4 text-right font-mono text-slate-500">{item.commission.toFixed(2)}</td>
-                    <td className="px-4 text-right font-mono text-slate-200">{item.total.toFixed(2)}</td>
+                    <td className="px-4 font-bold text-white">{item.symbol}</td>
+                    <td className="px-4 text-right font-semibold text-white">{item.lot}</td>
+                    <td className="px-4 text-right font-semibold text-white">{item.price.toFixed(2)}</td>
+                    <td className="px-4 text-right text-slate-500">{item.commission.toFixed(2)}</td>
+                    <td className="px-4 text-right font-semibold text-white">{item.total.toFixed(2)}</td>
                   </tr>
                 )
               })

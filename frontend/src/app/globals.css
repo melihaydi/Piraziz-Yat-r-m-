@@ -119,7 +119,7 @@ body {
    here caused the ₺ glyph to visually crowd the following digit and was
    reverted). Scoped to this module via app/trade/layout.tsx. */
 .trade-terminal {
-  --trade-bg: #0E0E13;
+  --trade-bg: #101015;
   --trade-panel: #16171E;
 }
 

@@ -78,16 +78,16 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
   const absoluteChange = price !== undefined && changePercent !== undefined ? price - price / (1 + changePercent / 100) : undefined
 
   return (
-    <div className="relative h-full w-full bg-[#0E0E13] overflow-y-auto">
+    <div className="relative h-full w-full bg-[#101015] overflow-y-auto">
       {(name || price !== undefined) && (
         <div className="flex items-baseline gap-2.5 px-3 pt-3 pb-1">
           <span className="text-sm font-black text-white">{displayLabel || symbol}</span>
-          {name && <span className="text-[11px] text-slate-500 truncate max-w-[160px]">{name}</span>}
+          {name && <span className="text-[11px] text-slate-400 truncate max-w-[160px]">{name}</span>}
           {price !== undefined && (
             <span className="ml-auto flex items-baseline gap-1.5">
-              <span className="text-base font-mono font-black text-white">{price.toFixed(2)}</span>
+              <span className="text-base font-black text-white">{price.toFixed(2)}</span>
               {changePercent !== undefined && (
-                <span className={`text-xs font-mono font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+                <span className={`text-xs font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
                   {isUp ? "+" : ""}{absoluteChange !== undefined ? absoluteChange.toFixed(2) : ""} ({isUp ? "+" : ""}{changePercent.toFixed(2)}%)
                 </span>
               )}
@@ -103,7 +103,7 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
             onClick={() => setInterval_(tf.value)}
             className={`shrink-0 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
               interval === tf.value
-                ? "bg-blue-500/15 text-blue-300 border border-blue-500/30"
+                ? "bg-[#232530] text-white border border-white/10"
                 : "text-slate-500 hover:text-slate-300 border border-transparent"
             }`}
           >
@@ -117,7 +117,7 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-6 w-6 text-blue-400 animate-spin" />
+          <Loader2 className="h-6 w-6 text-white animate-spin" />
         </div>
       ) : failed ? (
         <div className="flex items-center justify-center h-64 text-xs text-slate-500">

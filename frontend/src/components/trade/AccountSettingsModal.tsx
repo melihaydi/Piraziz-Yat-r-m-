@@ -38,7 +38,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0E0E13]/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101015]/80 backdrop-blur-sm p-4">
       <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-[#1c1d26] p-6 space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-sm font-black text-white">Trade Hesap Ayarları</span>
@@ -47,16 +47,16 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
           </button>
         </div>
 
-        <div className="flex gap-1 bg-[#0E0E13] border border-slate-800 rounded-lg p-1">
+        <div className="flex gap-1 bg-[#101015] border border-slate-800 rounded-lg p-1">
           <button
             onClick={() => setMode("broker")}
-            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "broker" ? "bg-blue-500 text-slate-950" : "text-slate-400"}`}
+            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "broker" ? "bg-white text-[#101015]" : "text-slate-400"}`}
           >
             Broker Değiştir
           </button>
           <button
             onClick={() => setMode("reset")}
-            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "reset" ? "bg-rose-500 text-slate-950" : "text-slate-400"}`}
+            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "reset" ? "bg-rose-500 text-white" : "text-slate-400"}`}
           >
             Hesabı Sıfırla
           </button>
@@ -68,7 +68,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
               key={b.id}
               onClick={() => setBroker(b.id)}
               className={`h-10 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
-                broker === b.id ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-slate-800 text-slate-400 hover:border-slate-700"
+                broker === b.id ? "border-white/30 bg-[#232530] text-white" : "border-slate-800 text-slate-400 hover:border-slate-700"
               }`}
             >
               {b.name}
@@ -82,7 +82,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
             <input
               value={resetBalance}
               onChange={e => setResetBalance(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-[#0E0E13] border border-slate-800 text-sm font-mono font-bold text-white focus:outline-none focus:border-blue-500/50"
+              className="w-full h-10 px-3 rounded-lg bg-[#101015] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"
             />
             <p className="text-[10px] text-rose-400/80">
               Bu işlem tüm açık pozisyonlarınızı ve işlem geçmişinizi kalıcı olarak siler.
@@ -96,7 +96,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
           onClick={mode === "broker" ? handleBrokerSave : handleReset}
           disabled={busy}
           className={`w-full h-10 rounded-lg font-black text-sm cursor-pointer flex items-center justify-center gap-2 ${
-            mode === "broker" ? "bg-blue-500 hover:bg-blue-400 text-slate-950" : "bg-rose-500 hover:bg-rose-400 text-slate-950"
+            mode === "broker" ? "bg-white hover:bg-slate-200 text-[#101015]" : "bg-rose-500 hover:bg-rose-400 text-white"
           } disabled:opacity-50`}
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -31,11 +31,11 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0E0E13]/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101015]/80 backdrop-blur-sm p-4">
       <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-[#1c1d26] p-6 space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-sm font-black text-white flex items-center gap-2">
-            <Wallet className="h-4 w-4 text-blue-400" />
+            <Wallet className="h-4 w-4 text-white" />
             Bakiye Ekle
           </span>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 cursor-pointer">
@@ -54,7 +54,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
             <input
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              className="w-full h-11 pl-7 pr-3 rounded-lg bg-[#0E0E13] border border-slate-800 text-sm font-mono font-bold text-white focus:outline-none focus:border-blue-500/50"
+              className="w-full h-11 pl-7 pr-3 rounded-lg bg-[#101015] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"
             />
           </div>
         </div>
@@ -64,7 +64,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
             <button
               key={v}
               onClick={() => setAmount(String(v))}
-              className="h-8 rounded-lg text-[10px] font-bold border border-slate-800 text-slate-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors cursor-pointer"
+              className="h-8 rounded-lg text-[10px] font-bold border border-slate-800 text-slate-400 hover:border-white/20 hover:text-white transition-colors cursor-pointer"
             >
               {v >= 1000 ? `${v / 1000}B` : v}
             </button>
@@ -80,7 +80,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
         <button
           onClick={handleDeposit}
           disabled={busy}
-          className="w-full h-11 rounded-lg font-black text-sm cursor-pointer flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 text-slate-950 disabled:opacity-50 transition-colors"
+          className="w-full h-11 rounded-lg font-black text-sm cursor-pointer flex items-center justify-center gap-2 bg-white hover:bg-slate-200 text-[#101015] disabled:opacity-50 transition-colors"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
           Bakiye Ekle

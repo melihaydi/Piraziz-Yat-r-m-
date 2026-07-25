@@ -76,8 +76,8 @@ export default function OrderPanel() {
             <div className="text-[10px] text-slate-500 truncate max-w-[160px]">{instrument.name}</div>
           </div>
           <div className="text-right">
-            <div className="text-lg font-mono font-black text-white">{lastPrice.toFixed(2)}</div>
-            <div className={`text-[10px] font-mono font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+            <div className="text-lg font-black text-white">{lastPrice.toFixed(2)}</div>
+            <div className={`text-[10px] font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
               {isUp ? "+" : ""}{instrument.change_percent.toFixed(2)}%
             </div>
           </div>
@@ -85,15 +85,15 @@ export default function OrderPanel() {
         <div className="grid grid-cols-3 gap-2 mt-3 text-center">
           <div className="bg-[#1c1d26]/80 rounded-lg py-1.5">
             <div className="text-[9px] text-slate-500 uppercase">Alış</div>
-            <div className="text-xs font-mono font-bold text-emerald-400">{instrument.bid.toFixed(2)}</div>
+            <div className="text-xs font-bold text-emerald-400">{instrument.bid.toFixed(2)}</div>
           </div>
           <div className="bg-[#1c1d26]/80 rounded-lg py-1.5">
             <div className="text-[9px] text-slate-500 uppercase">Satış</div>
-            <div className="text-xs font-mono font-bold text-rose-400">{instrument.ask.toFixed(2)}</div>
+            <div className="text-xs font-bold text-rose-400">{instrument.ask.toFixed(2)}</div>
           </div>
           <div className="bg-[#1c1d26]/80 rounded-lg py-1.5">
             <div className="text-[9px] text-slate-500 uppercase">Spread</div>
-            <div className="text-xs font-mono font-bold text-slate-300">{spread.toFixed(2)}</div>
+            <div className="text-xs font-bold text-white">{spread.toFixed(2)}</div>
           </div>
         </div>
 
@@ -102,7 +102,7 @@ export default function OrderPanel() {
             className={`mt-3 flex items-center justify-between text-[10px] rounded-lg px-2.5 py-2 border ${
               openPosition.position_side === "SHORT"
                 ? "bg-amber-500/5 border-amber-500/20"
-                : "bg-blue-500/5 border-blue-500/20"
+                : "bg-white/5 border-white/10"
             }`}
           >
             <span className="flex items-center gap-1.5 text-slate-400">
@@ -110,12 +110,12 @@ export default function OrderPanel() {
                 className={`text-[8px] font-black px-1.5 py-0.5 rounded ${
                   openPosition.position_side === "SHORT"
                     ? "bg-amber-500/15 text-amber-400"
-                    : "bg-blue-500/15 text-blue-300"
+                    : "bg-white/10 text-white"
                 }`}
               >
                 {openPosition.position_side === "SHORT" ? "SHORT" : "LONG"}
               </span>
-              <span className="font-bold text-slate-200">{openPosition.lot} lot</span>
+              <span className="font-bold text-white">{openPosition.lot} lot</span>
             </span>
             <span className={openPosition.pnl >= 0 ? "text-emerald-400 font-bold" : "text-rose-500 font-bold"}>
               {openPosition.pnl >= 0 ? "+" : ""}{openPosition.pnl.toFixed(2)} ₺
@@ -133,7 +133,7 @@ export default function OrderPanel() {
             min={1}
             value={lot}
             onChange={e => setLot(e.target.value)}
-            className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-mono font-bold text-white focus:outline-none focus:border-blue-500/50"
+            className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"
           />
         </div>
 
@@ -143,19 +143,19 @@ export default function OrderPanel() {
         <div className="rounded-xl border border-slate-800 bg-[#1c1d26]/50 divide-y divide-slate-800/80 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 text-[11px]">
             <span className="text-slate-500">Fiyat</span>
-            <span className="font-mono font-semibold text-slate-200">{lastPrice.toFixed(2)} ₺</span>
+            <span className="font-semibold text-white">{lastPrice.toFixed(2)} ₺</span>
           </div>
           <div className="flex items-center justify-between px-3 py-2 text-[11px]">
             <span className="text-slate-500">Toplam Tutar</span>
-            <span className="font-mono font-semibold text-slate-200">{notional.toFixed(2)} ₺</span>
+            <span className="font-semibold text-white">{notional.toFixed(2)} ₺</span>
           </div>
           <div className="flex items-center justify-between px-3 py-2 text-[11px]">
             <span className="text-slate-500">Komisyon (tahmini)</span>
-            <span className="font-mono font-semibold text-slate-400">{commission.toFixed(2)} ₺</span>
+            <span className="font-semibold text-slate-300">{commission.toFixed(2)} ₺</span>
           </div>
           <div className="flex items-center justify-between px-3 py-2.5 bg-[#1c1d26]/80">
             <span className="text-[11px] font-bold text-slate-300">Tahmini Toplam</span>
-            <span className="font-mono font-black text-blue-300 text-sm">{total.toFixed(2)} ₺</span>
+            <span className="font-black text-white text-sm">{total.toFixed(2)} ₺</span>
           </div>
         </div>
 

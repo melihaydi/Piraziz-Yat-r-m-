@@ -34,8 +34,8 @@ export default function TradePage() {
   // brief auto-provisioning window with the same spinner.
   if (loading || !account) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0E0E13]">
-        <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
+      <div className="flex items-center justify-center min-h-screen bg-[#101015]">
+        <Loader2 className="h-8 w-8 text-white animate-spin" />
       </div>
     )
   }
@@ -56,24 +56,24 @@ export default function TradePage() {
   const chartColSpan = watchlistCollapsed ? "xl:col-span-9" : "xl:col-span-6"
 
   return (
-    <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#0E0E13] overflow-y-auto" : "min-h-screen bg-[#0E0E13]"}>
+    <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#101015] overflow-y-auto" : "min-h-screen bg-[#101015]"}>
       {/* Terminal chrome - replaces the app's global Header for this route,
        * so it carries its own brand mark + a way back to the main app. */}
-      <div className="sticky top-0 z-20 bg-gradient-to-b from-[#16171E] to-[#0E0E13] border-b border-slate-800/80 shadow-[0_1px_0_rgba(96,165,250,0.08)]">
+      <div className="sticky top-0 z-20 bg-gradient-to-b from-[#16171E] to-[#101015] border-b border-slate-800/80">
         <div className="flex items-center justify-between flex-wrap gap-3 px-3 sm:px-6 py-3">
           <div className="flex items-center gap-4">
             {!isFullscreen && (
               <Link
                 href="/"
                 title="Ana uygulamaya dön"
-                className="flex items-center gap-1.5 text-slate-500 hover:text-blue-300 transition-colors pr-3 border-r border-slate-800"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-white transition-colors pr-3 border-r border-slate-800"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span className="text-[11px] font-bold hidden sm:inline">Piraziz</span>
               </Link>
             )}
             <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
               Trade
             </h1>
             <InstrumentTabs />
@@ -82,7 +82,7 @@ export default function TradePage() {
             {!isFullscreen && (
               <Link
                 href="/trade/performance"
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-800 text-xs font-bold text-slate-300 hover:border-blue-500/40 hover:text-blue-300 transition-colors"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-800 text-xs font-bold text-slate-300 hover:border-white/30 hover:text-white transition-colors"
               >
                 <BarChart3 className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Performans</span>
@@ -91,14 +91,14 @@ export default function TradePage() {
             <button
               onClick={() => setIsFullscreen(v => !v)}
               title={isFullscreen ? "Tam ekrandan çık" : "Tam ekran"}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-white/30 hover:text-white transition-colors cursor-pointer"
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
             {!isFullscreen && (
               <button
                 onClick={() => setShowSettings(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-white/30 hover:text-white transition-colors cursor-pointer"
               >
                 <Settings className="h-4 w-4" />
               </button>
@@ -117,7 +117,7 @@ export default function TradePage() {
               <button
                 onClick={() => setWatchlistCollapsed(false)}
                 title="Listeyi aç"
-                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-[#16171E] text-slate-500 hover:text-blue-300 hover:border-blue-500/40 transition-colors cursor-pointer"
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-[#16171E] text-slate-500 hover:text-white hover:border-white/30 transition-colors cursor-pointer"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>

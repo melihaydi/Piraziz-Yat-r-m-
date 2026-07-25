@@ -23,7 +23,7 @@ function MetricCard({ label, value, colorClass }: { label: string; value: string
   return (
     <div className="bg-[#16171E] border border-slate-800 rounded-xl p-4">
       <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{label}</div>
-      <div className={`text-lg font-mono font-black mt-1 ${colorClass || "text-white"}`}>{value}</div>
+      <div className={`text-lg font-black mt-1 ${colorClass || "text-white"}`}>{value}</div>
     </div>
   )
 }
@@ -45,7 +45,7 @@ export default function TradePerformancePage() {
   if (accountLoading || loading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-        <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-white animate-spin" />
       </div>
     )
   }
@@ -65,7 +65,7 @@ export default function TradePerformancePage() {
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center gap-3">
-        <Link href="/trade" className="text-slate-500 hover:text-blue-300 transition-colors">
+        <Link href="/trade" className="text-slate-500 hover:text-white transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <h1 className="text-xl font-black tracking-tight text-white">Performans</h1>

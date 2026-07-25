@@ -23,7 +23,7 @@ export default function PositionsTable() {
   return (
     <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-        <Layers className="h-3.5 w-3.5 text-blue-400" />
+        <Layers className="h-3.5 w-3.5 text-white" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Açık Pozisyonlar</span>
         {positions.length > 0 && (
           <span className="ml-auto text-[10px] font-bold text-slate-500 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
@@ -60,30 +60,30 @@ export default function PositionsTable() {
             ) : (
               positions.map(pos => (
                 <tr key={pos.id} className="border-b border-slate-900 h-11 hover:bg-[#1c1d26]/40">
-                  <td className="px-4 font-bold text-slate-200">{pos.symbol}</td>
+                  <td className="px-4 font-bold text-white">{pos.symbol}</td>
                   {activeTab === "viop" && (
                     <td className="px-4">
                       <span
                         className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
                           pos.position_side === "SHORT"
                             ? "bg-amber-500/15 text-amber-400"
-                            : "bg-blue-500/15 text-blue-300"
+                            : "bg-white/10 text-white"
                         }`}
                       >
                         {pos.position_side}
                       </span>
                     </td>
                   )}
-                  <td className="px-4 text-right font-mono text-slate-300">{pos.lot}</td>
-                  <td className="px-4 text-right font-mono text-slate-400">{pos.avg_cost.toFixed(2)}</td>
-                  <td className="px-4 text-right font-mono text-slate-300">{pos.current_price.toFixed(2)}</td>
-                  <td className={`px-4 text-right font-mono font-bold ${pos.pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <td className="px-4 text-right font-semibold text-white">{pos.lot}</td>
+                  <td className="px-4 text-right font-semibold text-white">{pos.avg_cost.toFixed(2)}</td>
+                  <td className="px-4 text-right font-semibold text-white">{pos.current_price.toFixed(2)}</td>
+                  <td className={`px-4 text-right font-bold ${pos.pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                     {pos.pnl >= 0 ? "+" : ""}{pos.pnl.toFixed(2)}
                   </td>
-                  <td className={`px-4 text-right font-mono font-bold ${pos.pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <td className={`px-4 text-right font-bold ${pos.pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                     {pos.pnl_pct >= 0 ? "+" : ""}{pos.pnl_pct.toFixed(2)}%
                   </td>
-                  <td className="px-4 text-right font-mono text-slate-300">{pos.position_value.toFixed(2)}</td>
+                  <td className="px-4 text-right font-semibold text-white">{pos.position_value.toFixed(2)}</td>
                   <td className="px-4 text-center">
                     <button
                       onClick={() => handleClose(pos.symbol, pos.lot, pos.position_side)}
