@@ -1,4 +1,5 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -165,6 +166,19 @@ def reset_account(db: Session, account: TradeAccount, starting_balance: float) -
     return account
 
 
+def deposit_funds(db: Session, account: TradeAccount, amount: float) -> TradeAccount:
+    """Adds cash to the simulated account. `starting_balance` (the baseline
+    "return_pct" is measured against) is increased by the same amount, so a
+    deposit isn't misread as trading profit - it's new capital, not a gain."""
+    if amount is None or amount <= 0:
+        raise TradeError("Yatırılacak tutar sıfırdan büyük olmalı.")
+    account.cash_balance += amount
+    account.starting_balance += amount
+    db.commit()
+    db.refresh(account)
+    return account
+
+
 def _bid_ask(q: Dict[str, Any], last: float) -> tuple[float, float]:
     """Real bid/ask when the live quote has them; otherwise a small synthetic
     spread around last price so the order panel always has something
@@ -214,7 +228,19 @@ def get_viop_watchlist() -> List[Dict[str, Any]]:
     return items
 
 
-def _position_dict(pos: TradePosition) -> Dict[str, Any]:
+def _fetch_prices_concurrently(positions: List[TradePosition]) -> List[float]:
+    """Fetch every position's live price at once instead of one at a time -
+    each is an independent lookup against the market-data cache, so this
+    also avoids serial latency stacking up when an account has several open
+    positions (get_positions/serialize_account are hit every few seconds by
+    the frontend's polling)."""
+    if not positions:
+        return []
+    with ThreadPoolExecutor(max_workers=min(len(positions), 8)) as pool:
+        return list(pool.map(lambda p: get_live_price(p.instrument_type, p.symbol), positions))
+
+
+def _position_dict(pos: TradePosition, price: Optional[float] = None) -> Dict[str, Any]:
     """
     VİOP positions can be short: represented internally as a NEGATIVE lot
     (no separate DB column needed). Stock positions are always long
@@ -224,8 +250,19 @@ def _position_dict(pos: TradePosition) -> Dict[str, Any]:
     it sums correctly into stock/viop totals and "Kullanılan Teminat"
     regardless of direction); pnl flips sign for shorts, since a short
     profits when price falls.
+
+    `price` can be a pre-fetched value (see _fetch_prices_concurrently) to
+    avoid a redundant lookup. If the live quote is unavailable (0 - see
+    get_live_price), this falls back to the position's own avg_cost instead
+    of 0 - previously a single momentarily-missing quote (e.g. TradingView
+    not yet subscribed to that symbol) priced the whole position at 0,
+    which made "Toplam Portföy"/"Kullanılan Teminat" swing wildly and showed
+    a huge fake loss until the next successful poll.
     """
-    price = get_live_price(pos.instrument_type, pos.symbol)
+    if price is None:
+        price = get_live_price(pos.instrument_type, pos.symbol)
+    if price <= 0:
+        price = pos.avg_cost
     is_short = pos.lot < 0
     abs_lot = abs(pos.lot)
     value = price * abs_lot
@@ -250,7 +287,9 @@ def get_positions(db: Session, account: TradeAccount, instrument_type: Optional[
     q = db.query(TradePosition).filter(TradePosition.account_id == account.id)
     if instrument_type:
         q = q.filter(TradePosition.instrument_type == instrument_type)
-    return [_position_dict(p) for p in q.all()]
+    positions = q.all()
+    prices = _fetch_prices_concurrently(positions)
+    return [_position_dict(p, price) for p, price in zip(positions, prices)]
 
 
 def _ensure_daily_snapshot(db: Session, account: TradeAccount, current_equity: float) -> TradeDailySnapshot:
@@ -273,7 +312,8 @@ def _ensure_daily_snapshot(db: Session, account: TradeAccount, current_equity: f
 
 def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
     positions = db.query(TradePosition).filter(TradePosition.account_id == account.id).all()
-    pos_dicts = [_position_dict(p) for p in positions]
+    prices = _fetch_prices_concurrently(positions)
+    pos_dicts = [_position_dict(p, price) for p, price in zip(positions, prices)]
 
     stock_value = sum(p["position_value"] for p in pos_dicts if p["instrument_type"] == "stock")
     viop_value = sum(p["position_value"] for p in pos_dicts if p["instrument_type"] == "viop")

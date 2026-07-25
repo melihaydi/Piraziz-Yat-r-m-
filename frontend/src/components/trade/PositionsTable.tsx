@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { X, Loader2 } from "lucide-react"
+import { X, Loader2, Layers, Info } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
 
 export default function PositionsTable() {
@@ -22,8 +22,14 @@ export default function PositionsTable() {
 
   return (
     <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-slate-800">
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+        <Layers className="h-3.5 w-3.5 text-cyan-400" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Açık Pozisyonlar</span>
+        {positions.length > 0 && (
+          <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-2 py-0.5">
+            {positions.length}
+          </span>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs text-left">
@@ -43,7 +49,13 @@ export default function PositionsTable() {
           <tbody>
             {positions.length === 0 ? (
               <tr>
-                <td colSpan={activeTab === "viop" ? 9 : 8} className="text-center text-slate-600 py-6">Açık pozisyon bulunmuyor.</td>
+                <td colSpan={activeTab === "viop" ? 9 : 8} className="py-10">
+                  <div className="flex flex-col items-center gap-2 text-slate-600">
+                    <Info className="h-5 w-5" />
+                    <span className="font-bold text-slate-500 text-[11px]">Yatırım pozisyonun bulunmuyor</span>
+                    <span className="text-[10px] text-slate-700">Yatırım yaptıkça varlıklarını burada görebilirsin.</span>
+                  </div>
+                </td>
               </tr>
             ) : (
               positions.map(pos => (

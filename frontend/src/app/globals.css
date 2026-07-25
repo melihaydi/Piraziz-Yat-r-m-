@@ -114,6 +114,13 @@ body {
   background: hsl(var(--accent));
 }
 
+/* Trade terminal: swap the Tailwind font-mono utility's font (used
+   everywhere for prices/P&L in this module) to the JetBrains Mono loaded in
+   app/trade/layout.tsx, scoped to just this module rather than site-wide. */
+.trade-terminal {
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
 /* Bloomberg Ticker Marquee Animation */
 @keyframes ticker {
   0% {

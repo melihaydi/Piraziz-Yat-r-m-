@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { Search, Star, TrendingUp, TrendingDown, PanelLeftClose } from "lucide-react"
+import { Search, Star, TrendingUp, TrendingDown, PanelLeftClose, ListFilter } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
 
 interface WatchlistProps {
@@ -45,7 +45,14 @@ export default function Watchlist({ onCollapse }: WatchlistProps) {
 
   return (
     <div className="flex flex-col h-full bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
-      <div className="p-3 border-b border-slate-800">
+      <div className="px-3 pt-3 pb-2 flex items-center gap-2">
+        <ListFilter className="h-3.5 w-3.5 text-cyan-400" />
+        <span className="text-xs font-black text-slate-300 uppercase tracking-wider">İzleme Listesi</span>
+        <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-2 py-0.5">
+          {list.length}
+        </span>
+      </div>
+      <div className="p-3 pt-1 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />

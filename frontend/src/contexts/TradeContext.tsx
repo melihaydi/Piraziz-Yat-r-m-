@@ -7,6 +7,12 @@ import { API_BASE_URL } from "@/lib/config"
 export type InstrumentType = "stock" | "viop"
 export type Broker = "info_yatirim" | "midas"
 
+// Kept in sync with backend/app/services/trade_service.py's
+// DEFAULT_STARTING_BALANCE - used to auto-provision a trade account on
+// first visit (see the bootstrap effect below) now that there's no broker-
+// selection step asking the user to choose a starting balance.
+const DEFAULT_STARTING_BALANCE = 325000.0
+
 export type PositionSide = "LONG" | "SHORT"
 
 export interface TradePosition {
@@ -82,8 +88,9 @@ interface TradeContextValue {
   createAccount: (broker: Broker, startingBalance: number) => Promise<OrderResult>
   changeBroker: (broker: Broker) => Promise<OrderResult>
   resetAccount: (broker: Broker, startingBalance: number) => Promise<OrderResult>
+  depositFunds: (amount: number) => Promise<OrderResult>
   placeOrder: (instrumentType: InstrumentType, symbol: string, side: "AL" | "SAT", lot: number) => Promise<OrderResult>
-  refreshAccount: () => Promise<void>
+  refreshAccount: () => Promise<TradeAccountData | null>
   refreshHistory: () => Promise<void>
 }
 
@@ -110,18 +117,20 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   // with a ref instead of state so the fetch effect doesn't need it as a dep).
   const hasAutoSelected = useRef(false)
 
-  const refreshAccount = useCallback(async () => {
+  const refreshAccount = useCallback(async (): Promise<TradeAccountData | null> => {
     try {
       const res = await authFetch("/trade/account")
       if (res.status === 404) {
         setAccount(null)
-        return
+        return null
       }
-      if (!res.ok) return
+      if (!res.ok) return null
       const data = await res.json()
       setAccount(data)
+      return data
     } catch (e) {
       console.error("Failed to load trade account:", e)
+      return null
     }
   }, [])
 
@@ -136,18 +145,44 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Initial load
+  const createAccount = useCallback(async (broker: Broker, startingBalance: number): Promise<OrderResult> => {
+    try {
+      const res = await authFetch("/trade/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker, starting_balance: startingBalance }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { ok: false, error: err.detail || "Hesap oluşturulamadı." }
+      }
+      const data = await res.json()
+      setAccount(data)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: "Sunucuya ulaşılamadı." }
+    }
+  }, [])
+
+  // Initial load. There's no broker-selection step anymore - if the user
+  // has no trade account yet, one is auto-provisioned silently instead of
+  // asking them to pick a broker/balance first (both brokers run the exact
+  // same simulation - see change_broker - so there was nothing functional
+  // riding on that choice besides a cosmetic label).
   useEffect(() => {
     let active = true
     const bootstrap = async () => {
-      await refreshAccount()
+      const existing = await refreshAccount()
+      if (active && !existing) {
+        await createAccount("midas", DEFAULT_STARTING_BALANCE)
+      }
       if (active) setLoading(false)
     }
     bootstrap()
     return () => {
       active = false
     }
-  }, [refreshAccount])
+  }, [refreshAccount, createAccount])
 
   // Poll BIST30 watchlist every 2s (matches the rest of the app's live-poll
   // rate) - the backend serves this from the already-connected TradingView
@@ -222,25 +257,6 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
-  const createAccount = useCallback(async (broker: Broker, startingBalance: number): Promise<OrderResult> => {
-    try {
-      const res = await authFetch("/trade/account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ broker, starting_balance: startingBalance }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        return { ok: false, error: err.detail || "Hesap oluşturulamadı." }
-      }
-      const data = await res.json()
-      setAccount(data)
-      return { ok: true }
-    } catch (e) {
-      return { ok: false, error: "Sunucuya ulaşılamadı." }
-    }
-  }, [])
-
   const changeBroker = useCallback(async (broker: Broker): Promise<OrderResult> => {
     try {
       const res = await authFetch("/trade/account/broker", {
@@ -280,6 +296,25 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshHistory])
 
+  const depositFunds = useCallback(async (amount: number): Promise<OrderResult> => {
+    try {
+      const res = await authFetch("/trade/account/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { ok: false, error: err.detail || "Bakiye eklenemedi." }
+      }
+      const data = await res.json()
+      setAccount(data)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: "Sunucuya ulaşılamadı." }
+    }
+  }, [])
+
   const placeOrder = useCallback(
     async (instrumentType: InstrumentType, symbol: string, side: "AL" | "SAT", lot: number): Promise<OrderResult> => {
       try {
@@ -316,6 +351,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     createAccount,
     changeBroker,
     resetAccount,
+    depositFunds,
     placeOrder,
     refreshAccount,
     refreshHistory,

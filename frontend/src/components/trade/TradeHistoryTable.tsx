@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { History, Info } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
 
 export default function TradeHistoryTable() {
@@ -9,8 +10,14 @@ export default function TradeHistoryTable() {
 
   return (
     <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-slate-800">
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+        <History className="h-3.5 w-3.5 text-cyan-400" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">İşlem Geçmişi</span>
+        {filtered.length > 0 && (
+          <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-2 py-0.5">
+            {filtered.length}
+          </span>
+        )}
       </div>
       <div className="overflow-x-auto max-h-72 overflow-y-auto">
         <table className="w-full text-xs text-left">
@@ -29,7 +36,12 @@ export default function TradeHistoryTable() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center text-slate-600 py-6">Henüz işlem yapılmadı.</td>
+                <td colSpan={8} className="py-10">
+                  <div className="flex flex-col items-center gap-2 text-slate-600">
+                    <Info className="h-5 w-5" />
+                    <span className="font-bold text-slate-500 text-[11px]">Henüz işlem yapılmadı</span>
+                  </div>
+                </td>
               </tr>
             ) : (
               filtered.map(item => {

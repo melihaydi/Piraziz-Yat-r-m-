@@ -4,7 +4,6 @@ import React, { useState } from "react"
 import Link from "next/link"
 import { Settings, BarChart3, Loader2, Maximize2, Minimize2, PanelLeftOpen, ArrowLeft } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
-import BrokerSelection from "@/components/trade/BrokerSelection"
 import InstrumentTabs from "@/components/trade/InstrumentTabs"
 import AccountSummaryBar from "@/components/trade/AccountSummaryBar"
 import Watchlist from "@/components/trade/Watchlist"
@@ -30,18 +29,13 @@ export default function TradePage() {
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  if (loading) {
+  // No broker-selection step anymore - TradeContext auto-provisions an
+  // account on first visit, so this covers both the initial load and that
+  // brief auto-provisioning window with the same spinner.
+  if (loading || !account) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-950">
         <Loader2 className="h-8 w-8 text-cyan-400 animate-spin" />
-      </div>
-    )
-  }
-
-  if (!account) {
-    return (
-      <div className="p-8 min-h-screen bg-slate-950">
-        <BrokerSelection />
       </div>
     )
   }

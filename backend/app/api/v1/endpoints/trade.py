@@ -20,6 +20,10 @@ class BrokerChange(BaseModel):
     broker: Literal["info_yatirim", "midas"]
 
 
+class DepositCreate(BaseModel):
+    amount: float
+
+
 class OrderCreate(BaseModel):
     instrument_type: Literal["stock", "viop"]
     symbol: str
@@ -74,6 +78,22 @@ def update_broker(
     account = _require_account(db, current_user)
     try:
         account = trade_service.change_broker(db, account, payload.broker)
+    except TradeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return trade_service.serialize_account(db, account)
+
+
+@router.post("/account/deposit")
+def deposit(
+    payload: DepositCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Adds funds to the simulated cash balance (paper trading - no real
+    money moves)."""
+    account = _require_account(db, current_user)
+    try:
+        account = trade_service.deposit_funds(db, account, payload.amount)
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return trade_service.serialize_account(db, account)

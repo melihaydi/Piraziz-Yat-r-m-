@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { ArrowUpCircle, ArrowDownCircle, Loader2, Info } from "lucide-react"
+import { ArrowUpCircle, ArrowDownCircle, Loader2, Info, Receipt } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
 
 // Kept in sync with backend/app/services/trade_service.py's COMMISSION_RATE -
@@ -48,8 +48,9 @@ export default function OrderPanel() {
 
   if (!instrument) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-950/60 border border-slate-800 rounded-xl text-xs text-slate-600">
-        Enstrüman seçin
+      <div className="h-full flex flex-col items-center justify-center gap-2 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-600">
+        <Receipt className="h-5 w-5" />
+        <span className="text-xs font-bold">Enstrüman seçin</span>
       </div>
     )
   }
