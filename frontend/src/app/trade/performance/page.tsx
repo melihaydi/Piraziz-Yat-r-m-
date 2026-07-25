@@ -21,9 +21,9 @@ interface PerformanceData {
 
 function MetricCard({ label, value, colorClass }: { label: string; value: string; colorClass?: string }) {
   return (
-    <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+    <div className="bg-[#16171E] border border-slate-800 rounded-xl p-4">
       <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{label}</div>
-      <div className={`text-lg font-mono font-black mt-1 ${colorClass || "text-slate-100"}`}>{value}</div>
+      <div className={`text-lg font-mono font-black mt-1 ${colorClass || "text-white"}`}>{value}</div>
     </div>
   )
 }
@@ -68,10 +68,10 @@ export default function TradePerformancePage() {
         <Link href="/trade" className="text-slate-500 hover:text-blue-300 transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <h1 className="text-xl font-black tracking-tight text-slate-100">Performans</h1>
+        <h1 className="text-xl font-black tracking-tight text-white">Performans</h1>
       </div>
 
-      <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
+      <div className="bg-[#16171E] border border-slate-800 rounded-xl p-4">
         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Equity Curve</div>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">

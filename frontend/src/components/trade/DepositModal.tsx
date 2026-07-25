@@ -31,10 +31,10 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0E0E13]/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-[#1c1d26] p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-black text-slate-100 flex items-center gap-2">
+          <span className="text-sm font-black text-white flex items-center gap-2">
             <Wallet className="h-4 w-4 text-blue-400" />
             Bakiye Ekle
           </span>
@@ -54,7 +54,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
             <input
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              className="w-full h-11 pl-7 pr-3 rounded-lg bg-slate-950 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-blue-500/50"
+              className="w-full h-11 pl-7 pr-3 rounded-lg bg-[#0E0E13] border border-slate-800 text-sm font-mono font-bold text-white focus:outline-none focus:border-blue-500/50"
             />
           </div>
         </div>

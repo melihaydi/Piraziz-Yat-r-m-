@@ -21,12 +21,12 @@ export default function PositionsTable() {
   }
 
   return (
-    <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
+    <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
         <Layers className="h-3.5 w-3.5 text-blue-400" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Açık Pozisyonlar</span>
         {positions.length > 0 && (
-          <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-2 py-0.5">
+          <span className="ml-auto text-[10px] font-bold text-slate-500 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
             {positions.length}
           </span>
         )}
@@ -59,7 +59,7 @@ export default function PositionsTable() {
               </tr>
             ) : (
               positions.map(pos => (
-                <tr key={pos.id} className="border-b border-slate-900 h-11 hover:bg-slate-900/40">
+                <tr key={pos.id} className="border-b border-slate-900 h-11 hover:bg-[#1c1d26]/40">
                   <td className="px-4 font-bold text-slate-200">{pos.symbol}</td>
                   {activeTab === "viop" && (
                     <td className="px-4">

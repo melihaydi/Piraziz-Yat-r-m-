@@ -34,7 +34,7 @@ export default function TradePage() {
   // brief auto-provisioning window with the same spinner.
   if (loading || !account) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950">
+      <div className="flex items-center justify-center min-h-screen bg-[#0E0E13]">
         <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
       </div>
     )
@@ -56,10 +56,10 @@ export default function TradePage() {
   const chartColSpan = watchlistCollapsed ? "xl:col-span-9" : "xl:col-span-6"
 
   return (
-    <div className={isFullscreen ? "fixed inset-0 z-50 bg-slate-950 overflow-y-auto" : "min-h-screen bg-slate-950"}>
+    <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#0E0E13] overflow-y-auto" : "min-h-screen bg-[#0E0E13]"}>
       {/* Terminal chrome - replaces the app's global Header for this route,
        * so it carries its own brand mark + a way back to the main app. */}
-      <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 shadow-[0_1px_0_rgba(96,165,250,0.08)]">
+      <div className="sticky top-0 z-20 bg-gradient-to-b from-[#16171E] to-[#0E0E13] border-b border-slate-800/80 shadow-[0_1px_0_rgba(96,165,250,0.08)]">
         <div className="flex items-center justify-between flex-wrap gap-3 px-3 sm:px-6 py-3">
           <div className="flex items-center gap-4">
             {!isFullscreen && (
@@ -72,7 +72,7 @@ export default function TradePage() {
                 <span className="text-[11px] font-bold hidden sm:inline">Piraziz</span>
               </Link>
             )}
-            <h1 className="text-xl font-black tracking-tight text-slate-100 flex items-center gap-2">
+            <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
               Trade
             </h1>
@@ -117,7 +117,7 @@ export default function TradePage() {
               <button
                 onClick={() => setWatchlistCollapsed(false)}
                 title="Listeyi aç"
-                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-slate-950/60 text-slate-500 hover:text-blue-300 hover:border-blue-500/40 transition-colors cursor-pointer"
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-[#16171E] text-slate-500 hover:text-blue-300 hover:border-blue-500/40 transition-colors cursor-pointer"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>

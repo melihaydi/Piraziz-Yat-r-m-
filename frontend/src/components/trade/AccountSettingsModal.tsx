@@ -38,16 +38,16 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0E0E13]/80 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-[#1c1d26] p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-black text-slate-100">Trade Hesap Ayarları</span>
+          <span className="text-sm font-black text-white">Trade Hesap Ayarları</span>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 cursor-pointer">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex gap-1 bg-slate-950 border border-slate-800 rounded-lg p-1">
+        <div className="flex gap-1 bg-[#0E0E13] border border-slate-800 rounded-lg p-1">
           <button
             onClick={() => setMode("broker")}
             className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "broker" ? "bg-blue-500 text-slate-950" : "text-slate-400"}`}
@@ -82,7 +82,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
             <input
               value={resetBalance}
               onChange={e => setResetBalance(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-slate-950 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-blue-500/50"
+              className="w-full h-10 px-3 rounded-lg bg-[#0E0E13] border border-slate-800 text-sm font-mono font-bold text-white focus:outline-none focus:border-blue-500/50"
             />
             <p className="text-[10px] text-rose-400/80">
               Bu işlem tüm açık pozisyonlarınızı ve işlem geçmişinizi kalıcı olarak siler.

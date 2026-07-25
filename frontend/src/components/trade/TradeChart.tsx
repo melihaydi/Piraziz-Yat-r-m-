@@ -105,7 +105,7 @@ export default function TradeChart({ symbol, displayLabel }: TradeChartProps) {
 
   if (failed) {
     return (
-      <div className="flex flex-col items-center justify-center text-center py-16 space-y-3 h-full bg-slate-950">
+      <div className="flex flex-col items-center justify-center text-center py-16 space-y-3 h-full bg-[#0E0E13]">
         <p className="text-xs text-slate-500 leading-relaxed px-2">
           Grafik şu anda yüklenemedi.
         </p>
@@ -122,9 +122,9 @@ export default function TradeChart({ symbol, displayLabel }: TradeChartProps) {
   }
 
   return (
-    <div className="relative h-full w-full bg-slate-950">
+    <div className="relative h-full w-full bg-[#0E0E13]">
       {displayLabel && (
-        <div className="absolute top-2 left-2 z-10 text-[10px] font-bold text-slate-400 bg-slate-900/80 px-2 py-1 rounded pointer-events-none">
+        <div className="absolute top-2 left-2 z-10 text-[10px] font-bold text-slate-400 bg-[#1c1d26]/80 px-2 py-1 rounded pointer-events-none">
           {displayLabel}
         </div>
       )}

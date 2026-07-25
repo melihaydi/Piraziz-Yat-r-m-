@@ -18,17 +18,17 @@ function StatBlock({
   colorClass?: string
   iconColorClass?: string
 }) {
-  // Icon sits inline with the label (not in its own boxed square) so the
-  // whole block reads as one compact column - a fixed icon box ate ~40px
-  // before any text got a chance to render, which on a 2-3 column mobile
-  // grid squeezed labels like "Toplam Portföy" down to an unreadable ~18px.
+  // Each stat is its own small rectangular card (bg-[#16171E]) rather than
+  // plain inline text floating on the bar's background - reads as distinct
+  // "tiles" instead of one crowded row, and gives the currency figure a
+  // little breathing room so the ₺ glyph doesn't crowd the first digit.
   return (
-    <div className="min-w-0 flex flex-col gap-0.5">
-      <div className="flex items-center gap-1 min-w-0">
+    <div className="min-w-0 flex flex-col gap-1 rounded-lg bg-[#16171E] border border-white/5 px-2.5 py-2">
+      <div className="flex items-center gap-1.5 min-w-0">
         <Icon className={`h-3 w-3 shrink-0 ${iconColorClass || "text-slate-500"}`} />
-        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{label}</span>
+        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate">{label}</span>
       </div>
-      <span className={`text-sm font-mono font-black leading-tight truncate ${colorClass || "text-slate-100"}`}>{value}</span>
+      <span className={`text-sm font-bold leading-tight truncate ${colorClass || "text-white"}`}>{value}</span>
     </div>
   )
 }
@@ -46,8 +46,8 @@ export default function AccountSummaryBar() {
 
   return (
     <>
-      <div className="flex items-center gap-3 sm:gap-4 bg-gradient-to-b from-slate-900/80 to-slate-950/60 border border-slate-800 rounded-xl px-3 sm:px-5 py-3 sm:py-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-3 sm:gap-x-5 gap-y-3 flex-1 min-w-0">
+      <div className="flex items-center gap-2 bg-[#0E0E13] border border-white/5 rounded-xl p-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 flex-1 min-w-0">
           <StatBlock icon={Wallet} label="Toplam Portföy" value={`₺${fmt(account.total_portfolio_value)}`} iconColorClass="text-blue-300" />
           <StatBlock icon={PieChart} label="Nakit" value={`₺${fmt(account.cash_balance)}`} iconColorClass="text-slate-400" />
           <StatBlock icon={ShieldHalf} label="Kullanılan Teminat" value={`₺${fmt(account.used_margin)}`} iconColorClass="text-amber-400" />
@@ -76,7 +76,7 @@ export default function AccountSummaryBar() {
 
         <button
           onClick={() => setShowDeposit(true)}
-          className="shrink-0 inline-flex items-center gap-1.5 h-10 px-3.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20 text-xs font-bold transition-colors cursor-pointer"
+          className="shrink-0 inline-flex items-center gap-1.5 h-full self-stretch px-3.5 rounded-lg bg-[#16171E] border border-blue-500/30 text-blue-300 hover:bg-[#1c1d26] text-xs font-bold transition-colors cursor-pointer"
         >
           <PlusCircle className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Bakiye Ekle</span>

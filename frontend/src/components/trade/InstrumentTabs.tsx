@@ -12,7 +12,7 @@ export default function InstrumentTabs() {
   ]
 
   return (
-    <div className="inline-flex items-center gap-1 bg-slate-900/80 border border-slate-800 rounded-lg p-1">
+    <div className="inline-flex items-center gap-1 bg-[#1c1d26]/80 border border-slate-800 rounded-lg p-1">
       {tabs.map(tab => (
         <button
           key={tab.id}

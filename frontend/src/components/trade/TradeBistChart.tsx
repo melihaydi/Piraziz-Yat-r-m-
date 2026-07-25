@@ -78,14 +78,14 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
   const absoluteChange = price !== undefined && changePercent !== undefined ? price - price / (1 + changePercent / 100) : undefined
 
   return (
-    <div className="relative h-full w-full bg-slate-950 overflow-y-auto">
+    <div className="relative h-full w-full bg-[#0E0E13] overflow-y-auto">
       {(name || price !== undefined) && (
         <div className="flex items-baseline gap-2.5 px-3 pt-3 pb-1">
-          <span className="text-sm font-black text-slate-100">{displayLabel || symbol}</span>
+          <span className="text-sm font-black text-white">{displayLabel || symbol}</span>
           {name && <span className="text-[11px] text-slate-500 truncate max-w-[160px]">{name}</span>}
           {price !== undefined && (
             <span className="ml-auto flex items-baseline gap-1.5">
-              <span className="text-base font-mono font-black text-slate-100">{price.toFixed(2)}</span>
+              <span className="text-base font-mono font-black text-white">{price.toFixed(2)}</span>
               {changePercent !== undefined && (
                 <span className={`text-xs font-mono font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
                   {isUp ? "+" : ""}{absoluteChange !== undefined ? absoluteChange.toFixed(2) : ""} ({isUp ? "+" : ""}{changePercent.toFixed(2)}%)

@@ -48,7 +48,7 @@ export default function OrderPanel() {
 
   if (!instrument) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2 bg-slate-950/60 border border-slate-800 rounded-xl text-slate-600">
+      <div className="h-full flex flex-col items-center justify-center gap-2 bg-[#16171E] border border-slate-800 rounded-xl text-slate-600">
         <Receipt className="h-5 w-5" />
         <span className="text-xs font-bold">Enstrüman seçin</span>
       </div>
@@ -67,31 +67,31 @@ export default function OrderPanel() {
     (activeTab === "stock" && (!openPosition || openPosition.position_side !== "LONG"))
 
   return (
-    <div className="flex flex-col h-full bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
+    <div className="flex flex-col h-full bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
       {/* Selected instrument header */}
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-black text-slate-100">{instrument.symbol}</div>
+            <div className="text-sm font-black text-white">{instrument.symbol}</div>
             <div className="text-[10px] text-slate-500 truncate max-w-[160px]">{instrument.name}</div>
           </div>
           <div className="text-right">
-            <div className="text-lg font-mono font-black text-slate-100">{lastPrice.toFixed(2)}</div>
+            <div className="text-lg font-mono font-black text-white">{lastPrice.toFixed(2)}</div>
             <div className={`text-[10px] font-mono font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
               {isUp ? "+" : ""}{instrument.change_percent.toFixed(2)}%
             </div>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-          <div className="bg-slate-900/80 rounded-lg py-1.5">
+          <div className="bg-[#1c1d26]/80 rounded-lg py-1.5">
             <div className="text-[9px] text-slate-500 uppercase">Alış</div>
             <div className="text-xs font-mono font-bold text-emerald-400">{instrument.bid.toFixed(2)}</div>
           </div>
-          <div className="bg-slate-900/80 rounded-lg py-1.5">
+          <div className="bg-[#1c1d26]/80 rounded-lg py-1.5">
             <div className="text-[9px] text-slate-500 uppercase">Satış</div>
             <div className="text-xs font-mono font-bold text-rose-400">{instrument.ask.toFixed(2)}</div>
           </div>
-          <div className="bg-slate-900/80 rounded-lg py-1.5">
+          <div className="bg-[#1c1d26]/80 rounded-lg py-1.5">
             <div className="text-[9px] text-slate-500 uppercase">Spread</div>
             <div className="text-xs font-mono font-bold text-slate-300">{spread.toFixed(2)}</div>
           </div>
@@ -133,14 +133,14 @@ export default function OrderPanel() {
             min={1}
             value={lot}
             onChange={e => setLot(e.target.value)}
-            className="w-full h-9 mt-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-blue-500/50"
+            className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-mono font-bold text-white focus:outline-none focus:border-blue-500/50"
           />
         </div>
 
         {/* Order breakdown - given its own distinct card treatment rather
          * than a flat inline list, so lot/cost/total/commission read as a
          * clear "order ticket" block. */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 divide-y divide-slate-800/80 overflow-hidden">
+        <div className="rounded-xl border border-slate-800 bg-[#1c1d26]/50 divide-y divide-slate-800/80 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 text-[11px]">
             <span className="text-slate-500">Fiyat</span>
             <span className="font-mono font-semibold text-slate-200">{lastPrice.toFixed(2)} ₺</span>
@@ -153,7 +153,7 @@ export default function OrderPanel() {
             <span className="text-slate-500">Komisyon (tahmini)</span>
             <span className="font-mono font-semibold text-slate-400">{commission.toFixed(2)} ₺</span>
           </div>
-          <div className="flex items-center justify-between px-3 py-2.5 bg-slate-900/80">
+          <div className="flex items-center justify-between px-3 py-2.5 bg-[#1c1d26]/80">
             <span className="text-[11px] font-bold text-slate-300">Tahmini Toplam</span>
             <span className="font-mono font-black text-blue-300 text-sm">{total.toFixed(2)} ₺</span>
           </div>
