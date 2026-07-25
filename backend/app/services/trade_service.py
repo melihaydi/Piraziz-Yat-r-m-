@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.trade import TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot
+from app.models.trade import TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot, TradePendingOrder
 from app.services.market_data import market_data_service
 
 logger = logging.getLogger(__name__)
@@ -311,6 +311,8 @@ def _ensure_daily_snapshot(db: Session, account: TradeAccount, current_equity: f
 
 
 def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
+    _check_pending_orders(db, account)
+
     positions = db.query(TradePosition).filter(TradePosition.account_id == account.id).all()
     prices = _fetch_prices_concurrently(positions)
     pos_dicts = [_position_dict(p, price) for p, price in zip(positions, prices)]
@@ -343,6 +345,8 @@ def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
         "broker": account.broker,
         "starting_balance": round(account.starting_balance, 2),
         "cash_balance": round(account.cash_balance, 2),
+        "locked_cash": round(account.locked_cash, 2),
+        "available_cash": round(account.cash_balance - account.locked_cash, 2),
         "stock_position_value": round(stock_value, 2),
         "viop_position_value": round(viop_value, 2),
         "used_margin": round(used_margin, 2),
@@ -356,20 +360,17 @@ def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
     }
 
 
-def place_order(db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float) -> Dict[str, Any]:
-    symbol = symbol.upper()
-
-    if instrument_type == "stock" and symbol not in BIST30_TICKERS:
-        raise TradeError("Trade modülü şu an sadece BIST30 hisselerini destekliyor.")
-    if instrument_type == "viop" and symbol not in VIOP_BY_CODE:
-        raise TradeError("Geçersiz VİOP kontratı.")
-    if lot is None or lot <= 0:
-        raise TradeError("Lot miktarı sıfırdan büyük olmalı.")
-
-    price = get_live_price(instrument_type, symbol)
-    if price <= 0:
-        raise TradeError("Anlık fiyat alınamadı, lütfen birkaç saniye sonra tekrar deneyin.")
-
+def _execute_trade(
+    db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float, price: float
+) -> tuple[Optional[float], float, float]:
+    """Core buy/sell mutation shared by market orders (place_order) and
+    limit-order fills (_fill_pending_order) - identical position/cash
+    bookkeeping either way, the only difference is where `price` comes from
+    (live quote vs. a resting order's limit_price). Returns
+    (realized_pnl, total, commission) for the TradeOrder history row. Raises
+    TradeError on insufficient balance/position; callers that can't surface
+    a synchronous error (limit fills happening on a background poll) should
+    catch it and cancel the order instead of crashing the poll."""
     notional = price * lot
     commission = round(notional * COMMISSION_RATE, 2)
 
@@ -454,6 +455,158 @@ def place_order(db: Session, account: TradeAccount, instrument_type: str, symbol
             raise TradeError("Yetersiz pozisyon - satılacak lot mevcut pozisyondan fazla.")
     else:
         raise TradeError("Geçersiz işlem yönü.")
+
+    return realized_pnl, total, commission
+
+
+def _create_pending_order(
+    db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float, limit_price: float
+) -> Dict[str, Any]:
+    reserved = 0.0
+    if side == "AL":
+        notional = limit_price * lot
+        commission_est = round(notional * COMMISSION_RATE, 2)
+        reserved = round(notional + commission_est, 2)
+        available = account.cash_balance - account.locked_cash
+        if reserved > available:
+            raise TradeError("Yetersiz bakiye.")
+        account.locked_cash += reserved
+    elif side == "SAT":
+        position = db.query(TradePosition).filter(
+            TradePosition.account_id == account.id,
+            TradePosition.instrument_type == instrument_type,
+            TradePosition.symbol == symbol,
+        ).first()
+        has_long = bool(position and position.lot > 0)
+        # Stocks are long-only, so a limit SAT needs an existing covering
+        # position up front (re-checked again at fill time in case it
+        # changes in the meantime). VİOP can open/add to a short with no
+        # reservation, mirroring place_order's market-order behavior.
+        if instrument_type == "stock" and not (has_long and position.lot >= lot - 1e-9):
+            raise TradeError("Yetersiz pozisyon - satılacak lot mevcut pozisyondan fazla.")
+    else:
+        raise TradeError("Geçersiz işlem yönü.")
+
+    pending = TradePendingOrder(
+        account_id=account.id, instrument_type=instrument_type, symbol=symbol,
+        side=side, lot=lot, limit_price=limit_price, reserved_cash=reserved, status="PENDING",
+    )
+    db.add(pending)
+    db.commit()
+    db.refresh(account)
+    return serialize_account(db, account)
+
+
+def _fill_pending_order(db: Session, account: TradeAccount, order: TradePendingOrder) -> None:
+    if order.side == "AL":
+        account.locked_cash = max(0.0, account.locked_cash - order.reserved_cash)
+    try:
+        realized_pnl, total, commission = _execute_trade(
+            db, account, order.instrument_type, order.symbol, order.side, order.lot, order.limit_price
+        )
+    except TradeError:
+        # Underlying state no longer supports this fill (balance/position
+        # changed via another order since this one was placed) - cancel
+        # rather than retry forever or raise from a background poll.
+        order.status = "CANCELLED"
+        db.commit()
+        return
+
+    order_row = TradeOrder(
+        account_id=account.id, instrument_type=order.instrument_type, symbol=order.symbol,
+        side=order.side, lot=order.lot, price=order.limit_price, commission=commission,
+        total=round(total, 2), realized_pnl=realized_pnl,
+    )
+    db.add(order_row)
+    order.status = "FILLED"
+    order.filled_at = datetime.utcnow()
+    db.commit()
+
+
+def _check_pending_orders(db: Session, account: TradeAccount) -> None:
+    """Checked opportunistically every time the account is polled (see
+    serialize_account) - a buy limit fills once the live price drops to or
+    below limit_price, a sell limit fills once it rises to or above it."""
+    pending = db.query(TradePendingOrder).filter(
+        TradePendingOrder.account_id == account.id,
+        TradePendingOrder.status == "PENDING",
+    ).all()
+    for order in pending:
+        price = get_live_price(order.instrument_type, order.symbol)
+        if price <= 0:
+            continue
+        should_fill = (
+            (order.side == "AL" and price <= order.limit_price) or
+            (order.side == "SAT" and price >= order.limit_price)
+        )
+        if should_fill:
+            _fill_pending_order(db, account, order)
+
+
+def _pending_order_dict(o: TradePendingOrder) -> Dict[str, Any]:
+    return {
+        "id": o.id,
+        "instrument_type": o.instrument_type,
+        "symbol": o.symbol,
+        "side": o.side,
+        "lot": o.lot,
+        "limit_price": round(o.limit_price, 4),
+        "created_at": o.created_at.isoformat() if o.created_at else None,
+    }
+
+
+def get_pending_orders(
+    db: Session, account: TradeAccount, instrument_type: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    q = db.query(TradePendingOrder).filter(
+        TradePendingOrder.account_id == account.id,
+        TradePendingOrder.status == "PENDING",
+    )
+    if instrument_type:
+        q = q.filter(TradePendingOrder.instrument_type == instrument_type)
+    orders = q.order_by(TradePendingOrder.created_at.desc()).all()
+    return [_pending_order_dict(o) for o in orders]
+
+
+def cancel_pending_order(db: Session, account: TradeAccount, order_id: int) -> Dict[str, Any]:
+    order = db.query(TradePendingOrder).filter(
+        TradePendingOrder.id == order_id,
+        TradePendingOrder.account_id == account.id,
+        TradePendingOrder.status == "PENDING",
+    ).first()
+    if not order:
+        raise TradeError("Bekleyen emir bulunamadı.")
+    if order.side == "AL":
+        account.locked_cash = max(0.0, account.locked_cash - order.reserved_cash)
+    order.status = "CANCELLED"
+    db.commit()
+    db.refresh(account)
+    return serialize_account(db, account)
+
+
+def place_order(
+    db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float,
+    order_type: str = "MARKET", limit_price: Optional[float] = None,
+) -> Dict[str, Any]:
+    symbol = symbol.upper()
+
+    if instrument_type == "stock" and symbol not in BIST30_TICKERS:
+        raise TradeError("Trade modülü şu an sadece BIST30 hisselerini destekliyor.")
+    if instrument_type == "viop" and symbol not in VIOP_BY_CODE:
+        raise TradeError("Geçersiz VİOP kontratı.")
+    if lot is None or lot <= 0:
+        raise TradeError("Lot miktarı sıfırdan büyük olmalı.")
+
+    if order_type == "LIMIT":
+        if limit_price is None or limit_price <= 0:
+            raise TradeError("Limit fiyatı sıfırdan büyük olmalı.")
+        return _create_pending_order(db, account, instrument_type, symbol, side, lot, limit_price)
+
+    price = get_live_price(instrument_type, symbol)
+    if price <= 0:
+        raise TradeError("Anlık fiyat alınamadı, lütfen birkaç saniye sonra tekrar deneyin.")
+
+    realized_pnl, total, commission = _execute_trade(db, account, instrument_type, symbol, side, lot, price)
 
     order = TradeOrder(
         account_id=account.id, instrument_type=instrument_type, symbol=symbol,

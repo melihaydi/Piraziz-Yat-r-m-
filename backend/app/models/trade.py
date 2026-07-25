@@ -17,6 +17,10 @@ class TradeAccount(Base):
     broker = Column(String(50), nullable=False)  # "info_yatirim" | "midas"
     starting_balance = Column(Float, nullable=False, default=325000.0)
     cash_balance = Column(Float, nullable=False, default=325000.0)
+    # Cash reserved for resting LIMIT buy orders (see TradePendingOrder) - not
+    # yet spent, but not free to use for a second order either. Released back
+    # when the order fills or is cancelled.
+    locked_cash = Column(Float, nullable=False, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -24,6 +28,7 @@ class TradeAccount(Base):
     positions = relationship("TradePosition", backref="account", cascade="all, delete-orphan")
     orders = relationship("TradeOrder", backref="account", cascade="all, delete-orphan")
     snapshots = relationship("TradeDailySnapshot", backref="account", cascade="all, delete-orphan")
+    pending_orders = relationship("TradePendingOrder", backref="account", cascade="all, delete-orphan")
 
 
 class TradePosition(Base):
@@ -56,6 +61,35 @@ class TradeOrder(Base):
     # sell, using the position's average cost *before* this sale reduced it.
     realized_pnl = Column(Float, nullable=True)
     executed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TradePendingOrder(Base):
+    """A resting LIMIT order. Unlike TradeOrder (always an instant fill at
+    the live quote), this sits at status=PENDING until the live price
+    crosses limit_price. There's no dedicated matching engine or cron job -
+    the frontend already polls /trade/account every ~3s for positions/P&L,
+    so pending-order fills are checked opportunistically on that same poll
+    (see trade_service._check_pending_orders), which is precise enough for a
+    paper-trading simulation.
+
+    reserved_cash is only meaningful for AL (buy) orders: the notional +
+    estimated commission at limit_price is locked out of TradeAccount.cash_balance
+    at placement time (via locked_cash) so several pending buys can't
+    collectively overdraw the account, then released on fill/cancel. SAT
+    orders reserve nothing - a stock SAT is only accepted if the position
+    already covers the lot, re-validated again at fill time.
+    """
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("trade_account.id", ondelete="CASCADE"), nullable=False, index=True)
+    instrument_type = Column(String(10), nullable=False)  # "stock" | "viop"
+    symbol = Column(String(30), nullable=False)
+    side = Column(String(4), nullable=False)  # "AL" | "SAT"
+    lot = Column(Float, nullable=False)
+    limit_price = Column(Float, nullable=False)
+    reserved_cash = Column(Float, nullable=False, default=0.0)
+    status = Column(String(10), nullable=False, default="PENDING")  # PENDING | FILLED | CANCELLED
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    filled_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class TradeDailySnapshot(Base):

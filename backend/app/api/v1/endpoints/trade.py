@@ -29,6 +29,8 @@ class OrderCreate(BaseModel):
     symbol: str
     side: Literal["AL", "SAT"]
     lot: float
+    order_type: Literal["MARKET", "LIMIT"] = "MARKET"
+    limit_price: Optional[float] = None
 
 
 def _require_account(db: Session, current_user: User):
@@ -144,8 +146,34 @@ def place_order(
     account = _require_account(db, current_user)
     try:
         return trade_service.place_order(
-            db, account, payload.instrument_type, payload.symbol, payload.side, payload.lot
+            db, account, payload.instrument_type, payload.symbol, payload.side, payload.lot,
+            payload.order_type, payload.limit_price,
         )
+    except TradeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/pending-orders")
+def get_pending_orders(
+    instrument_type: Optional[Literal["stock", "viop"]] = None,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Resting LIMIT orders (order book) - the frontend polls this to render
+    the order-book panel and the price line on the chart."""
+    account = _require_account(db, current_user)
+    return trade_service.get_pending_orders(db, account, instrument_type)
+
+
+@router.delete("/pending-orders/{order_id}")
+def cancel_pending_order(
+    order_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    account = _require_account(db, current_user)
+    try:
+        return trade_service.cancel_pending_order(db, account, order_id)
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

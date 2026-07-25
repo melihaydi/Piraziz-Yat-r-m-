@@ -10,6 +10,7 @@ import {
   LineSeries,
   HistogramSeries,
   PriceScaleMode,
+  IPriceLine,
 } from "lightweight-charts"
 import { Eye, EyeOff, Scan } from "lucide-react"
 
@@ -32,8 +33,17 @@ interface ChartDataPoint {
   bb_lower?: number
 }
 
+/** A resting LIMIT order to draw as a horizontal price line on the chart
+ * (see Trade module's order book - OrderBookPanel.tsx). */
+export interface PendingOrderLine {
+  id: number
+  side: "AL" | "SAT"
+  limitPrice: number
+}
+
 interface TradingViewChartProps {
   data: ChartDataPoint[]
+  pendingOrders?: PendingOrderLine[]
 }
 
 type ScaleMode = "linear" | "log" | "percent"
@@ -58,12 +68,14 @@ function toLineData(data: ChartDataPoint[], key: keyof ChartDataPoint) {
     .filter((d): d is { time: number; value: number } => d.value !== undefined && d.value !== null)
 }
 
-export default function TradingViewChart({ data }: TradingViewChartProps) {
+export default function TradingViewChart({ data, pendingOrders }: TradingViewChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const rsiContainerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
 
   const mainChartRef = useRef<IChartApi | null>(null)
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null)
+  const priceLinesRef = useRef<IPriceLine[]>([])
   const smaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const emaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
@@ -118,6 +130,7 @@ export default function TradingViewChart({ data }: TradingViewChartProps) {
     )
 
     mainChartRef.current = mainChart
+    candleSeriesRef.current = candleSeries
 
     const resizeObserver = new ResizeObserver(entries => {
       if (entries.length === 0) return
@@ -134,12 +147,41 @@ export default function TradingViewChart({ data }: TradingViewChartProps) {
         mainChart.remove()
       } catch (e) {}
       mainChartRef.current = null
+      candleSeriesRef.current = null
+      priceLinesRef.current = []
       smaSeriesRef.current = null
       emaSeriesRef.current = null
       vwapSeriesRef.current = null
       bbSeriesRef.current = null
     }
   }, [data])
+
+  // Pending LIMIT orders drawn as horizontal price lines on the candle
+  // series - a buy limit in emerald, a sell limit in rose, matching the
+  // AL/SAT color convention used everywhere else in the order panel/history.
+  useEffect(() => {
+    const series = candleSeriesRef.current
+    if (!series) return
+    priceLinesRef.current.forEach(line => {
+      try { series.removePriceLine(line) } catch (e) {}
+    })
+    priceLinesRef.current = (pendingOrders || []).map(order =>
+      series.createPriceLine({
+        price: order.limitPrice,
+        color: order.side === "AL" ? "#10b981" : "#f43f5e",
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: order.side === "AL" ? "AL LİMİT" : "SAT LİMİT",
+      })
+    )
+    return () => {
+      priceLinesRef.current.forEach(line => {
+        try { series.removePriceLine(line) } catch (e) {}
+      })
+      priceLinesRef.current = []
+    }
+  }, [pendingOrders, data])
 
   // Each overlay indicator adds/removes just its own series against the
   // already-created main chart instead of forcing a full chart rebuild.

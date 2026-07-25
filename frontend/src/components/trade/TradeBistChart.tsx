@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
-import TradingViewChart from "@/components/TradingViewChart"
+import TradingViewChart, { PendingOrderLine } from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
 
 // TradingView's free "Advanced Chart" embed widget (used for gold/FX/crypto
@@ -36,11 +36,13 @@ interface TradeBistChartProps {
   name?: string
   price?: number
   changePercent?: number
+  /** Resting LIMIT orders for this exact instrument, drawn as price lines. */
+  pendingOrders?: PendingOrderLine[]
 }
 
 const activeTimeframe = (value: string) => TIMEFRAMES.find(tf => tf.value === value)?.label || value
 
-export default function TradeBistChart({ symbol, displayLabel, name, price, changePercent }: TradeBistChartProps) {
+export default function TradeBistChart({ symbol, displayLabel, name, price, changePercent, pendingOrders }: TradeBistChartProps) {
   const [interval, setInterval_] = useState("1h")
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +127,7 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
         </div>
       ) : (
         <div className="p-3">
-          <TradingViewChart data={data} />
+          <TradingViewChart data={data} pendingOrders={pendingOrders} />
         </div>
       )}
     </div>

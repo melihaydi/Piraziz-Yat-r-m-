@@ -11,6 +11,7 @@ import TradeChart from "@/components/trade/TradeChart"
 import TradeBistChart from "@/components/trade/TradeBistChart"
 import OrderPanel from "@/components/trade/OrderPanel"
 import PositionsTable from "@/components/trade/PositionsTable"
+import OrderBookPanel from "@/components/trade/OrderBookPanel"
 import TradeHistoryTable from "@/components/trade/TradeHistoryTable"
 import AccountSettingsModal from "@/components/trade/AccountSettingsModal"
 
@@ -24,7 +25,7 @@ import AccountSettingsModal from "@/components/trade/AccountSettingsModal"
 const TV_WIDGET_CAPABLE = new Set(["XAUUSD", "XAUTRYG", "USDTRY", "EURTRY"])
 
 export default function TradePage() {
-  const { loading, account, activeTab, watchlist, viopWatchlist, selectedSymbol } = useTrade()
+  const { loading, account, activeTab, watchlist, viopWatchlist, selectedSymbol, pendingOrders } = useTrade()
   const [showSettings, setShowSettings] = useState(false)
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -47,6 +48,13 @@ export default function TradePage() {
       : selectedSymbol
   const chartLabel = activeTab === "viop" ? selectedSymbol : undefined
   const isTvWidgetCapable = TV_WIDGET_CAPABLE.has(chartSymbol.toUpperCase())
+  // Only the currently-charted instrument's own pending limit orders are
+  // drawn - a VİOP contract's limit price is expressed in the same terms as
+  // its underlying's price series (see trade_service's shared-quote
+  // simplification), so plotting it on the underlying chart is correct.
+  const chartPendingOrders = pendingOrders
+    .filter(o => o.instrument_type === activeTab && o.symbol === selectedSymbol)
+    .map(o => ({ id: o.id, side: o.side, limitPrice: o.limit_price }))
 
   // Fullscreen here is a CSS-only overlay (fixed inset-0) rather than the
   // browser Fullscreen API - instant and permission-free inside the Electron
@@ -137,6 +145,7 @@ export default function TradePage() {
                 name={selectedInstrument?.name}
                 price={selectedInstrument?.price}
                 changePercent={selectedInstrument?.change_percent}
+                pendingOrders={chartPendingOrders}
               />
             )}
           </div>
@@ -148,6 +157,7 @@ export default function TradePage() {
         {!isFullscreen && (
           <>
             <PositionsTable />
+            <OrderBookPanel />
             <TradeHistoryTable />
           </>
         )}

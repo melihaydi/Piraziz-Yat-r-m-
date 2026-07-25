@@ -24,9 +24,9 @@ export default function PositionsTable() {
     <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
         <Layers className="h-3.5 w-3.5 text-white" />
-        <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Açık Pozisyonlar</span>
+        <span className="text-xs font-black text-white uppercase tracking-wider">Açık Pozisyonlar</span>
         {positions.length > 0 && (
-          <span className="ml-auto text-[10px] font-bold text-slate-500 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
+          <span className="ml-auto text-[10px] font-bold text-slate-300 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
             {positions.length}
           </span>
         )}
@@ -34,7 +34,7 @@ export default function PositionsTable() {
       <div className="overflow-x-auto">
         <table className="w-full text-xs text-left">
           <thead>
-            <tr className="text-slate-500 font-bold border-b border-slate-800 h-8">
+            <tr className="text-slate-300 font-bold border-b border-slate-800 h-8">
               <th className="px-4">Hisse</th>
               {activeTab === "viop" && <th className="px-4">Yön</th>}
               <th className="px-4 text-right">Lot</th>
@@ -50,10 +50,10 @@ export default function PositionsTable() {
             {positions.length === 0 ? (
               <tr>
                 <td colSpan={activeTab === "viop" ? 9 : 8} className="py-10">
-                  <div className="flex flex-col items-center gap-2 text-slate-600">
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
                     <Info className="h-5 w-5" />
-                    <span className="font-bold text-slate-500 text-[11px]">Yatırım pozisyonun bulunmuyor</span>
-                    <span className="text-[10px] text-slate-700">Yatırım yaptıkça varlıklarını burada görebilirsin.</span>
+                    <span className="font-bold text-slate-300 text-[11px]">Yatırım pozisyonun bulunmuyor</span>
+                    <span className="text-[10px] text-slate-500">Yatırım yaptıkça varlıklarını burada görebilirsin.</span>
                   </div>
                 </td>
               </tr>

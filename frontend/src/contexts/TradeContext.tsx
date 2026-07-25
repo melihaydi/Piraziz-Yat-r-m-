@@ -33,6 +33,8 @@ export interface TradeAccountData {
   broker: Broker
   starting_balance: number
   cash_balance: number
+  locked_cash: number
+  available_cash: number
   stock_position_value: number
   viop_position_value: number
   used_margin: number
@@ -70,6 +72,18 @@ export interface TradeHistoryItem {
   executed_at: string
 }
 
+export type OrderType = "MARKET" | "LIMIT"
+
+export interface PendingOrder {
+  id: number
+  instrument_type: InstrumentType
+  symbol: string
+  side: "AL" | "SAT"
+  lot: number
+  limit_price: number
+  created_at: string
+}
+
 interface OrderResult {
   ok: boolean
   error?: string
@@ -85,11 +99,20 @@ interface TradeContextValue {
   selectedSymbol: string
   setSelectedSymbol: (symbol: string) => void
   history: TradeHistoryItem[]
+  pendingOrders: PendingOrder[]
   createAccount: (broker: Broker, startingBalance: number) => Promise<OrderResult>
   changeBroker: (broker: Broker) => Promise<OrderResult>
   resetAccount: (broker: Broker, startingBalance: number) => Promise<OrderResult>
   depositFunds: (amount: number) => Promise<OrderResult>
-  placeOrder: (instrumentType: InstrumentType, symbol: string, side: "AL" | "SAT", lot: number) => Promise<OrderResult>
+  placeOrder: (
+    instrumentType: InstrumentType,
+    symbol: string,
+    side: "AL" | "SAT",
+    lot: number,
+    orderType?: OrderType,
+    limitPrice?: number
+  ) => Promise<OrderResult>
+  cancelPendingOrder: (orderId: number) => Promise<OrderResult>
   refreshAccount: () => Promise<TradeAccountData | null>
   refreshHistory: () => Promise<void>
 }
@@ -110,6 +133,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState<InstrumentType>("stock")
   const [selectedSymbol, setSelectedSymbol] = useState<string>("AKBNK")
   const [history, setHistory] = useState<TradeHistoryItem[]>([])
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
 
   // Tracks whether the user has manually picked a symbol yet, so the
   // watchlist's first-load doesn't clobber their selection on every poll
@@ -142,6 +166,17 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
       if (Array.isArray(data)) setHistory(data)
     } catch (e) {
       console.error("Failed to load trade history:", e)
+    }
+  }, [])
+
+  const refreshPendingOrders = useCallback(async () => {
+    try {
+      const res = await authFetch("/trade/pending-orders")
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data)) setPendingOrders(data)
+    } catch (e) {
+      console.error("Failed to load pending orders:", e)
     }
   }, [])
 
@@ -245,6 +280,19 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     if (account) refreshHistory()
   }, [account?.id, refreshHistory]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pending (resting LIMIT) orders - polled on the same cadence as the
+  // account so the order-book panel and the chart's price lines reflect a
+  // fill/cancel within a few seconds. Fills themselves are actually
+  // triggered server-side as a side effect of the /trade/account poll (see
+  // trade_service.serialize_account -> _check_pending_orders), this poll
+  // just picks up the resulting state.
+  useEffect(() => {
+    if (!hasAccount) return
+    refreshPendingOrders()
+    const interval = setInterval(refreshPendingOrders, 3000)
+    return () => clearInterval(interval)
+  }, [hasAccount, refreshPendingOrders])
+
   // Whenever the tab switches, default the selected symbol to something
   // valid for that tab so the chart/order panel don't stay on a symbol from
   // the other instrument universe.
@@ -316,12 +364,22 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const placeOrder = useCallback(
-    async (instrumentType: InstrumentType, symbol: string, side: "AL" | "SAT", lot: number): Promise<OrderResult> => {
+    async (
+      instrumentType: InstrumentType,
+      symbol: string,
+      side: "AL" | "SAT",
+      lot: number,
+      orderType: OrderType = "MARKET",
+      limitPrice?: number
+    ): Promise<OrderResult> => {
       try {
         const res = await authFetch("/trade/order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ instrument_type: instrumentType, symbol, side, lot }),
+          body: JSON.stringify({
+            instrument_type: instrumentType, symbol, side, lot,
+            order_type: orderType, limit_price: limitPrice,
+          }),
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
@@ -329,13 +387,32 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         }
         const data = await res.json()
         setAccount(data)
-        await refreshHistory()
+        await Promise.all([refreshHistory(), refreshPendingOrders()])
         return { ok: true }
       } catch (e) {
         return { ok: false, error: "Sunucuya ulaşılamadı." }
       }
     },
-    [refreshHistory]
+    [refreshHistory, refreshPendingOrders]
+  )
+
+  const cancelPendingOrder = useCallback(
+    async (orderId: number): Promise<OrderResult> => {
+      try {
+        const res = await authFetch(`/trade/pending-orders/${orderId}`, { method: "DELETE" })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          return { ok: false, error: err.detail || "Emir iptal edilemedi." }
+        }
+        const data = await res.json()
+        setAccount(data)
+        await refreshPendingOrders()
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: "Sunucuya ulaşılamadı." }
+      }
+    },
+    [refreshPendingOrders]
   )
 
   const value: TradeContextValue = {
@@ -348,11 +425,13 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     selectedSymbol,
     setSelectedSymbol,
     history,
+    pendingOrders,
     createAccount,
     changeBroker,
     resetAccount,
     depositFunds,
     placeOrder,
+    cancelPendingOrder,
     refreshAccount,
     refreshHistory,
   }

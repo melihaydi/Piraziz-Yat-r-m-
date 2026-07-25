@@ -12,9 +12,9 @@ export default function TradeHistoryTable() {
     <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
         <History className="h-3.5 w-3.5 text-white" />
-        <span className="text-xs font-black text-slate-300 uppercase tracking-wider">İşlem Geçmişi</span>
+        <span className="text-xs font-black text-white uppercase tracking-wider">İşlem Geçmişi</span>
         {filtered.length > 0 && (
-          <span className="ml-auto text-[10px] font-bold text-slate-500 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
+          <span className="ml-auto text-[10px] font-bold text-slate-300 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
             {filtered.length}
           </span>
         )}
@@ -22,7 +22,7 @@ export default function TradeHistoryTable() {
       <div className="overflow-x-auto max-h-72 overflow-y-auto">
         <table className="w-full text-xs text-left">
           <thead className="sticky top-0 bg-[#101015]">
-            <tr className="text-slate-500 font-bold border-b border-slate-800 h-8">
+            <tr className="text-slate-300 font-bold border-b border-slate-800 h-8">
               <th className="px-4">Tarih</th>
               <th className="px-4">Saat</th>
               <th className="px-4">Yön</th>
@@ -37,9 +37,9 @@ export default function TradeHistoryTable() {
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-10">
-                  <div className="flex flex-col items-center gap-2 text-slate-600">
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
                     <Info className="h-5 w-5" />
-                    <span className="font-bold text-slate-500 text-[11px]">Henüz işlem yapılmadı</span>
+                    <span className="font-bold text-slate-300 text-[11px]">Henüz işlem yapılmadı</span>
                   </div>
                 </td>
               </tr>
@@ -50,8 +50,8 @@ export default function TradeHistoryTable() {
                 const timeStr = dt ? dt.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : "-"
                 return (
                   <tr key={item.id} className="border-b border-slate-900 h-10 hover:bg-[#1c1d26]/40">
-                    <td className="px-4 text-slate-400">{dateStr}</td>
-                    <td className="px-4 text-slate-400">{timeStr}</td>
+                    <td className="px-4 text-slate-200">{dateStr}</td>
+                    <td className="px-4 text-slate-200">{timeStr}</td>
                     <td className="px-4">
                       <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
                         item.side === "AL" ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"
@@ -62,7 +62,7 @@ export default function TradeHistoryTable() {
                     <td className="px-4 font-bold text-white">{item.symbol}</td>
                     <td className="px-4 text-right font-semibold text-white">{item.lot}</td>
                     <td className="px-4 text-right font-semibold text-white">{item.price.toFixed(2)}</td>
-                    <td className="px-4 text-right text-slate-500">{item.commission.toFixed(2)}</td>
+                    <td className="px-4 text-right text-slate-300">{item.commission.toFixed(2)}</td>
                     <td className="px-4 text-right font-semibold text-white">{item.total.toFixed(2)}</td>
                   </tr>
                 )

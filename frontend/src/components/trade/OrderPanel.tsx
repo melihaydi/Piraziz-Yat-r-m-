@@ -12,6 +12,8 @@ const COMMISSION_RATE = 0.001
 export default function OrderPanel() {
   const { activeTab, watchlist, viopWatchlist, selectedSymbol, account, placeOrder } = useTrade()
   const [lot, setLot] = useState("10")
+  const [orderType, setOrderType] = useState<"MARKET" | "LIMIT">("MARKET")
+  const [limitPrice, setLimitPrice] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; text: string } | null>(null)
 
@@ -22,9 +24,21 @@ export default function OrderPanel() {
     setFeedback(null)
   }, [selectedSymbol, activeTab])
 
+  // Default the limit price field to the last price whenever the selected
+  // instrument changes or Limit mode is first switched on, so the user
+  // isn't staring at a blank/stale price from a different symbol.
+  useEffect(() => {
+    if (orderType === "LIMIT" && instrument) {
+      setLimitPrice(instrument.price.toFixed(2))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderType, selectedSymbol])
+
   const lotNum = parseFloat(lot) || 0
   const lastPrice = instrument?.price || 0
-  const notional = lastPrice * lotNum
+  const limitPriceNum = parseFloat(limitPrice.replace(",", ".")) || 0
+  const effectivePrice = orderType === "LIMIT" ? limitPriceNum : lastPrice
+  const notional = effectivePrice * lotNum
   const commission = notional * COMMISSION_RATE
   const total = notional + commission
 
@@ -35,12 +49,20 @@ export default function OrderPanel() {
 
   const handleOrder = async (side: "AL" | "SAT") => {
     if (!instrument || lotNum <= 0) return
+    if (orderType === "LIMIT" && limitPriceNum <= 0) return
     setSubmitting(true)
     setFeedback(null)
-    const result = await placeOrder(activeTab, selectedSymbol, side, lotNum)
+    const result = await placeOrder(
+      activeTab, selectedSymbol, side, lotNum, orderType, orderType === "LIMIT" ? limitPriceNum : undefined
+    )
     setSubmitting(false)
     if (result.ok) {
-      setFeedback({ type: "ok", text: `${side === "AL" ? "Alış" : "Satış"} emri gerçekleşti.` })
+      setFeedback({
+        type: "ok",
+        text: orderType === "LIMIT"
+          ? `${side === "AL" ? "Alış" : "Satış"} limit emri emir defterine eklendi.`
+          : `${side === "AL" ? "Alış" : "Satış"} emri gerçekleşti.`,
+      })
     } else {
       setFeedback({ type: "error", text: result.error || "Emir gerçekleştirilemedi." })
     }
@@ -126,24 +148,66 @@ export default function OrderPanel() {
 
       {/* Order form */}
       <div className="p-4 space-y-3 flex-1">
-        <div>
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Lot</label>
-          <input
-            type="number"
-            min={1}
-            value={lot}
-            onChange={e => setLot(e.target.value)}
-            className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"
-          />
+        <div className="flex gap-1 bg-[#1c1d26] border border-slate-800 rounded-lg p-1">
+          <button
+            onClick={() => setOrderType("MARKET")}
+            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+              orderType === "MARKET" ? "bg-white text-[#101015]" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Piyasa
+          </button>
+          <button
+            onClick={() => setOrderType("LIMIT")}
+            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer transition-colors ${
+              orderType === "LIMIT" ? "bg-white text-[#101015]" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Limit
+          </button>
         </div>
+
+        <div className={`grid ${orderType === "LIMIT" ? "grid-cols-2 gap-2" : "grid-cols-1"}`}>
+          <div>
+            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Lot</label>
+            <input
+              type="number"
+              min={1}
+              value={lot}
+              onChange={e => setLot(e.target.value)}
+              className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"
+            />
+          </div>
+          {orderType === "LIMIT" && (
+            <div>
+              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Limit Fiyatı</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={limitPrice}
+                onChange={e => setLimitPrice(e.target.value)}
+                className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"
+              />
+            </div>
+          )}
+        </div>
+
+        {orderType === "LIMIT" && (
+          <div className="flex items-start gap-1.5 text-[10px] text-slate-500 leading-relaxed">
+            <Info className="h-3 w-3 shrink-0 mt-0.5" />
+            <span>
+              Emir hemen gerçekleşmez, fiyat limit seviyenize ulaştığında otomatik gerçekleşir ve emir defterinde bekler.
+            </span>
+          </div>
+        )}
 
         {/* Order breakdown - given its own distinct card treatment rather
          * than a flat inline list, so lot/cost/total/commission read as a
          * clear "order ticket" block. */}
         <div className="rounded-xl border border-slate-800 bg-[#1c1d26]/50 divide-y divide-slate-800/80 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 text-[11px]">
-            <span className="text-slate-500">Fiyat</span>
-            <span className="font-semibold text-white">{lastPrice.toFixed(2)} ₺</span>
+            <span className="text-slate-500">{orderType === "LIMIT" ? "Limit Fiyatı" : "Fiyat"}</span>
+            <span className="font-semibold text-white">{effectivePrice.toFixed(2)} ₺</span>
           </div>
           <div className="flex items-center justify-between px-3 py-2 text-[11px]">
             <span className="text-slate-500">Toplam Tutar</span>
