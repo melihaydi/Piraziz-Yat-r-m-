@@ -114,10 +114,13 @@ body {
   background: hsl(var(--accent));
 }
 
-/* Trade terminal: swap the Tailwind font-mono utility's font (used
-   everywhere for prices/P&L in this module) to the JetBrains Mono loaded in
-   app/trade/layout.tsx, scoped to just this module rather than site-wide. */
+/* Trade terminal: a dedicated, professional-terminal look scoped to this
+   module only (via app/trade/layout.tsx's JetBrains Mono load), not applied
+   site-wide. Sets it as the module's base font - not just the font-mono
+   utility - so ticker codes/names read consistently with prices/P&L
+   instead of only the numbers changing font. */
 .trade-terminal {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 

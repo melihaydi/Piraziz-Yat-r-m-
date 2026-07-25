@@ -102,7 +102,7 @@ export default function OrderPanel() {
             className={`mt-3 flex items-center justify-between text-[10px] rounded-lg px-2.5 py-2 border ${
               openPosition.position_side === "SHORT"
                 ? "bg-amber-500/5 border-amber-500/20"
-                : "bg-cyan-500/5 border-cyan-500/20"
+                : "bg-blue-500/5 border-blue-500/20"
             }`}
           >
             <span className="flex items-center gap-1.5 text-slate-400">
@@ -110,7 +110,7 @@ export default function OrderPanel() {
                 className={`text-[8px] font-black px-1.5 py-0.5 rounded ${
                   openPosition.position_side === "SHORT"
                     ? "bg-amber-500/15 text-amber-400"
-                    : "bg-cyan-500/15 text-cyan-300"
+                    : "bg-blue-500/15 text-blue-300"
                 }`}
               >
                 {openPosition.position_side === "SHORT" ? "SHORT" : "LONG"}
@@ -133,7 +133,7 @@ export default function OrderPanel() {
             min={1}
             value={lot}
             onChange={e => setLot(e.target.value)}
-            className="w-full h-9 mt-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-cyan-500/50"
+            className="w-full h-9 mt-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-blue-500/50"
           />
         </div>
 
@@ -155,7 +155,7 @@ export default function OrderPanel() {
           </div>
           <div className="flex items-center justify-between px-3 py-2.5 bg-slate-900/80">
             <span className="text-[11px] font-bold text-slate-300">Tahmini Toplam</span>
-            <span className="font-mono font-black text-cyan-300 text-sm">{total.toFixed(2)} ₺</span>
+            <span className="font-mono font-black text-blue-300 text-sm">{total.toFixed(2)} ₺</span>
           </div>
         </div>
 

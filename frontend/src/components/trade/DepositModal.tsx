@@ -35,7 +35,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
       <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-sm font-black text-slate-100 flex items-center gap-2">
-            <Wallet className="h-4 w-4 text-cyan-400" />
+            <Wallet className="h-4 w-4 text-blue-400" />
             Bakiye Ekle
           </span>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300 cursor-pointer">
@@ -54,7 +54,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
             <input
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              className="w-full h-11 pl-7 pr-3 rounded-lg bg-slate-950 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-cyan-500/50"
+              className="w-full h-11 pl-7 pr-3 rounded-lg bg-slate-950 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-blue-500/50"
             />
           </div>
         </div>
@@ -64,7 +64,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
             <button
               key={v}
               onClick={() => setAmount(String(v))}
-              className="h-8 rounded-lg text-[10px] font-bold border border-slate-800 text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors cursor-pointer"
+              className="h-8 rounded-lg text-[10px] font-bold border border-slate-800 text-slate-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors cursor-pointer"
             >
               {v >= 1000 ? `${v / 1000}B` : v}
             </button>
@@ -80,7 +80,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
         <button
           onClick={handleDeposit}
           disabled={busy}
-          className="w-full h-11 rounded-lg font-black text-sm cursor-pointer flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 disabled:opacity-50 transition-colors"
+          className="w-full h-11 rounded-lg font-black text-sm cursor-pointer flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 text-slate-950 disabled:opacity-50 transition-colors"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
           Bakiye Ekle

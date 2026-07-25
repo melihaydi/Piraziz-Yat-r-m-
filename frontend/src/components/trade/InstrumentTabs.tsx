@@ -19,7 +19,7 @@ export default function InstrumentTabs() {
           onClick={() => setActiveTab(tab.id)}
           className={`px-4 h-8 rounded-md text-xs font-bold transition-colors cursor-pointer ${
             activeTab === tab.id
-              ? "bg-cyan-500 text-slate-950"
+              ? "bg-blue-500 text-slate-950"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >

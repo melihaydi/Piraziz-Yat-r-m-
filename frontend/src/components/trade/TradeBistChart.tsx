@@ -30,9 +30,17 @@ const TIMEFRAMES: { label: string; value: string }[] = [
 interface TradeBistChartProps {
   symbol: string
   displayLabel?: string
+  /** Instrument name, live price and % change - shown in a header above the
+   * chart (symbol · price · change), matching a real brokerage terminal's
+   * chart title instead of the chart having no price context of its own. */
+  name?: string
+  price?: number
+  changePercent?: number
 }
 
-export default function TradeBistChart({ symbol, displayLabel }: TradeBistChartProps) {
+const activeTimeframe = (value: string) => TIMEFRAMES.find(tf => tf.value === value)?.label || value
+
+export default function TradeBistChart({ symbol, displayLabel, name, price, changePercent }: TradeBistChartProps) {
   const [interval, setInterval_] = useState("1h")
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,11 +74,25 @@ export default function TradeBistChart({ symbol, displayLabel }: TradeBistChartP
     }
   }, [symbol, interval])
 
+  const isUp = (changePercent ?? 0) >= 0
+  const absoluteChange = price !== undefined && changePercent !== undefined ? price - price / (1 + changePercent / 100) : undefined
+
   return (
     <div className="relative h-full w-full bg-slate-950 overflow-y-auto">
-      {displayLabel && (
-        <div className="absolute top-2 left-2 z-10 text-[10px] font-bold text-slate-400 bg-slate-900/80 px-2 py-1 rounded pointer-events-none">
-          {displayLabel}
+      {(name || price !== undefined) && (
+        <div className="flex items-baseline gap-2.5 px-3 pt-3 pb-1">
+          <span className="text-sm font-black text-slate-100">{displayLabel || symbol}</span>
+          {name && <span className="text-[11px] text-slate-500 truncate max-w-[160px]">{name}</span>}
+          {price !== undefined && (
+            <span className="ml-auto flex items-baseline gap-1.5">
+              <span className="text-base font-mono font-black text-slate-100">{price.toFixed(2)}</span>
+              {changePercent !== undefined && (
+                <span className={`text-xs font-mono font-bold ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+                  {isUp ? "+" : ""}{absoluteChange !== undefined ? absoluteChange.toFixed(2) : ""} ({isUp ? "+" : ""}{changePercent.toFixed(2)}%)
+                </span>
+              )}
+            </span>
+          )}
         </div>
       )}
 
@@ -81,18 +103,21 @@ export default function TradeBistChart({ symbol, displayLabel }: TradeBistChartP
             onClick={() => setInterval_(tf.value)}
             className={`shrink-0 px-2.5 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
               interval === tf.value
-                ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                ? "bg-blue-500/15 text-blue-300 border border-blue-500/30"
                 : "text-slate-500 hover:text-slate-300 border border-transparent"
             }`}
           >
             {tf.label}
           </button>
         ))}
+        <span className="ml-auto shrink-0 text-[10px] font-bold text-slate-600 pl-2">
+          Aralık: <span className="text-slate-400">{activeTimeframe(interval)}</span>
+        </span>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-6 w-6 text-cyan-400 animate-spin" />
+          <Loader2 className="h-6 w-6 text-blue-400 animate-spin" />
         </div>
       ) : failed ? (
         <div className="flex items-center justify-center h-64 text-xs text-slate-500">

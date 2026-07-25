@@ -50,7 +50,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
         <div className="flex gap-1 bg-slate-950 border border-slate-800 rounded-lg p-1">
           <button
             onClick={() => setMode("broker")}
-            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "broker" ? "bg-cyan-500 text-slate-950" : "text-slate-400"}`}
+            className={`flex-1 h-8 rounded-md text-xs font-bold cursor-pointer ${mode === "broker" ? "bg-blue-500 text-slate-950" : "text-slate-400"}`}
           >
             Broker Değiştir
           </button>
@@ -68,7 +68,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
               key={b.id}
               onClick={() => setBroker(b.id)}
               className={`h-10 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
-                broker === b.id ? "border-cyan-500 bg-cyan-500/10 text-cyan-300" : "border-slate-800 text-slate-400 hover:border-slate-700"
+                broker === b.id ? "border-blue-500 bg-blue-500/10 text-blue-300" : "border-slate-800 text-slate-400 hover:border-slate-700"
               }`}
             >
               {b.name}
@@ -82,7 +82,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
             <input
               value={resetBalance}
               onChange={e => setResetBalance(e.target.value)}
-              className="w-full h-10 px-3 rounded-lg bg-slate-950 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-cyan-500/50"
+              className="w-full h-10 px-3 rounded-lg bg-slate-950 border border-slate-800 text-sm font-mono font-bold text-slate-100 focus:outline-none focus:border-blue-500/50"
             />
             <p className="text-[10px] text-rose-400/80">
               Bu işlem tüm açık pozisyonlarınızı ve işlem geçmişinizi kalıcı olarak siler.
@@ -96,7 +96,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
           onClick={mode === "broker" ? handleBrokerSave : handleReset}
           disabled={busy}
           className={`w-full h-10 rounded-lg font-black text-sm cursor-pointer flex items-center justify-center gap-2 ${
-            mode === "broker" ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950" : "bg-rose-500 hover:bg-rose-400 text-slate-950"
+            mode === "broker" ? "bg-blue-500 hover:bg-blue-400 text-slate-950" : "bg-rose-500 hover:bg-rose-400 text-slate-950"
           } disabled:opacity-50`}
         >
           {busy && <Loader2 className="h-4 w-4 animate-spin" />}

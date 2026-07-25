@@ -11,7 +11,7 @@ export default function TradeHistoryTable() {
   return (
     <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-        <History className="h-3.5 w-3.5 text-cyan-400" />
+        <History className="h-3.5 w-3.5 text-blue-400" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">İşlem Geçmişi</span>
         {filtered.length > 0 && (
           <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-2 py-0.5">

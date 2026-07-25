@@ -46,7 +46,7 @@ export default function AccountSummaryBar() {
     <>
       <div className="flex items-center gap-4 bg-gradient-to-b from-slate-900/80 to-slate-950/60 border border-slate-800 rounded-xl px-5 py-4">
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-5 gap-y-4 flex-1">
-          <StatBlock icon={Wallet} label="Toplam Portföy" value={`₺${fmt(account.total_portfolio_value)}`} iconColorClass="text-cyan-300" />
+          <StatBlock icon={Wallet} label="Toplam Portföy" value={`₺${fmt(account.total_portfolio_value)}`} iconColorClass="text-blue-300" />
           <StatBlock icon={PieChart} label="Nakit" value={`₺${fmt(account.cash_balance)}`} iconColorClass="text-slate-400" />
           <StatBlock icon={ShieldHalf} label="Kullanılan Teminat" value={`₺${fmt(account.used_margin)}`} iconColorClass="text-amber-400" />
           <StatBlock
@@ -74,7 +74,7 @@ export default function AccountSummaryBar() {
 
         <button
           onClick={() => setShowDeposit(true)}
-          className="shrink-0 inline-flex items-center gap-1.5 h-10 px-3.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 text-xs font-bold transition-colors cursor-pointer"
+          className="shrink-0 inline-flex items-center gap-1.5 h-10 px-3.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500/20 text-xs font-bold transition-colors cursor-pointer"
         >
           <PlusCircle className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Bakiye Ekle</span>

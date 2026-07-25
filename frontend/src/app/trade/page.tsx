@@ -35,11 +35,12 @@ export default function TradePage() {
   if (loading || !account) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-950">
-        <Loader2 className="h-8 w-8 text-cyan-400 animate-spin" />
+        <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
       </div>
     )
   }
 
+  const selectedInstrument = (activeTab === "viop" ? viopWatchlist : watchlist).find(i => i.symbol === selectedSymbol)
   const chartSymbol =
     activeTab === "viop"
       ? viopWatchlist.find(c => c.symbol === selectedSymbol)?.underlying_symbol || selectedSymbol
@@ -58,21 +59,21 @@ export default function TradePage() {
     <div className={isFullscreen ? "fixed inset-0 z-50 bg-slate-950 overflow-y-auto" : "min-h-screen bg-slate-950"}>
       {/* Terminal chrome - replaces the app's global Header for this route,
        * so it carries its own brand mark + a way back to the main app. */}
-      <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 shadow-[0_1px_0_rgba(34,211,238,0.08)]">
+      <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 shadow-[0_1px_0_rgba(96,165,250,0.08)]">
         <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-3">
           <div className="flex items-center gap-4">
             {!isFullscreen && (
               <Link
                 href="/"
                 title="Ana uygulamaya dön"
-                className="flex items-center gap-1.5 text-slate-500 hover:text-cyan-300 transition-colors pr-3 border-r border-slate-800"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-blue-300 transition-colors pr-3 border-r border-slate-800"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span className="text-[11px] font-bold hidden sm:inline">Piraziz</span>
               </Link>
             )}
             <h1 className="text-xl font-black tracking-tight text-slate-100 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
               Trade
             </h1>
             <InstrumentTabs />
@@ -81,7 +82,7 @@ export default function TradePage() {
             {!isFullscreen && (
               <Link
                 href="/trade/performance"
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-800 text-xs font-bold text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-800 text-xs font-bold text-slate-300 hover:border-blue-500/40 hover:text-blue-300 transition-colors"
               >
                 <BarChart3 className="h-3.5 w-3.5" />
                 Performans
@@ -90,14 +91,14 @@ export default function TradePage() {
             <button
               onClick={() => setIsFullscreen(v => !v)}
               title={isFullscreen ? "Tam ekrandan çık" : "Tam ekran"}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors cursor-pointer"
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
             {!isFullscreen && (
               <button
                 onClick={() => setShowSettings(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-blue-500/40 hover:text-blue-300 transition-colors cursor-pointer"
               >
                 <Settings className="h-4 w-4" />
               </button>
@@ -116,7 +117,7 @@ export default function TradePage() {
               <button
                 onClick={() => setWatchlistCollapsed(false)}
                 title="Listeyi aç"
-                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-slate-950/60 text-slate-500 hover:text-cyan-300 hover:border-cyan-500/40 transition-colors cursor-pointer"
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-slate-950/60 text-slate-500 hover:text-blue-300 hover:border-blue-500/40 transition-colors cursor-pointer"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>
@@ -130,7 +131,13 @@ export default function TradePage() {
             {isTvWidgetCapable ? (
               <TradeChart symbol={chartSymbol} displayLabel={chartLabel} />
             ) : (
-              <TradeBistChart symbol={chartSymbol} displayLabel={chartLabel} />
+              <TradeBistChart
+                symbol={chartSymbol}
+                displayLabel={chartLabel}
+                name={selectedInstrument?.name}
+                price={selectedInstrument?.price}
+                changePercent={selectedInstrument?.change_percent}
+              />
             )}
           </div>
           <div className="xl:col-span-3 h-[600px]">

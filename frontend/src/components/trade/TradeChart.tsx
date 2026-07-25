@@ -113,7 +113,7 @@ export default function TradeChart({ symbol, displayLabel }: TradeChartProps) {
           href={`https://www.tradingview.com/symbols/${toTradingViewSymbol(symbol).replace(":", "-")}/`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs font-bold text-cyan-400 hover:underline flex items-center"
+          className="text-xs font-bold text-blue-400 hover:underline flex items-center"
         >
           TradingView&apos;de Aç <ExternalLink className="h-3 w-3 ml-1" />
         </a>

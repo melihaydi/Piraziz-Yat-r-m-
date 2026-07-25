@@ -23,7 +23,7 @@ export default function PositionsTable() {
   return (
     <div className="bg-slate-950/60 border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-        <Layers className="h-3.5 w-3.5 text-cyan-400" />
+        <Layers className="h-3.5 w-3.5 text-blue-400" />
         <span className="text-xs font-black text-slate-300 uppercase tracking-wider">Açık Pozisyonlar</span>
         {positions.length > 0 && (
           <span className="ml-auto text-[10px] font-bold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-2 py-0.5">
@@ -67,7 +67,7 @@ export default function PositionsTable() {
                         className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
                           pos.position_side === "SHORT"
                             ? "bg-amber-500/15 text-amber-400"
-                            : "bg-cyan-500/15 text-cyan-300"
+                            : "bg-blue-500/15 text-blue-300"
                         }`}
                       >
                         {pos.position_side}
