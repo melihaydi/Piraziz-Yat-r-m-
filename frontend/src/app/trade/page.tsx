@@ -60,7 +60,7 @@ export default function TradePage() {
       {/* Terminal chrome - replaces the app's global Header for this route,
        * so it carries its own brand mark + a way back to the main app. */}
       <div className="sticky top-0 z-20 bg-gradient-to-b from-slate-900 to-slate-950 border-b border-slate-800/80 shadow-[0_1px_0_rgba(96,165,250,0.08)]">
-        <div className="flex items-center justify-between flex-wrap gap-3 px-6 py-3">
+        <div className="flex items-center justify-between flex-wrap gap-3 px-3 sm:px-6 py-3">
           <div className="flex items-center gap-4">
             {!isFullscreen && (
               <Link
@@ -85,7 +85,7 @@ export default function TradePage() {
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-800 text-xs font-bold text-slate-300 hover:border-blue-500/40 hover:text-blue-300 transition-colors"
               >
                 <BarChart3 className="h-3.5 w-3.5" />
-                Performans
+                <span className="hidden sm:inline">Performans</span>
               </Link>
             )}
             <button
@@ -107,7 +107,7 @@ export default function TradePage() {
         </div>
       </div>
 
-      <div className="p-6 space-y-5">
+      <div className="p-3 sm:p-6 space-y-5">
         <AccountSummaryBar />
 
         {/* Main 3-column terminal layout */}
@@ -123,11 +123,11 @@ export default function TradePage() {
               </button>
             </div>
           ) : (
-            <div className="xl:col-span-3 h-[600px]">
+            <div className="xl:col-span-3 h-[380px] xl:h-[600px]">
               <Watchlist onCollapse={() => setWatchlistCollapsed(true)} />
             </div>
           )}
-          <div className={`${chartColSpan} h-[600px] rounded-xl overflow-hidden border border-slate-800`}>
+          <div className={`${chartColSpan} h-[420px] xl:h-[600px] rounded-xl overflow-hidden border border-slate-800`}>
             {isTvWidgetCapable ? (
               <TradeChart symbol={chartSymbol} displayLabel={chartLabel} />
             ) : (
@@ -140,7 +140,7 @@ export default function TradePage() {
               />
             )}
           </div>
-          <div className="xl:col-span-3 h-[600px]">
+          <div className="xl:col-span-3 h-[460px] xl:h-[600px]">
             <OrderPanel />
           </div>
         </div>
