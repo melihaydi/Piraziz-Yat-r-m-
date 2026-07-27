@@ -78,102 +78,112 @@ def get_sector(ticker: str) -> str:
     """Helper to return mapped BIST sector for a ticker."""
     return SECTOR_MAP.get(ticker, "Mali" if any(x in ticker for x in ["FN", "BKO", "GR", "IS"]) else "Sınai")
 
+def _build_stock_response(ticker: str, name: str, quote: dict | None) -> ScreenerStockResponse:
+    """Computes one ticker's full screener row (live quote fields + AI score) -
+    shared by the bulk list endpoint and the single-ticker detail endpoint so
+    a page that only needs one stock (e.g. the stock detail page) doesn't
+    have to fetch and score the entire BIST list just to read one row out of
+    it."""
+    price = 0.0
+    change = 0.0
+    change_pct = 0.0
+    bid = 0.0
+    ask = 0.0
+    pe = 0.0
+    eps = 0.0
+    mcap = 0.0
+
+    if quote:
+        price = quote.get("last") or 0.0
+        change = quote.get("change") or 0.0
+        change_pct = quote.get("change_percent") or 0.0
+        bid = quote.get("bid") or 0.0
+        ask = quote.get("ask") or 0.0
+        pe = quote.get("pe_ratio") or 0.0
+        eps = quote.get("eps") or 0.0
+        mcap = quote.get("market_cap") or 0.0
+
+    # Determine sentiment dynamically from daily change percent
+    if change_pct > 0.5:
+        sentiment = "Pozitif"
+    elif change_pct < -0.5:
+        sentiment = "Negatif"
+    else:
+        sentiment = "Nötr"
+
+    # Fetch daily candles and calculate dynamic technical metrics (non-blocking, no subscribe)
+    candles = market_data_service.get_candles(ticker, "1d", wait=False, subscribe=False)
+    tech = calculate_techs(candles)
+
+    # Calculate a highly realistic, grounded AI Score out of 100
+    # If PE is negative, it's losing money -> lower valuation score.
+    # If PE is between 4 and 12, it is valued well.
+    # We pass these live metrics to the ScoringService
+    metrics = {
+        "roe": 15.0 if pe > 0 and pe < 15 else 5.0,  # estimate roe based on PE if missing
+        "ebitda_margin": 18.0 if pe > 0 and pe < 10 else 10.0,
+        "net_margin": 10.0 if pe > 0 else 2.0,
+        "net_debt_ebitda": 1.2 if pe > 0 else 4.0,
+        "debt_to_assets": 50.0,
+        "sales_growth": 15.0 if change_pct > 0 else 2.0,
+        "ebitda_growth": 12.0 if change_pct > 0 else 1.0,
+        "net_profit_growth": 10.0 if change_pct > 0 else -5.0,
+        "current_ratio": 1.5,
+        "quick_ratio": 1.1,
+        "pe": pe if pe > 0 else 999.0,
+        "pb": 1.5 if pe > 0 and pe < 15 else 5.0,
+        "fcf_positive": True if change_pct > 0 else False,
+        "fcf_to_net_income": 0.6,
+        "asset_turnover": 0.8,
+        "rsi": tech["rsi"],
+        "price_above_sma200": tech["price_above_sma200"],
+        "price_above_sma20": tech["price_above_sma20"],
+        "sma20_crossed_up": tech["sma20_crossed_up"],
+        "dividend_yield": 2.5 if pe > 0 and pe < 15 else 0.0,
+        "beta": 1.0,
+        "volatility": 25.0
+    }
+
+    scoring_res = ScoringService.calculate_bip_score(metrics)
+    ai_score = int(scoring_res["total_score"])
+
+    return ScreenerStockResponse(
+        ticker=ticker,
+        name=name,
+        sector=get_sector(ticker),
+        price=price,
+        change=change,
+        change_percent=change_pct,
+        bid=bid,
+        ask=ask,
+        pe=pe,
+        eps=eps,
+        market_cap=mcap,
+        ai_score=ai_score,
+        sentiment=sentiment
+    )
+
+
 @router.get("/", response_model=List[ScreenerStockResponse])
 def get_screener_stocks():
     """Retrieve all BIST 500 stocks with live TradingView quote fields and calculated AI scores."""
     cached_quotes = market_data_service.get_all_quotes()
-    response_list = []
-    
-    # Iterate through all known BIST tickers
-    for item in market_data_service.tickers:
-        ticker = item["ticker"]
-        name = item["name"]
-        
-        # Check if we have live quote in stream cache
-        quote = cached_quotes.get(ticker)
-        
-        price = 0.0
-        change = 0.0
-        change_pct = 0.0
-        bid = 0.0
-        ask = 0.0
-        pe = 0.0
-        eps = 0.0
-        mcap = 0.0
-        
-        if quote:
-            price = quote.get("last") or 0.0
-            change = quote.get("change") or 0.0
-            change_pct = quote.get("change_percent") or 0.0
-            bid = quote.get("bid") or 0.0
-            ask = quote.get("ask") or 0.0
-            pe = quote.get("pe_ratio") or 0.0
-            eps = quote.get("eps") or 0.0
-            mcap = quote.get("market_cap") or 0.0
-            
-        # Determine sentiment dynamically from daily change percent
-        if change_pct > 0.5:
-            sentiment = "Pozitif"
-        elif change_pct < -0.5:
-            sentiment = "Negatif"
-        else:
-            sentiment = "Nötr"
+    return [
+        _build_stock_response(item["ticker"], item["name"], cached_quotes.get(item["ticker"]))
+        for item in market_data_service.tickers
+    ]
 
-        # Fetch daily candles and calculate dynamic technical metrics (non-blocking, no subscribe)
-        candles = market_data_service.get_candles(ticker, "1d", wait=False, subscribe=False)
-        tech = calculate_techs(candles)
 
-        # Calculate a highly realistic, grounded AI Score out of 100
-        # If PE is negative, it's losing money -> lower valuation score.
-        # If PE is between 4 and 12, it is valued well.
-        # We pass these live metrics to the ScoringService
-        metrics = {
-            "roe": 15.0 if pe > 0 and pe < 15 else 5.0,  # estimate roe based on PE if missing
-            "ebitda_margin": 18.0 if pe > 0 and pe < 10 else 10.0,
-            "net_margin": 10.0 if pe > 0 else 2.0,
-            "net_debt_ebitda": 1.2 if pe > 0 else 4.0,
-            "debt_to_assets": 50.0,
-            "sales_growth": 15.0 if change_pct > 0 else 2.0,
-            "ebitda_growth": 12.0 if change_pct > 0 else 1.0,
-            "net_profit_growth": 10.0 if change_pct > 0 else -5.0,
-            "current_ratio": 1.5,
-            "quick_ratio": 1.1,
-            "pe": pe if pe > 0 else 999.0,
-            "pb": 1.5 if pe > 0 and pe < 15 else 5.0,
-            "fcf_positive": True if change_pct > 0 else False,
-            "fcf_to_net_income": 0.6,
-            "asset_turnover": 0.8,
-            "rsi": tech["rsi"],
-            "price_above_sma200": tech["price_above_sma200"],
-            "price_above_sma20": tech["price_above_sma20"],
-            "sma20_crossed_up": tech["sma20_crossed_up"],
-            "dividend_yield": 2.5 if pe > 0 and pe < 15 else 0.0,
-            "beta": 1.0,
-            "volatility": 25.0
-        }
-        
-        scoring_res = ScoringService.calculate_bip_score(metrics)
-        ai_score = int(scoring_res["total_score"])
-
-        response_list.append(
-            ScreenerStockResponse(
-                ticker=ticker,
-                name=name,
-                sector=get_sector(ticker),
-                price=price,
-                change=change,
-                change_percent=change_pct,
-                bid=bid,
-                ask=ask,
-                pe=pe,
-                eps=eps,
-                market_cap=mcap,
-                ai_score=ai_score,
-                sentiment=sentiment
-            )
-        )
-        
-    return response_list
+@router.get("/detail/{ticker}", response_model=ScreenerStockResponse)
+def get_screener_stock_detail(ticker: str):
+    """Single-ticker equivalent of GET / - used by the stock detail page,
+    which previously fetched and scored the entire BIST list just to pick
+    one row back out of it client-side."""
+    ticker = ticker.upper()
+    match = next((item for item in market_data_service.tickers if item["ticker"] == ticker), None)
+    name = match["name"] if match else f"{ticker} Ticaret AŞ"
+    quote = market_data_service.get_all_quotes().get(ticker)
+    return _build_stock_response(ticker, name, quote)
 
 @router.get("/chart/{symbol}")
 def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")):

@@ -108,29 +108,15 @@ export default function StockDetailPage() {
     setDetailsLoading(true)
     setScoreLoading(true)
 
-    // A. Fetch stock info
-    fetch(`${API_BASE_URL}/api/v1/screener/`)
+    // A. Fetch this one stock's info - previously fetched the entire BIST
+    // screener list (every ticker's live quote + computed AI score) just to
+    // filter out one row client-side, which meant visiting any stock detail
+    // page paid the cost of scoring every other stock too.
+    fetch(`${API_BASE_URL}/api/v1/screener/detail/${ticker}`)
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) {
-          const match = data.find(c => c.ticker === ticker)
-          if (match) {
-            setStockDetails(match)
-          } else {
-            // Default fallback if ticker not in BIST list
-            setStockDetails({
-              ticker,
-              name: `${ticker} Ticaret AŞ`,
-              sector: "Sanayi",
-              price: 100.0,
-              change_percent: 0.0,
-              pe: 10.0,
-              eps: 1.0,
-              market_cap: 100_000_000,
-              ai_score: 50,
-              sentiment: "Nötr"
-            })
-          }
+        if (data && data.ticker) {
+          setStockDetails(data)
         }
         setDetailsLoading(false)
       })
