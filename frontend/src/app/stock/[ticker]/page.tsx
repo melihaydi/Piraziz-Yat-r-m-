@@ -380,7 +380,7 @@ export default function StockDetailPage() {
                   <span className="text-xs text-muted-foreground">Tarihsel Mum Verileri Derleniyor...</span>
                 </div>
               ) : chartData.length > 0 ? (
-                <TradingViewChart data={chartData} />
+                <TradingViewChart data={chartData} symbol={ticker} />
               ) : (
                 <div className="flex items-center justify-center h-[380px] text-xs text-muted-foreground border border-border/30 rounded-xl bg-zinc-950/20">
                   Grafik verisi bulunamadı veya sunucu bağlantısı bekleniyor.

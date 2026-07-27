@@ -562,7 +562,7 @@ export default function ScreenerPage() {
                       <Loader2 className="h-6 w-6 text-primary animate-spin" />
                     </div>
                   )}
-                  <TradingViewChart data={chartData} />
+                  <TradingViewChart data={chartData} symbol={selectedTicker} />
                 </div>
 
                 {/* Simple Technical Info details */}

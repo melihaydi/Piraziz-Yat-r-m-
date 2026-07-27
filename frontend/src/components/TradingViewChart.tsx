@@ -12,7 +12,8 @@ import {
   PriceScaleMode,
   IPriceLine,
 } from "lightweight-charts"
-import { Eye, EyeOff, Scan } from "lucide-react"
+import { Eye, EyeOff, Scan, TrendingUp, Minus, ArrowUpRight, Square, GitBranch, Type, Trash2, MousePointer2 } from "lucide-react"
+import { DrawingManager, DrawingTool, Drawing } from "@/lib/chartDrawingTools"
 
 interface ChartDataPoint {
   time: number
@@ -44,7 +45,13 @@ export interface PendingOrderLine {
 interface TradingViewChartProps {
   data: ChartDataPoint[]
   pendingOrders?: PendingOrderLine[]
+  /** Used only to key drawing persistence (localStorage) per instrument -
+   * switching symbols shouldn't show another stock's trend lines. Falls
+   * back to a shared "default" bucket if omitted. */
+  symbol?: string
 }
+
+const drawingsStorageKey = (symbol: string) => `bip_chart_drawings_${symbol}`
 
 type ScaleMode = "linear" | "log" | "percent"
 
@@ -68,7 +75,7 @@ function toLineData(data: ChartDataPoint[], key: keyof ChartDataPoint) {
     .filter((d): d is { time: number; value: number } => d.value !== undefined && d.value !== null)
 }
 
-export default function TradingViewChart({ data, pendingOrders }: TradingViewChartProps) {
+export default function TradingViewChart({ data, pendingOrders, symbol = "default" }: TradingViewChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const rsiContainerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
@@ -80,6 +87,13 @@ export default function TradingViewChart({ data, pendingOrders }: TradingViewCha
   const emaSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const bbSeriesRef = useRef<ISeriesApi<"Line">[] | null>(null)
+  const drawingManagerRef = useRef<DrawingManager | null>(null)
+  const symbolRef = useRef(symbol)
+  symbolRef.current = symbol
+
+  const [activeTool, setActiveTool] = useState<DrawingTool>("none")
+  const activeToolRef = useRef<DrawingTool>("none")
+  const [drawingCount, setDrawingCount] = useState(0)
 
   // Toggles for indicators
   const [showSMA, setShowSMA] = useState(true)
@@ -132,6 +146,18 @@ export default function TradingViewChart({ data, pendingOrders }: TradingViewCha
     mainChartRef.current = mainChart
     candleSeriesRef.current = candleSeries
 
+    const manager = new DrawingManager(mainChart, candleSeries, (drawings: Drawing[]) => {
+      setDrawingCount(drawings.length)
+      try {
+        localStorage.setItem(drawingsStorageKey(symbolRef.current), JSON.stringify(drawings))
+      } catch (e) {}
+    })
+    try {
+      const saved = localStorage.getItem(drawingsStorageKey(symbol))
+      if (saved) manager.loadDrawings(JSON.parse(saved))
+    } catch (e) {}
+    drawingManagerRef.current = manager
+
     const resizeObserver = new ResizeObserver(entries => {
       if (entries.length === 0) return
       const { width } = entries[0].contentRect
@@ -144,6 +170,10 @@ export default function TradingViewChart({ data, pendingOrders }: TradingViewCha
     return () => {
       resizeObserver.disconnect()
       try {
+        drawingManagerRef.current?.destroy()
+      } catch (e) {}
+      drawingManagerRef.current = null
+      try {
         mainChart.remove()
       } catch (e) {}
       mainChartRef.current = null
@@ -154,7 +184,7 @@ export default function TradingViewChart({ data, pendingOrders }: TradingViewCha
       vwapSeriesRef.current = null
       bbSeriesRef.current = null
     }
-  }, [data])
+  }, [data, symbol])
 
   // Pending LIMIT orders drawn as horizontal price lines on the candle
   // series - a buy limit in emerald, a sell limit in rose, matching the
@@ -374,6 +404,44 @@ export default function TradingViewChart({ data, pendingOrders }: TradingViewCha
     } catch (e) {}
   }
 
+  const selectTool = (tool: DrawingTool) => {
+    const next = activeToolRef.current === tool ? "none" : tool
+    activeToolRef.current = next
+    setActiveTool(next)
+    drawingManagerRef.current?.setActiveTool(next)
+  }
+
+  const handleClearAll = () => {
+    drawingManagerRef.current?.clearAll()
+  }
+
+  // Delete/Backspace removes whichever drawing was last clicked-to-select
+  // (see DrawingManager.hitTest - clicking near an anchor point with no
+  // tool active selects it). Scoped to when this chart's container has
+  // focus-within isn't tracked here, so it's global while this chart is
+  // mounted - acceptable since only one chart is ever shown at a time in
+  // this app's layouts.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const target = e.target as HTMLElement | null
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return
+        drawingManagerRef.current?.deleteSelected()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
+
+  const drawingTools: { tool: DrawingTool; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { tool: "trendline", label: "Trend Çizgisi", icon: TrendingUp },
+    { tool: "ray", label: "Işın", icon: ArrowUpRight },
+    { tool: "horizontal", label: "Yatay Çizgi", icon: Minus },
+    { tool: "rectangle", label: "Dikdörtgen", icon: Square },
+    { tool: "fib", label: "Fibonacci Retracement", icon: GitBranch },
+    { tool: "text", label: "Metin", icon: Type },
+  ]
+
   return (
     <div className="space-y-4">
       {/* Chart Control Bar */}
@@ -423,10 +491,50 @@ export default function TradingViewChart({ data, pendingOrders }: TradingViewCha
         </div>
       </div>
 
+      {/* Drawing Tools Bar - lightweight-charts has no built-in drawing UI
+          (see chartDrawingTools.ts's header for why), so this is a
+          from-scratch trend line / ray / horizontal line / rectangle /
+          fibonacci / text toolset built directly on its primitive API. */}
+      <div className="flex flex-wrap items-center gap-1.5 p-2 bg-secondary/25 border border-border/40 rounded-lg text-xs font-semibold">
+        <button
+          onClick={() => selectTool("none")}
+          title="Seç / Sürükle"
+          className={`p-2 rounded transition-all cursor-pointer ${activeTool === "none" ? "bg-primary/20 text-primary border border-primary/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+        >
+          <MousePointer2 className="h-3.5 w-3.5" />
+        </button>
+        {drawingTools.map(({ tool, label, icon: Icon }) => (
+          <button
+            key={tool}
+            onClick={() => selectTool(tool)}
+            title={label}
+            className={`p-2 rounded transition-all cursor-pointer ${activeTool === tool ? "bg-primary/20 text-primary border border-primary/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </button>
+        ))}
+        <div className="w-px h-5 bg-border/50 mx-1" />
+        <button
+          onClick={handleClearAll}
+          title="Tüm çizimleri temizle"
+          disabled={drawingCount === 0}
+          className="p-2 rounded bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-rose-400 hover:border-rose-500/30 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        {activeTool !== "none" && (
+          <span className="text-[11px] text-primary font-bold ml-1">Grafiğe tıklayarak çizin</span>
+        )}
+      </div>
+
       {/* Synchronized Multi-Pane Charts */}
       <div className="border border-border/50 rounded-xl overflow-hidden bg-zinc-900/40 p-4 space-y-2">
         {/* Main Price Pane */}
-        <div ref={chartContainerRef} className="w-full relative" />
+        <div
+          ref={chartContainerRef}
+          className="w-full relative"
+          style={{ cursor: activeTool !== "none" ? "crosshair" : undefined }}
+        />
 
         {/* RSI Indicator Pane */}
         {showRSI && (

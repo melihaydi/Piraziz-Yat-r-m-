@@ -417,7 +417,7 @@ export default function FundsPage() {
                       <Loader2 className="h-6 w-6 text-primary animate-spin" />
                     </div>
                   )}
-                  <TradingViewChart data={chartData} />
+                  <TradingViewChart data={chartData} symbol={selectedCode} />
                 </div>
 
                 {/* Returns Table */}

@@ -16,10 +16,31 @@ interface AppChromeProps {
  * and its own internal navigation back to the main app. Every other route
  * keeps the normal Sidebar + Header shell untouched.
  */
+const SIDEBAR_COLLAPSED_KEY = "bip_sidebar_collapsed"
+
 export default function AppChrome({ children }: AppChromeProps) {
   const pathname = usePathname()
   const isTradeRoute = pathname?.startsWith("/trade") ?? false
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Starts false (expanded) on the server/first paint - the persisted value
+  // is read after mount so the initial render always matches what the
+  // server sent (avoids a hydration mismatch), then a brief re-render
+  // applies the user's saved preference. localStorage isn't available
+  // during SSR at all, so this couldn't be the initial state directly.
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (saved === "1") setCollapsed(true)
+  }, [])
+
+  const toggleCollapse = () => {
+    setCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0")
+      return next
+    })
+  }
 
   // Below lg, Sidebar renders as an off-canvas drawer (see Sidebar.tsx) -
   // close it automatically whenever the route changes so it doesn't stay
@@ -28,13 +49,33 @@ export default function AppChrome({ children }: AppChromeProps) {
     setMobileMenuOpen(false)
   }, [pathname])
 
+  // Ctrl+B (or Cmd+B on Mac) toggles the sidebar, matching the common
+  // editor/IDE convention for this exact action. Skipped entirely on Trade
+  // routes since they don't render this sidebar at all.
+  useEffect(() => {
+    if (isTradeRoute) return
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault()
+        toggleCollapse()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [isTradeRoute])
+
   if (isTradeRoute) {
     return <div className="flex-1 flex flex-col overflow-hidden h-screen w-full">{children}</div>
   }
 
   return (
     <>
-      <Sidebar open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+      <Sidebar
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapse}
+      />
       <div className="flex-1 flex flex-col overflow-hidden h-screen w-full min-w-0">
         <Header onMenuClick={() => setMobileMenuOpen(true)} />
         <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8">

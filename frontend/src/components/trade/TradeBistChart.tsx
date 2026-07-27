@@ -127,7 +127,7 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
         </div>
       ) : (
         <div className="p-3">
-          <TradingViewChart data={data} pendingOrders={pendingOrders} />
+          <TradingViewChart data={data} pendingOrders={pendingOrders} symbol={symbol} />
         </div>
       )}
     </div>
