@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Sparkles, User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2 } from "lucide-react"
+import { User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -88,8 +88,8 @@ export default function AuthGate({ children }: AuthGateProps) {
       <div className="w-full max-w-md relative z-10">
         <Card glass={true} className="border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-2xl">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto h-12 w-12 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center mb-4">
-              <Sparkles className="h-6 w-6 text-purple-400 animate-pulse" />
+            <div className="mx-auto h-12 w-12 rounded-2xl overflow-hidden mb-4">
+              <img src="/logo.png" alt="Piraziz Yatırım" className="h-full w-full object-cover" />
             </div>
             <CardTitle className="text-2xl font-black tracking-tight text-foreground flex items-center justify-center gap-1.5">
               BİP Yatırım Terminali
