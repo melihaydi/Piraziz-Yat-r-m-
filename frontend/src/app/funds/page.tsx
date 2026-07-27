@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -9,6 +10,7 @@ import TradingViewChart from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
 
 export default function FundsPage() {
+  const router = useRouter()
   const [funds, setFunds] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -443,7 +445,7 @@ export default function FundsPage() {
                   <Button 
                     variant="default" 
                     size="sm" 
-                    onClick={() => window.location.href = `/funds/${selectedCode.toLowerCase()}`}
+                    onClick={() => router.push(`/funds/${selectedCode.toLowerCase()}`)}
                     className="w-full text-xs font-black cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-black border-0 shadow-md shadow-emerald-500/10"
                   >
                     Detaylı Analiz & Varlık Kırılımı (Premium)

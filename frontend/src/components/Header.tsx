@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
@@ -40,6 +41,7 @@ interface HeaderProps {
 }
 
 export default function Header({ onMenuClick }: HeaderProps) {
+  const router = useRouter()
   const [indexData, setIndexData] = useState<any[]>(loadCachedIndexData)
 
   const [tickersList, setTickersList] = useState<any[]>([])
@@ -336,7 +338,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                         // for this - fund detail lives inside /funds itself, which now
                         // reads this ?code= param on load (previously it silently
                         // ignored it, always showing the default fund instead).
-                        window.location.href = `/funds?code=${t.code}`
+                        router.push(`/funds?code=${t.code}`)
                       }
                     } else {
                       if (window.location.pathname === "/screener") {
@@ -346,7 +348,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                         // exist in this app (stock detail lives inside /screener's
                         // split view) - that 404'd, which looked like "the price
                         // doesn't show up". /screener now reads this ?ticker= param.
-                        window.location.href = `/screener?ticker=${t.code}`
+                        router.push(`/screener?ticker=${t.code}`)
                       }
                     }
                     setShowDropdown(false)
@@ -432,7 +434,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                   <div 
                     key={`sig-${idx}`}
                     onClick={() => {
-                      window.location.href = `/stock/${sig.ticker}`
+                      router.push(`/stock/${sig.ticker}`)
                       setShowNotifications(false)
                     }}
                     className={`p-2.5 rounded-lg border cursor-pointer transition-colors text-left ${
@@ -463,7 +465,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
         {/* User Badge */}
         <div 
-          onClick={() => window.location.href = "/settings"} 
+          onClick={() => router.push("/settings")}
           className="flex items-center space-x-3 pl-2 border-l border-border cursor-pointer hover:opacity-85 transition-opacity"
         >
           <div className="flex flex-col text-right hidden sm:flex">

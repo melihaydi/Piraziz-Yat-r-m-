@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { 
   AreaChart, 
   Area, 
@@ -51,6 +52,7 @@ const marketData = [
 ]
 
 export default function Home() {
+  const router = useRouter()
   const [marketSummary, setMarketSummary] = useState<any>({
     sentiment: { bullish: 58, neutral: 24, bearish: 18 },
     sectors: [
@@ -362,7 +364,7 @@ export default function Home() {
                       <div className="space-y-1.5 flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
                           <span
-                            onClick={() => window.location.href = `/stock/${sig.ticker}`}
+                            onClick={() => router.push(`/stock/${sig.ticker}`)}
                             className="text-xs font-black bg-secondary hover:bg-secondary/80 px-2.5 py-1 rounded text-foreground cursor-pointer transition-colors"
                           >
                             {sig.ticker}
@@ -443,7 +445,7 @@ export default function Home() {
                   {favoriteStocks.map(stock => (
                     <div 
                       key={stock.ticker} 
-                      onClick={() => window.location.href = `/stock/${stock.ticker}`}
+                      onClick={() => router.push(`/stock/${stock.ticker}`)}
                       className="p-2.5 bg-secondary/25 border border-border/30 rounded-lg flex items-center justify-between cursor-pointer hover:bg-secondary/45 transition-colors"
                     >
                       <div className="flex items-center space-x-2">
@@ -463,7 +465,7 @@ export default function Home() {
                   {favoriteFunds.map(fund => (
                     <div 
                       key={fund.code} 
-                      onClick={() => window.location.href = `/funds?code=${fund.code}`}
+                      onClick={() => router.push(`/funds?code=${fund.code}`)}
                       className="p-2.5 bg-secondary/25 border border-border/30 rounded-lg flex items-center justify-between cursor-pointer hover:bg-secondary/45 transition-colors"
                     >
                       <div className="flex items-center space-x-2">

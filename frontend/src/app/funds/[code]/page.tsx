@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
@@ -22,6 +22,7 @@ const COLORS = ["#3b82f6", "#10b981", "#fbbf24", "#a855f7", "#ec4899", "#f97316"
 
 export default function FundDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const code = (params.code as string)?.toUpperCase()
 
   const [fund, setFund] = useState<any>(null)
@@ -109,7 +110,7 @@ export default function FundDetailPage() {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => window.location.href = "/funds"} 
+          onClick={() => router.push("/funds")}
           className="text-xs flex items-center pl-0 cursor-pointer hover:bg-transparent"
         >
           <ChevronLeft className="h-4 w-4 mr-1 text-primary" />

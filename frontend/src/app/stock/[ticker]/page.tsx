@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { ChevronLeft, Sparkles, AlertTriangle, TrendingUp, TrendingDown, Check, Info, FileText, Loader2, Bell } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -20,6 +20,7 @@ import { API_BASE_URL } from "@/lib/config"
 
 export default function StockDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const ticker = (params.ticker as string).toUpperCase()
   
   // Ticker Details state
@@ -225,7 +226,7 @@ export default function StockDetailPage() {
         <Button 
           variant="ghost" 
           size="sm" 
-          onClick={() => window.location.href = "/screener"} 
+          onClick={() => router.push("/screener")} 
           className="text-xs flex items-center pl-0 cursor-pointer hover:bg-transparent"
         >
           <ChevronLeft className="h-4 w-4 mr-1 text-primary" />
