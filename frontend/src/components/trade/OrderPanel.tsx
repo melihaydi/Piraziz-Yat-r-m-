@@ -70,7 +70,7 @@ export default function OrderPanel() {
 
   if (!instrument) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2 bg-[#16171E] border border-slate-800 rounded-xl text-slate-600">
+      <div className="h-40 xl:h-full flex flex-col items-center justify-center gap-2 bg-[#16171E] border border-slate-800 rounded-xl text-slate-600">
         <Receipt className="h-5 w-5" />
         <span className="text-xs font-bold">Enstrüman seçin</span>
       </div>
@@ -89,7 +89,7 @@ export default function OrderPanel() {
     (activeTab === "stock" && (!openPosition || openPosition.position_side !== "LONG"))
 
   return (
-    <div className="flex flex-col h-full bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
+    <div className="flex flex-col h-auto xl:h-full bg-[#16171E] border border-slate-800 rounded-xl xl:overflow-y-auto">
       {/* Selected instrument header */}
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center justify-between">

@@ -149,7 +149,7 @@ export default function TradePage() {
               />
             )}
           </div>
-          <div className="xl:col-span-3 h-[460px] xl:h-[600px]">
+          <div className="xl:col-span-3 xl:h-[600px]">
             <OrderPanel />
           </div>
         </div>
