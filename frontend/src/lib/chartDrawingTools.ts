@@ -21,6 +21,20 @@ import type {
 // draw call via the series/time-scale - that's what makes a drawing
 // correctly reposition itself across pan, zoom, resize, and timeframe
 // changes for free, instead of drifting like a pixel-cached overlay would.
+//
+// v2 rewrite notes (first version felt "laggy"/unresponsive): the actual
+// problem wasn't rendering speed, it was that clicking the first point of a
+// 2-point tool gave zero visual feedback until the second click - no line
+// followed the cursor, so it read as broken. This version tracks the live
+// crosshair position and mutates a single always-attached "preview"
+// primitive's point in place while a drawing is in progress, instead of
+// creating/attaching a new primitive - lightweight-charts already repaints
+// every primitive on each crosshair move (it has to, to redraw the
+// crosshair itself), so mutating shared state and letting that natural
+// repaint pick it up is both simpler and cheaper than manually forcing a
+// redraw. Selection state is read the same way (a shared ref checked at
+// draw time) instead of detaching/reattaching every primitive just to
+// toggle a highlight.
 
 export type DrawingTool = "none" | "trendline" | "ray" | "horizontal" | "rectangle" | "fib" | "text"
 
@@ -34,6 +48,7 @@ export interface Drawing {
 
 const TOOL_COLOR = "#e8b923"
 const TOOL_COLOR_FILL = "rgba(232, 185, 35, 0.08)"
+const PREVIEW_COLOR = "#e8b92399"
 
 function toXY(chart: IChartApi, series: ISeriesApi<SeriesType>, p: { time: Time; price: number }) {
   const x = chart.timeScale().timeToCoordinate(p.time)
@@ -45,15 +60,19 @@ class DrawingRenderer implements IPrimitivePaneRenderer {
   constructor(
     private chart: IChartApi,
     private series: ISeriesApi<SeriesType>,
-    private drawing: Drawing,
-    private selected: boolean
+    private getDrawing: () => Drawing | null,
+    private isSelected: () => boolean,
+    private dashed: boolean = false
   ) {}
 
   draw(target: CanvasRenderingTarget2D): void {
-    const { chart, series, drawing, selected } = this
+    const drawing = this.getDrawing()
+    if (!drawing) return
+    const { chart, series } = this
     const pts = drawing.points.map(p => toXY(chart, series, p))
     if (pts.some(p => p.x === null || p.y === null)) return
     const xy = pts as { x: number; y: number }[]
+    const selected = this.isSelected()
 
     target.useBitmapCoordinateSpace(scope => {
       const ctx = scope.context
@@ -63,6 +82,7 @@ class DrawingRenderer implements IPrimitivePaneRenderer {
       ctx.strokeStyle = drawing.color
       ctx.lineWidth = (selected ? 2.5 : 1.5) * hr
       ctx.fillStyle = TOOL_COLOR_FILL
+      if (this.dashed) ctx.setLineDash([5 * hr, 4 * hr])
 
       const line = (x1: number, y1: number, x2: number, y2: number) => {
         ctx.beginPath()
@@ -137,15 +157,21 @@ class DrawingPaneView implements IPrimitivePaneView {
   }
 }
 
-/** One primitive per drawing - attached/detached from the series as the
- * drawings array changes, rather than one giant primitive that redraws
- * everything (keeps add/remove/select simple: each drawing owns its own
- * lifecycle). */
+/** One primitive per drawing, attached once and left attached - selection
+ * and (for the preview primitive) point updates are read live from a
+ * closure each draw() call rather than by detaching/reattaching, which is
+ * both cheaper and avoids the visual gap that caused the "laggy" feel. */
 class DrawingPrimitive implements ISeriesPrimitive<Time> {
   private _paneViews: DrawingPaneView[]
 
-  constructor(chart: IChartApi, series: ISeriesApi<SeriesType>, drawing: Drawing, selected: boolean) {
-    this._paneViews = [new DrawingPaneView(new DrawingRenderer(chart, series, drawing, selected))]
+  constructor(
+    chart: IChartApi,
+    series: ISeriesApi<SeriesType>,
+    getDrawing: () => Drawing | null,
+    isSelected: () => boolean,
+    dashed = false
+  ) {
+    this._paneViews = [new DrawingPaneView(new DrawingRenderer(chart, series, getDrawing, isSelected, dashed))]
   }
 
   updateAllViews() {}
@@ -155,45 +181,85 @@ class DrawingPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
+function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1)
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  const projX = x1 + t * dx
+  const projY = y1 + t * dy
+  return Math.hypot(px - projX, py - projY)
+}
+
 /** Manages the full drawing lifecycle for one chart: click-to-place points
- * for the active tool, keeps each Drawing's primitive attached to the
- * series, and exposes select/delete for the toolbar. All drawing state
- * lives here in {time, price} terms - the chart's own pan/zoom/timeframe
- * changes never need to touch it, only the renderer's coordinate lookup
- * does, on every paint. */
+ * with a live rubber-band preview for the active tool, keeps each Drawing's
+ * primitive attached to the series, and exposes select/delete for the
+ * toolbar. All drawing state lives here in {time, price} terms - the
+ * chart's own pan/zoom/timeframe changes never need to touch it, only the
+ * renderer's coordinate lookup does, on every paint. */
 export class DrawingManager {
   private chart: IChartApi
   private series: ISeriesApi<SeriesType>
   private drawings: Drawing[] = []
   private primitives = new Map<string, DrawingPrimitive>()
-  private pendingPoints: { time: Time; price: number }[] = []
   private activeTool: DrawingTool = "none"
   private selectedId: string | null = null
   private onChange: (drawings: Drawing[]) => void
   private clickHandler: (p: MouseEventParams) => void
+  private moveHandler: (p: MouseEventParams) => void
+  private keyHandler: (e: KeyboardEvent) => void
+
+  // In-progress drawing state: firstPoint is set on the tool's first click;
+  // previewDrawing is a single mutable object whose second point tracks the
+  // live cursor position until the drawing is finalized.
+  private firstPoint: { time: Time; price: number } | null = null
+  private previewDrawing: Drawing | null = null
+  private previewPrimitive: DrawingPrimitive | null = null
 
   constructor(chart: IChartApi, series: ISeriesApi<SeriesType>, onChange: (drawings: Drawing[]) => void = () => {}) {
     this.chart = chart
     this.series = series
     this.onChange = onChange
     this.clickHandler = (param: MouseEventParams) => this.handleClick(param)
+    this.moveHandler = (param: MouseEventParams) => this.handleMove(param)
     this.chart.subscribeClick(this.clickHandler)
+    this.chart.subscribeCrosshairMove(this.moveHandler)
+    this.keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") this.cancelPending()
+    }
+    window.addEventListener("keydown", this.keyHandler)
   }
 
-  private pointsNeeded(tool: DrawingTool): number {
-    switch (tool) {
-      case "horizontal":
-      case "text":
-        return 1
-      default:
-        return 2
-    }
+  private needsTwoPoints(tool: DrawingTool): boolean {
+    return tool !== "horizontal" && tool !== "text" && tool !== "none"
   }
 
   setActiveTool(tool: DrawingTool) {
+    this.cancelPending()
     this.activeTool = tool
-    this.pendingPoints = []
     this.selectedId = null
+  }
+
+  private cancelPending() {
+    if (this.previewPrimitive) {
+      try { this.series.detachPrimitive(this.previewPrimitive) } catch (e) {}
+      this.previewPrimitive = null
+    }
+    this.firstPoint = null
+    this.previewDrawing = null
+  }
+
+  private handleMove(param: MouseEventParams) {
+    if (!this.firstPoint || !this.previewDrawing) return
+    if (!param.point || param.time === undefined) return
+    const price = this.series.coordinateToPrice(param.point.y)
+    if (price === null) return
+    // Mutate in place - the already-attached preview primitive reads this
+    // same object on its next natural repaint (which this crosshair move
+    // itself triggers), so no re-attach/redraw call is needed here.
+    this.previewDrawing.points[1] = { time: param.time, price }
   }
 
   private handleClick(param: MouseEventParams) {
@@ -203,9 +269,13 @@ export class DrawingManager {
     const point = { time: param.time, price }
 
     if (this.activeTool === "none") {
-      // Select the nearest drawing within a small pixel radius, for delete.
-      this.selectedId = this.hitTest(param.point.x, param.point.y)
-      this.redrawAll()
+      const hit = this.hitTest(param.point.x, param.point.y)
+      if (hit !== this.selectedId) {
+        this.selectedId = hit
+        // Selection is read live via isSelected() closures on each
+        // primitive - no need to touch the series at all here, the next
+        // natural repaint (this click's own crosshair update) reflects it.
+      }
       return
     }
 
@@ -216,23 +286,58 @@ export class DrawingManager {
       return
     }
 
-    this.pendingPoints.push(point)
-    const needed = this.pointsNeeded(this.activeTool)
-    if (this.pendingPoints.length >= needed) {
-      this.addDrawing(this.activeTool as Exclude<DrawingTool, "none">, this.pendingPoints)
-      this.pendingPoints = []
+    if (!this.needsTwoPoints(this.activeTool)) {
+      this.addDrawing(this.activeTool as Exclude<DrawingTool, "none">, [point])
+      this.activeTool = "none"
+      return
+    }
+
+    if (!this.firstPoint) {
+      // First click: start the live preview, anchored at this point with
+      // the second point initially the same (a zero-length line) until the
+      // cursor moves.
+      this.firstPoint = point
+      const tool = this.activeTool as Exclude<DrawingTool, "none">
+      this.previewDrawing = { id: "__preview__", tool, points: [point, { ...point }], color: PREVIEW_COLOR }
+      this.previewPrimitive = new DrawingPrimitive(
+        this.chart, this.series,
+        () => this.previewDrawing,
+        () => false,
+        true
+      )
+      this.series.attachPrimitive(this.previewPrimitive)
+    } else {
+      // Second click: finalize using the preview's current (live-updated)
+      // second point rather than this click's point directly, so a fast
+      // double-click that didn't generate an intermediate move event still
+      // uses a sensible second point.
+      const finalPoints = [this.firstPoint, this.previewDrawing?.points[1] ?? point]
+      const tool = this.activeTool as Exclude<DrawingTool, "none">
+      this.cancelPending()
+      this.addDrawing(tool, finalPoints)
       this.activeTool = "none"
     }
   }
 
   private hitTest(x: number, y: number): string | null {
-    const threshold = 8
+    const threshold = 6
     for (const d of this.drawings) {
-      for (const p of d.points) {
-        const xy = toXY(this.chart, this.series, p)
-        if (xy.x === null || xy.y === null) continue
-        const dist = Math.hypot(xy.x - x, xy.y - y)
-        if (dist <= threshold) return d.id
+      const xy = d.points.map(p => toXY(this.chart, this.series, p))
+      if (xy.some(p => p.x === null || p.y === null)) continue
+      const pts = xy as { x: number; y: number }[]
+
+      if (d.tool === "horizontal") {
+        if (Math.abs(pts[0].y - y) <= threshold) return d.id
+      } else if (d.tool === "trendline" || d.tool === "ray") {
+        const p2 = d.tool === "ray" ? { x: this.chart.timeScale().width(), y: pts[0].y + (pts[1].y - pts[0].y) } : pts[1]
+        if (distToSegment(x, y, pts[0].x, pts[0].y, p2.x, p2.y) <= threshold) return d.id
+      } else if (d.tool === "rectangle") {
+        const minX = Math.min(pts[0].x, pts[1].x), maxX = Math.max(pts[0].x, pts[1].x)
+        const minY = Math.min(pts[0].y, pts[1].y), maxY = Math.max(pts[0].y, pts[1].y)
+        if (x >= minX - threshold && x <= maxX + threshold && y >= minY - threshold && y <= maxY + threshold) return d.id
+      } else {
+        // fib / text - point-proximity to the anchor is close enough.
+        if (pts.some(p => Math.hypot(p.x - x, p.y - y) <= threshold + 4)) return d.id
       }
     }
     return null
@@ -279,24 +384,20 @@ export class DrawingManager {
   }
 
   private attach(drawing: Drawing) {
-    const primitive = new DrawingPrimitive(this.chart, this.series, drawing, drawing.id === this.selectedId)
+    const primitive = new DrawingPrimitive(
+      this.chart, this.series,
+      () => this.drawings.find(x => x.id === drawing.id) ?? null,
+      () => this.selectedId === drawing.id
+    )
     this.primitives.set(drawing.id, primitive)
     this.series.attachPrimitive(primitive)
   }
 
-  private redrawAll() {
-    // Re-attaching swaps in a fresh primitive carrying the current
-    // selected-state flag, since a primitive's constructor args are
-    // immutable once attached.
-    for (const d of this.drawings) {
-      const old = this.primitives.get(d.id)
-      if (old) this.series.detachPrimitive(old)
-      this.attach(d)
-    }
-  }
-
   destroy() {
     this.chart.unsubscribeClick(this.clickHandler)
+    this.chart.unsubscribeCrosshairMove(this.moveHandler)
+    window.removeEventListener("keydown", this.keyHandler)
+    this.cancelPending()
     this.clearAll()
   }
 }
