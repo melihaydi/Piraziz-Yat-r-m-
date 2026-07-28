@@ -67,20 +67,47 @@ function venvPythonPath() {
 // Loading screen shown immediately while the Python backend and Next.js
 // frontend finish booting in the background (and, on a packaged app's very
 // first launch, while the one-time Python environment setup below runs).
-const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
+// Parameterized so the boot sequence can update the message as it moves
+// through stages instead of showing one static line the whole time - a
+// silent multi-minute wait on first launch (venv creation + pip install)
+// previously looked identical to a frozen/broken app.
+function loadingHtml(title, subtitle) {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(`
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#18181b;color:#e4e4e7;font-family:'Segoe UI',sans-serif;">
-  <div style="text-align:center;">
+  <div style="text-align:center;max-width:340px;">
     <div style="width:36px;height:36px;border:3px solid #3f3f46;border-top-color:#10b981;border-radius:50%;margin:0 auto 16px;animation:spin 0.8s linear infinite;"></div>
-    <div style="font-size:13px;color:#a1a1aa;">Piraziz Yatırım Terminali başlatılıyor...</div>
-    <div style="font-size:11px;color:#71717a;margin-top:6px;">İlk çalıştırmada kurulum birkaç dakika sürebilir</div>
+    <div style="font-size:13px;color:#a1a1aa;">${title}</div>
+    <div style="font-size:11px;color:#71717a;margin-top:6px;">${subtitle}</div>
   </div>
   <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 </body>
 </html>
 `)}`
+}
+
+function errorHtml(title, subtitle) {
+  return `data:text/html;charset=utf-8,${encodeURIComponent(`
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#18181b;color:#e4e4e7;font-family:'Segoe UI',sans-serif;">
+  <div style="text-align:center;max-width:380px;padding:0 24px;">
+    <div style="font-size:28px;margin-bottom:12px;">⚠️</div>
+    <div style="font-size:14px;font-weight:600;color:#f87171;">${title}</div>
+    <div style="font-size:12px;color:#a1a1aa;margin-top:8px;line-height:1.6;">${subtitle}</div>
+  </div>
+</body>
+</html>
+`)}`
+}
+
+const LOADING_HTML = loadingHtml(
+  'Piraziz Yatırım Terminali başlatılıyor...',
+  'İlk çalıştırmada kurulum birkaç dakika sürebilir'
+)
 
 /**
  * First-launch-only setup for a packaged install: creates a private Python
@@ -205,17 +232,6 @@ function startFrontend() {
   }
 }
 
-async function startServers() {
-  startFrontend()
-
-  const pythonReady = ensurePythonEnv()
-  if (pythonReady) {
-    startBackend()
-  } else {
-    console.error('Skipping backend startup - Python environment is not ready.')
-  }
-}
-
 /** Poll a local HTTP port until it responds (or timeout), then resolve. */
 function waitForServer(port, timeoutMs = 120000, intervalMs = 500) {
   return new Promise((resolve) => {
@@ -266,23 +282,75 @@ function createWindow () {
     e.preventDefault();
   });
 
-  // Wait for both servers to actually accept connections (instead of a blind
-  // fixed delay) before switching over to the real app. Timeout is generous
-  // (120s) to comfortably cover a packaged app's first-run Python setup.
-  Promise.all([waitForServer(8000), waitForServer(3000)]).then(([backendUp, frontendUp]) => {
-    if (frontendUp) {
-      mainWindow.loadURL('http://localhost:3000')
-    } else {
-      console.error('Frontend server did not become ready in time.')
-    }
-    if (!backendUp) {
-      console.error('Backend server did not become ready in time - some data may not load.')
-    }
-  })
+  boot()
+}
+
+/**
+ * Full startup sequence, staged so the loading screen always reflects what's
+ * actually happening instead of one static message. This used to navigate
+ * to the real app as soon as the *frontend* was reachable regardless of
+ * whether the backend ever came up - on a packaged app's first launch,
+ * venv creation + `pip install` can easily take longer than the old 120s
+ * cap, so the app would silently show Trade/Portfolio/etc. as broken (empty
+ * data, failed fetches) with no indication that the backend was still
+ * installing in the background. Now the app only ever navigates to the
+ * real UI once the backend has actually answered a request, and shows an
+ * explicit Turkish error screen instead of a silently-broken app if setup
+ * fails outright or the backend never comes up.
+ */
+async function boot() {
+  startFrontend()
+
+  mainWindow.loadURL(loadingHtml(
+    'Python ortamı hazırlanıyor...',
+    'İlk çalıştırmada bu birkaç dakika sürebilir, lütfen bekleyin.'
+  ))
+
+  const pythonReady = ensurePythonEnv()
+  if (!pythonReady) {
+    mainWindow.loadURL(errorHtml(
+      'Python ortamı kurulamadı',
+      'Bilgisayarınızda Python 3 kurulu ve PATH\'e ekli olmalı (python.org adresinden indirebilirsiniz). ' +
+      'Kurduktan sonra uygulamayı yeniden başlatın.'
+    ))
+    return
+  }
+
+  mainWindow.loadURL(loadingHtml(
+    'Sunucular başlatılıyor...',
+    'Bu birkaç saniye sürebilir.'
+  ))
+  startBackend()
+
+  // Frontend is a plain bundled Node server - if it's not up within a
+  // minute something is genuinely wrong (missing files), not just slow.
+  // Backend gets a much longer allowance since first-run pip install is the
+  // one step whose duration depends on the user's own machine/network.
+  const [frontendUp, backendUp] = await Promise.all([
+    waitForServer(3000, 60000),
+    waitForServer(8000, 600000),
+  ])
+
+  if (!frontendUp) {
+    mainWindow.loadURL(errorHtml(
+      'Uygulama başlatılamadı',
+      'Arayüz sunucusu yanıt vermedi. Uygulamayı kapatıp tekrar deneyin; sorun devam ederse yeniden kurun.'
+    ))
+    return
+  }
+  if (!backendUp) {
+    mainWindow.loadURL(errorHtml(
+      'Sunucuya bağlanılamadı',
+      'Arka uç servisi 10 dakika içinde başlamadı. İnternet bağlantınızı kontrol edip uygulamayı yeniden başlatın. ' +
+      'Sorun devam ederse Python kurulumunuzu kontrol edin.'
+    ))
+    return
+  }
+
+  mainWindow.loadURL('http://localhost:3000')
 }
 
 app.whenReady().then(() => {
-  startServers()
   createWindow()
 
   app.on('activate', () => {
