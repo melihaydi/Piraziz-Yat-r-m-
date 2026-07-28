@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { Search, Star, TrendingUp, TrendingDown, PanelLeftClose, ListFilter } from "lucide-react"
 import { useTrade, WatchlistItem, InstrumentType } from "@/contexts/TradeContext"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 interface WatchlistProps {
   onCollapse?: () => void
@@ -45,6 +46,7 @@ const WatchlistRow = React.memo(function WatchlistRow({
             <Star className={`h-3.5 w-3.5 ${isFav ? "text-amber-400 fill-amber-400" : "text-slate-700 hover:text-slate-500"}`} />
           </span>
         )}
+        <TickerLogo ticker={item.underlying_symbol || item.symbol} size={16} />
         <div className="min-w-0">
           <div className="text-xs font-bold text-white">{item.symbol}</div>
           <div className="text-[10px] text-slate-400 truncate max-w-[110px]">{item.name}</div>

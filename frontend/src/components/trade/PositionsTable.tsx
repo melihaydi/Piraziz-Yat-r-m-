@@ -1,14 +1,27 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useMemo, useState } from "react"
 import { X, Loader2, Layers, Info } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 export default function PositionsTable() {
-  const { account, activeTab, placeOrder } = useTrade()
+  const { account, activeTab, placeOrder, viopWatchlist } = useTrade()
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null)
 
   const positions = (account?.positions || []).filter(p => p.instrument_type === activeTab)
+
+  // VİOP positions only carry the contract symbol (e.g. a futures code),
+  // not the underlying stock - viopWatchlist already has that mapping
+  // (see WatchlistItem.underlying_symbol) so a logo can still be shown
+  // when a contract really does proxy a single company.
+  const underlyingBySymbol = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const c of viopWatchlist) {
+      if (c.underlying_symbol) map[c.symbol] = c.underlying_symbol
+    }
+    return map
+  }, [viopWatchlist])
 
   // A SHORT position must be closed by buying it back ("AL"), not "SAT" -
   // "SAT" on a symbol with no long position actually OPENS a new short on
@@ -60,7 +73,12 @@ export default function PositionsTable() {
             ) : (
               positions.map(pos => (
                 <tr key={pos.id} className="border-b border-slate-900 h-11 hover:bg-[#1c1d26]/40">
-                  <td className="px-4 font-bold text-white">{pos.symbol}</td>
+                  <td className="px-4 font-bold text-white">
+                    <div className="flex items-center gap-1.5">
+                      <TickerLogo ticker={underlyingBySymbol[pos.symbol] || pos.symbol} size={16} />
+                      {pos.symbol}
+                    </div>
+                  </td>
                   {activeTab === "viop" && (
                     <td className="px-4">
                       <span

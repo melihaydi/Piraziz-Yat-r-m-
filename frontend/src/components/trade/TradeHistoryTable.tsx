@@ -1,12 +1,21 @@
 "use client"
 
-import React from "react"
+import React, { useMemo } from "react"
 import { History, Info } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 export default function TradeHistoryTable() {
-  const { history, activeTab } = useTrade()
+  const { history, activeTab, viopWatchlist } = useTrade()
   const filtered = history.filter(h => h.instrument_type === activeTab)
+
+  const underlyingBySymbol = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const c of viopWatchlist) {
+      if (c.underlying_symbol) map[c.symbol] = c.underlying_symbol
+    }
+    return map
+  }, [viopWatchlist])
 
   return (
     <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
@@ -59,7 +68,12 @@ export default function TradeHistoryTable() {
                         {item.side}
                       </span>
                     </td>
-                    <td className="px-4 font-bold text-white">{item.symbol}</td>
+                    <td className="px-4 font-bold text-white">
+                      <div className="flex items-center gap-1.5">
+                        <TickerLogo ticker={underlyingBySymbol[item.symbol] || item.symbol} size={16} />
+                        {item.symbol}
+                      </div>
+                    </td>
                     <td className="px-4 text-right font-semibold text-white">{item.lot}</td>
                     <td className="px-4 text-right font-semibold text-white">{item.price.toFixed(2)}</td>
                     <td className="px-4 text-right text-slate-300">{item.commission.toFixed(2)}</td>

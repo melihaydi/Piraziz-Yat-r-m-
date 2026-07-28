@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import TradingViewChart, { PendingOrderLine } from "@/components/TradingViewChart"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
 
 // TradingView's free "Advanced Chart" embed widget (used for gold/FX/crypto
@@ -83,6 +84,7 @@ export default function TradeBistChart({ symbol, displayLabel, name, price, chan
     <div className="relative h-full w-full bg-[#101015] overflow-y-auto">
       {(name || price !== undefined) && (
         <div className="flex items-baseline gap-2.5 px-3 pt-3 pb-1">
+          <TickerLogo ticker={symbol} size={18} className="self-center" />
           <span className="text-sm font-black text-white">{displayLabel || symbol}</span>
           {name && <span className="text-[11px] text-slate-400 truncate max-w-[160px]">{name}</span>}
           {price !== undefined && (
