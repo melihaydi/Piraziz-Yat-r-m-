@@ -90,6 +90,25 @@ class Signal:
     error: Optional[str] = None
 
 
+@dataclass
+class SignalHistoryEntry:
+    """A single "the scanner called LONG/SHORT on this symbol" event,
+    logged once when a symbol's direction first changes into LONG or SHORT
+    - see StrategyEngine._run_scan. This is the intraday signal log shown
+    in the dashboard's "Sinyal Geçmişi" tab, distinct from Signal above
+    (which is always just the current snapshot)."""
+    ticker: str
+    name: str
+    direction: str  # "LONG" | "SHORT"
+    price: float
+    score: int
+    confidence: str
+    entry: Optional[float]
+    stop_loss: Optional[float]
+    take_profit: Optional[float]
+    timestamp: str
+
+
 def _find_swings(df: pd.DataFrame, window: int = SWING_WINDOW) -> List[SwingPoint]:
     """Fractal swing high/low detection: bar i is a swing high if its high
     is the strict max of the window [i-window, i+window], swing low
@@ -808,6 +827,7 @@ class StrategyEngine:
     borsapy's REST endpoints on every page view."""
 
     REFRESH_INTERVAL_SECONDS = 180
+    MAX_HISTORY_ENTRIES = 300
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -815,6 +835,14 @@ class StrategyEngine:
         self._last_run: Optional[str] = None
         self._running = False
         self._scheduler_started = False
+        # Intraday LONG/SHORT signal log: a new entry is recorded whenever a
+        # symbol's direction *changes into* LONG or SHORT (not on every scan
+        # it stays active, which would just spam duplicates every 3 minutes)
+        # - this is "what did the scanner call today", not just the current
+        # snapshot. Resets at the start of each new day.
+        self._history: List[SignalHistoryEntry] = []
+        self._last_direction: Dict[str, str] = {}
+        self._history_day: Optional[str] = None
 
     def _run_scan(self) -> None:
         names = {t["ticker"]: t["name"] for t in _ticker_names()}
@@ -837,9 +865,27 @@ class StrategyEngine:
                     logger.error(f"Signal build crashed for {ticker}: {e}")
         order = {t: i for i, t in enumerate(BIST30_TICKERS)}
         results.sort(key=lambda s: order.get(s.ticker, 999))
+
+        now = datetime.now(timezone.utc)
+        today = now.date().isoformat()
         with self._lock:
+            if self._history_day != today:
+                self._history = []
+                self._last_direction = {}
+                self._history_day = today
+            for s in results:
+                prev = self._last_direction.get(s.ticker)
+                if s.direction in ("LONG", "SHORT") and s.direction != prev:
+                    self._history.insert(0, SignalHistoryEntry(
+                        ticker=s.ticker, name=s.name, direction=s.direction, price=s.price,
+                        score=s.score, confidence=s.confidence, entry=s.entry,
+                        stop_loss=s.stop_loss, take_profit=s.take_profit,
+                        timestamp=now.isoformat(),
+                    ))
+                self._last_direction[s.ticker] = s.direction
+            self._history = self._history[: self.MAX_HISTORY_ENTRIES]
             self._signals = results
-            self._last_run = datetime.now(timezone.utc).isoformat()
+            self._last_run = now.isoformat()
 
     def scan_now(self) -> List[Signal]:
         if not self._signals:
@@ -849,6 +895,12 @@ class StrategyEngine:
     def get_signals(self) -> List[Signal]:
         with self._lock:
             return list(self._signals)
+
+    def get_signal_history(self) -> List[SignalHistoryEntry]:
+        if not self._signals:
+            self._run_scan()
+        with self._lock:
+            return list(self._history)
 
     def get_last_run(self) -> Optional[str]:
         with self._lock:

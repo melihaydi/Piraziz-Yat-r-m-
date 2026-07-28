@@ -25,6 +25,22 @@ def scan_bist30(
     }
 
 
+@router.get("/history")
+def signal_history(
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Intraday log of LONG/SHORT calls the scanner has made today - each
+    entry is recorded once, when a symbol's direction first changes into
+    LONG or SHORT (see StrategyEngine._run_scan), not repeated on every
+    3-minute rescan while it stays active. Resets at the start of each new
+    day."""
+    history = strategy_engine.get_signal_history()
+    return {
+        "last_update": strategy_engine.get_last_run(),
+        "history": [asdict(h) for h in history],
+    }
+
+
 @router.get("/scan/{ticker}")
 def scan_one(
     ticker: str,

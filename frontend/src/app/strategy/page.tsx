@@ -55,6 +55,19 @@ interface BacktestResult {
   error: string | null
 }
 
+interface SignalHistoryEntry {
+  ticker: string
+  name: string
+  direction: "LONG" | "SHORT"
+  price: number
+  score: number
+  confidence: "Yüksek" | "Orta" | "Düşük"
+  entry: number | null
+  stop_loss: number | null
+  take_profit: number | null
+  timestamp: string
+}
+
 type DirectionFilter = "ALL" | "LONG" | "SHORT"
 type SortKey = "score" | "ticker" | "change_percent" | "risk_reward"
 type BacktestSortKey = "total_return_pct" | "win_rate" | "ticker"
@@ -105,7 +118,11 @@ export default function StrategyPage() {
   const [sortKey, setSortKey] = useState<SortKey>("score")
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const [tab, setTab] = useState<"live" | "backtest">("live")
+  const [tab, setTab] = useState<"live" | "history" | "backtest">("live")
+  const [history, setHistory] = useState<SignalHistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyQuery, setHistoryQuery] = useState("")
+  const [historyDirFilter, setHistoryDirFilter] = useState<DirectionFilter>("ALL")
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([])
   const [backtestLastUpdate, setBacktestLastUpdate] = useState<string | null>(null)
   const [backtestLoading, setBacktestLoading] = useState(false)
@@ -141,6 +158,33 @@ export default function StrategyPage() {
     const interval = setInterval(() => fetchScan(), 30000)
     return () => clearInterval(interval)
   }, [fetchScan])
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await authFetch("/strategy/history")
+      if (res.ok) {
+        const data = await res.json()
+        setHistory(data.history || [])
+      }
+    } catch (e) {
+      console.error("Failed to load signal history:", e)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchHistory()
+    const interval = setInterval(fetchHistory, 30000)
+    return () => clearInterval(interval)
+  }, [fetchHistory])
+
+  const filteredHistory = useMemo(() => {
+    const q = historyQuery.trim().toUpperCase()
+    let list = history.filter(h => !q || h.ticker.includes(q) || h.name.toUpperCase().includes(q))
+    if (historyDirFilter !== "ALL") list = list.filter(h => h.direction === historyDirFilter)
+    return list
+  }, [history, historyQuery, historyDirFilter])
 
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase()
@@ -244,6 +288,12 @@ export default function StrategyPage() {
           className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "live" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
         >
           Canlı Tarama
+        </button>
+        <button
+          onClick={() => setTab("history")}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "history" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Sinyal Geçmişi{history.length > 0 ? ` (${history.length})` : ""}
         </button>
         <button
           onClick={() => setTab("backtest")}
@@ -441,6 +491,95 @@ export default function StrategyPage() {
         mum formasyonu ve TradingView teknik puanlama (RSI/MACD/hareketli ortalamalar) birlikte değerlendirilerek üretilir; risk/ödül oranı yetersiz olan
         adaylar otomatik elenir.
       </p>
+      </>
+      )}
+
+      {tab === "history" && (
+      <>
+      <div className="rounded-lg border border-border bg-secondary/10 px-3 py-2 text-[11px] text-muted-foreground flex items-start gap-2">
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        <span>
+          Tarayıcının bugün verdiği LONG/SHORT sinyallerinin kronolojik kaydı - bir sembol yeni bir yöne geçtiğinde bir kez eklenir (aynı sinyal aktif
+          kaldığı sürece tekrar eklenmez). Gece yarısı sıfırlanır.
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            value={historyQuery}
+            onChange={e => setHistoryQuery(e.target.value)}
+            placeholder="Sembol veya şirket ara..."
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
+          />
+        </div>
+        <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold">
+          {(["ALL", "LONG", "SHORT"] as DirectionFilter[]).map(d => (
+            <button
+              key={d}
+              onClick={() => setHistoryDirFilter(d)}
+              className={`px-3 h-8 rounded-md transition-colors cursor-pointer ${historyDirFilter === d ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {d === "ALL" ? "Tümü" : d}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={fetchHistory}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 transition-colors cursor-pointer"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Yenile
+        </button>
+      </div>
+
+      <div className="border border-border rounded-xl overflow-hidden bg-card">
+        {historyLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+          </div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+            <Info className="h-5 w-5" />
+            <span className="text-xs font-bold">Bugün henüz sinyal kaydı yok</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="text-muted-foreground font-bold border-b border-border h-10 bg-secondary/20">
+                  <th className="px-4">Saat</th>
+                  <th className="px-4">Sembol</th>
+                  <th className="px-4">Yön</th>
+                  <th className="px-4">Güven</th>
+                  <th className="px-4 text-right">Fiyat</th>
+                  <th className="px-4 text-right">Giriş</th>
+                  <th className="px-4 text-right">Stop</th>
+                  <th className="px-4 text-right">Hedef</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((h, i) => (
+                  <tr key={`${h.ticker}-${h.timestamp}-${i}`} className="border-b border-border/60 h-12 hover:bg-secondary/20 transition-colors">
+                    <td className="px-4 text-muted-foreground font-mono">{new Date(h.timestamp).toLocaleTimeString("tr-TR")}</td>
+                    <td className="px-4">
+                      <div className="font-black text-foreground">{h.ticker}</div>
+                      <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{h.name}</div>
+                    </td>
+                    <td className="px-4"><DirectionBadge direction={h.direction} /></td>
+                    <td className="px-4"><ConfidenceBar score={h.score} confidence={h.confidence} /></td>
+                    <td className="px-4 text-right font-bold text-foreground">₺{fmt(h.price)}</td>
+                    <td className="px-4 text-right font-semibold text-foreground">{h.entry ? fmt(h.entry) : "-"}</td>
+                    <td className="px-4 text-right font-semibold text-rose-400">{h.stop_loss ? fmt(h.stop_loss) : "-"}</td>
+                    <td className="px-4 text-right font-semibold text-emerald-400">{h.take_profit ? fmt(h.take_profit) : "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
       </>
       )}
 
