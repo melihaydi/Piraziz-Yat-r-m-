@@ -136,7 +136,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
     }
     
     checkSignalsAndAlarms()
-    const interval = setInterval(checkSignalsAndAlarms, 15000)
+    // Runs globally on every page for every logged-in user; the backend
+    // now caches /portfolio/signals for 2 minutes (see portfolio.py), so
+    // polling much faster than that just burns requests without fresher
+    // data. 60s still catches new alarm triggers promptly.
+    const interval = setInterval(checkSignalsAndAlarms, 60000)
     return () => clearInterval(interval)
   }, [])
 
@@ -213,10 +217,14 @@ export default function Header({ onMenuClick }: HeaderProps) {
     }
 
     fetchIndexes()
-    // Poll every 2s: the backend reads from an in-memory TradingView WebSocket
-    // cache (no network round-trip per request), so this stays cheap while
-    // keeping the ticker feed close to real-time.
-    const interval = setInterval(fetchIndexes, 2000)
+    // This is a persistent component (mounted for the whole app, not per
+    // page), so its poll interval runs continuously everywhere, stacked on
+    // top of whatever the current page itself is polling. 2s was excessive
+    // for a ticker banner - re-rendering the header 30x/minute added
+    // constant background CPU/network pressure that made route transitions
+    // feel janky even though nothing was actually reloading. 5s still reads
+    // as live for an index ticker.
+    const interval = setInterval(fetchIndexes, 5000)
     return () => clearInterval(interval)
   }, [])
 

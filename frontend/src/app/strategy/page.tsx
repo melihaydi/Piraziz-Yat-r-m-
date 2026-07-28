@@ -109,6 +109,7 @@ export default function StrategyPage() {
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([])
   const [backtestLastUpdate, setBacktestLastUpdate] = useState<string | null>(null)
   const [backtestLoading, setBacktestLoading] = useState(false)
+  const [backtestComputing, setBacktestComputing] = useState(false)
   const [backtestLoaded, setBacktestLoaded] = useState(false)
   const [backtestQuery, setBacktestQuery] = useState("")
   const [backtestSort, setBacktestSort] = useState<BacktestSortKey>("total_return_pct")
@@ -161,15 +162,17 @@ export default function StrategyPage() {
   const fetchBacktest = useCallback(async () => {
     setBacktestLoading(true)
     try {
-      // First call after a server restart computes this inline (see
-      // BacktestEngine.get_results()) - can take up to ~1-2 minutes for all
-      // 30 symbols over ~2 years of daily bars. Later calls just read the
-      // once-a-day background-refreshed cache and return instantly.
+      // The backend never blocks this request: if there's no cached result
+      // yet (first call after a cold start) it kicks the ~30-symbol x
+      // ~2-year walk-forward computation off in the background and replies
+      // immediately with computing=true - polled below until it flips to
+      // false, instead of holding this HTTP request open for minutes.
       const res = await authFetch("/strategy/backtest")
       if (res.ok) {
         const data = await res.json()
         setBacktestResults(data.results || [])
         setBacktestLastUpdate(data.last_update || null)
+        setBacktestComputing(!!data.computing)
         setBacktestLoaded(true)
       }
     } catch (e) {
@@ -184,6 +187,12 @@ export default function StrategyPage() {
       fetchBacktest()
     }
   }, [tab, backtestLoaded, backtestLoading, fetchBacktest])
+
+  useEffect(() => {
+    if (!backtestComputing) return
+    const interval = setInterval(fetchBacktest, 5000)
+    return () => clearInterval(interval)
+  }, [backtestComputing, fetchBacktest])
 
   const filteredBacktest = useMemo(() => {
     const q = backtestQuery.trim().toUpperCase()
@@ -481,11 +490,11 @@ export default function StrategyPage() {
       </div>
 
       <div className="border border-border rounded-xl overflow-hidden bg-card">
-        {backtestLoading ? (
+        {(backtestLoading && !backtestLoaded) || backtestComputing ? (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-center px-6">
             <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
             <span className="text-[11px] text-muted-foreground">
-              30 sembol için ~2 yıllık geriye dönük simülasyon çalıştırılıyor - ilk çalıştırma birkaç dakika sürebilir...
+              30 sembol için ~2 yıllık geriye dönük simülasyon sunucuda çalışıyor - birkaç dakika sürebilir, sonuçlar hazır olunca otomatik görünecek...
             </span>
           </div>
         ) : filteredBacktest.length === 0 ? (

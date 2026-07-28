@@ -42,6 +42,7 @@ export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<any[]>([])
   const [alerts, setAlerts] = useState<any[]>([])
   const [analytics, setAnalytics] = useState<any>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur">("hisse")
   
@@ -81,7 +82,17 @@ export default function PortfolioPage() {
   // which attaches the token and logs the session out on a 401 - no more
   // local login/register bootstrapping here (that previously even sent
   // {"role": "premium"} on self-registration, since fixed server-side too).
-  const loadData = async () => {
+  //
+  // Split into a fast "core" load (portfolios + alerts, plain DB reads) that
+  // gates the page's main spinner, and a separate, slower analytics load
+  // (/portfolio/analytics does real historical-price fetches per holding to
+  // compute Beta/Sharpe) that runs independently with its own loading flag.
+  // Previously analytics was awaited as a 3rd sequential step inside the
+  // same function the main spinner depended on, so opening the page could
+  // hang for many seconds (or fail to appear at all under TradingView rate
+  // limiting) - the assets table, winners/losers, and alerts had no reason
+  // to wait on that.
+  const loadCore = async () => {
     try {
       const portRes = await authFetch("/portfolio/")
       if (portRes.ok) {
@@ -102,24 +113,35 @@ export default function PortfolioPage() {
         }
       }
 
-      // 2. Fetch alerts
       const alertRes = await authFetch("/alert/")
       if (alertRes.ok) {
         const alertData = await alertRes.json()
         setAlerts(alertData)
-      }
-
-      // 3. Fetch real sector/asset-type/risk analytics (backend computes
-      // these from actual historical returns, see portfolio_analytics.py)
-      const analyticsRes = await authFetch("/portfolio/analytics")
-      if (analyticsRes.ok) {
-        setAnalytics(await analyticsRes.json())
       }
     } catch (err) {
       console.error("Failed to load portfolio/alert data:", err)
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadAnalytics = async () => {
+    setAnalyticsLoading(true)
+    try {
+      const analyticsRes = await authFetch("/portfolio/analytics")
+      if (analyticsRes.ok) {
+        setAnalytics(await analyticsRes.json())
+      }
+    } catch (err) {
+      console.error("Failed to load portfolio analytics:", err)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }
+
+  const loadData = () => {
+    loadCore()
+    loadAnalytics()
   }
 
   useEffect(() => {
@@ -577,15 +599,21 @@ export default function PortfolioPage() {
               <Activity className="h-4 w-4 text-cyan-400" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
-              <span className="text-3xl font-extrabold font-mono text-foreground">
-                {analytics?.beta != null ? analytics.beta.toFixed(2) : "—"}
-              </span>
-              <span className="text-xs text-muted-foreground font-medium">
-                Vol: {analytics?.volatility_pct != null ? `%${analytics.volatility_pct}` : "—"}
-              </span>
+              {analyticsLoading ? (
+                <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+              ) : (
+                <>
+                  <span className="text-3xl font-extrabold font-mono text-foreground">
+                    {analytics?.beta != null ? analytics.beta.toFixed(2) : "—"}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Vol: {analytics?.volatility_pct != null ? `%${analytics.volatility_pct}` : "—"}
+                  </span>
+                </>
+              )}
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              {analytics?.risk_metrics_note || "Son 6 aylık gerçek getiri verisiyle (XU100'e göre) hesaplandı"}
+              {analyticsLoading ? "Hesaplanıyor..." : analytics?.risk_metrics_note || "Son 6 aylık gerçek getiri verisiyle (XU100'e göre) hesaplandı"}
             </p>
           </CardContent>
         </Card>
@@ -601,7 +629,7 @@ export default function PortfolioPage() {
                 {advancedMetrics.healthScore} <span className="text-[10px] text-muted-foreground font-bold">/100</span>
               </span>
               <span className="text-xs font-bold text-purple-400 font-mono">
-                Sharpe: {analytics?.sharpe != null ? analytics.sharpe.toFixed(2) : "—"}
+                Sharpe: {analyticsLoading ? "…" : analytics?.sharpe != null ? analytics.sharpe.toFixed(2) : "—"}
               </span>
             </div>
             <div className="w-full bg-secondary/40 h-2.5 rounded-full overflow-hidden border border-border/30">
@@ -816,7 +844,11 @@ export default function PortfolioPage() {
             </CardHeader>
             <CardContent className="flex flex-col items-center">
               <div className="h-48 w-full">
-                {distributionData.length > 0 ? (
+                {distributionTab !== "hisse" && analyticsLoading ? (
+                  <div className="h-full flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                  </div>
+                ) : distributionData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie

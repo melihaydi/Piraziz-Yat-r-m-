@@ -43,11 +43,14 @@ def backtest_bist30(
 ):
     """Walk-forward backtest of the same signal logic over ~2 years of
     history for every BIST30 symbol - serves the background-refreshed cache
-    (see BacktestEngine.REFRESH_INTERVAL_SECONDS, once/day) so this stays
-    fast; the first call after a cold backend start computes it inline."""
+    (see BacktestEngine.REFRESH_INTERVAL_SECONDS, once/day). Never blocks:
+    the first call after a cold backend start kicks off the computation in
+    the background and returns immediately with computing=true; the
+    frontend polls until it flips to false."""
     results = backtest_engine.get_results()
     return {
         "last_update": backtest_engine.get_last_run(),
+        "computing": backtest_engine.is_running(),
         "results": [asdict(r) for r in results],
     }
 

@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -108,6 +109,19 @@ def get_user_portfolios(
 
     return response_list
 
+# In-memory cache for /analytics, keyed by (user_id, holdings composition) -
+# not by live-priced total_value, since that changes on every quote tick and
+# would defeat caching entirely. Beta/Sharpe/volatility come from historical
+# daily closes and don't meaningfully change within minutes, so a real
+# composition change (buy/sell/add) invalidates the cache immediately (new
+# key), while repeat visits with the same holdings hit cache instead of
+# re-fetching 6mo history per ticker from TradingView every time - that
+# network round-trip was the actual cause of "Portföyüm" taking many
+# seconds to render every single time it was opened.
+_ANALYTICS_CACHE: dict = {}
+_ANALYTICS_CACHE_TTL_SECONDS = 900
+
+
 @router.get("/analytics")
 def get_portfolio_analytics(
     db: Session = Depends(deps.get_db),
@@ -127,6 +141,12 @@ def get_portfolio_analytics(
             "risk_metrics_note": "Portföyünüzde henüz varlık bulunmuyor.",
         }
 
+    composition_key = tuple(sorted((a.ticker.upper(), round(a.shares, 4)) for a in all_assets))
+    cache_key = (current_user.id, composition_key)
+    cached = _ANALYTICS_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0]) < _ANALYTICS_CACHE_TTL_SECONDS:
+        return cached[1]
+
     tickers = sorted({a.ticker.upper() for a in all_assets})
     with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
         price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
@@ -136,7 +156,9 @@ def get_portfolio_analytics(
         price = price_by_ticker.get(a.ticker.upper()) or a.average_cost
         asset_values.append({"ticker": a.ticker.upper(), "total_value": a.shares * price})
 
-    return compute_portfolio_analytics(asset_values)
+    result = compute_portfolio_analytics(asset_values)
+    _ANALYTICS_CACHE[cache_key] = (time.time(), result)
+    return result
 
 
 @router.post("/", response_model=PortfolioResponse, status_code=status.HTTP_201_CREATED)
@@ -294,6 +316,20 @@ def sell_portfolio_asset(
         metrics = calculate_asset_metrics(asset)
         return PortfolioAssetResponse(**metrics)
 
+# The Header component polls this every 15s, on every page, for every
+# logged-in user (it's a global "AL/SAT" notification badge, not the
+# primary trading view) - and each call runs a full 11-indicator technical
+# analysis (SMA/EMA/RSI/MACD/VWAP/Supertrend/ATR/ADX) per ticker, falling
+# back to a fresh borsapy history() network fetch for any ticker not
+# already in the live-stream cache. Without caching, that repeats the same
+# computation from scratch every 15s indefinitely for the same holdings -
+# a real, constant background load contributing to overall app sluggishness.
+# Daily-bar-based indicators don't meaningfully change within a couple of
+# minutes, so this is cached per (user, holdings) like /analytics.
+_SIGNALS_CACHE: dict = {}
+_SIGNALS_CACHE_TTL_SECONDS = 120
+
+
 @router.get("/signals")
 def get_portfolio_signals(
     db: Session = Depends(deps.get_db),
@@ -311,6 +347,11 @@ def get_portfolio_signals(
     if not symbols_to_check:
         symbols_to_check = ["THYAO", "EREGL", "TUPRS", "BIMAS", "ODINE"]
         is_fallback = True
+
+    cache_key = (current_user.id, tuple(sorted(t.upper() for t in symbols_to_check)))
+    cached = _SIGNALS_CACHE.get(cache_key)
+    if cached and (time.time() - cached[0]) < _SIGNALS_CACHE_TTL_SECONDS:
+        return cached[1]
 
     signals = []
     from app.services.technical_analysis import TechnicalAnalysisService
@@ -533,7 +574,9 @@ def get_portfolio_signals(
             "timestamp": datetime.now().strftime("%H:%M:%S")
         })
 
-    return {
+    result = {
         "is_fallback": is_fallback,
         "signals": signals
     }
+    _SIGNALS_CACHE[cache_key] = (time.time(), result)
+    return result

@@ -650,31 +650,53 @@ class BacktestEngine:
         self._results: List[BacktestResult] = []
         self._last_run: Optional[str] = None
         self._scheduler_started = False
+        self._running = False
 
     def _run_backtest(self) -> None:
-        names = {t["ticker"]: t["name"] for t in _ticker_names()}
-        results: List[BacktestResult] = []
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {}
-            for ticker in BIST30_TICKERS:
-                futures[pool.submit(_backtest_symbol, ticker, names.get(ticker, ticker))] = ticker
-                time.sleep(0.15)
-            for fut in as_completed(futures):
-                try:
-                    results.append(fut.result())
-                except Exception as e:
-                    logger.error(f"Backtest crashed for {futures[fut]}: {e}")
-        order = {t: i for i, t in enumerate(BIST30_TICKERS)}
-        results.sort(key=lambda r: order.get(r.ticker, 999))
         with self._lock:
-            self._results = results
-            self._last_run = datetime.now(timezone.utc).isoformat()
+            if self._running:
+                return
+            self._running = True
+        try:
+            names = {t["ticker"]: t["name"] for t in _ticker_names()}
+            results: List[BacktestResult] = []
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = {}
+                for ticker in BIST30_TICKERS:
+                    futures[pool.submit(_backtest_symbol, ticker, names.get(ticker, ticker))] = ticker
+                    time.sleep(0.15)
+                for fut in as_completed(futures):
+                    try:
+                        results.append(fut.result())
+                    except Exception as e:
+                        logger.error(f"Backtest crashed for {futures[fut]}: {e}")
+            order = {t: i for i, t in enumerate(BIST30_TICKERS)}
+            results.sort(key=lambda r: order.get(r.ticker, 999))
+            with self._lock:
+                self._results = results
+                self._last_run = datetime.now(timezone.utc).isoformat()
+        finally:
+            with self._lock:
+                self._running = False
 
     def get_results(self) -> List[BacktestResult]:
-        if not self._results:
-            self._run_backtest()
+        """Non-blocking: a 30-symbol x ~2-year walk-forward backtest can take
+        a few minutes, so this never makes an HTTP request wait on it. If
+        there's no cached result yet (first request after a cold start) and
+        a run isn't already in flight, it kicks one off in the background
+        and returns immediately - callers should also check is_running() to
+        distinguish "still computing" from "no signals in this window"."""
+        with self._lock:
+            has_results = bool(self._results)
+            running = self._running
+        if not has_results and not running:
+            threading.Thread(target=self._run_backtest, daemon=True).start()
         with self._lock:
             return list(self._results)
+
+    def is_running(self) -> bool:
+        with self._lock:
+            return self._running
 
     def get_last_run(self) -> Optional[str]:
         with self._lock:
