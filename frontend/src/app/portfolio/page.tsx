@@ -41,8 +41,9 @@ const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"
 export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<any[]>([])
   const [alerts, setAlerts] = useState<any[]>([])
+  const [analytics, setAnalytics] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor">("hisse")
+  const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur">("hisse")
   
   // Modal states
   const [isOpenAlertModal, setIsOpenAlertModal] = useState(false)
@@ -107,6 +108,13 @@ export default function PortfolioPage() {
         const alertData = await alertRes.json()
         setAlerts(alertData)
       }
+
+      // 3. Fetch real sector/asset-type/risk analytics (backend computes
+      // these from actual historical returns, see portfolio_analytics.py)
+      const analyticsRes = await authFetch("/portfolio/analytics")
+      if (analyticsRes.ok) {
+        setAnalytics(await analyticsRes.json())
+      }
     } catch (err) {
       console.error("Failed to load portfolio/alert data:", err)
     } finally {
@@ -135,55 +143,44 @@ export default function PortfolioPage() {
     color: COLORS[index % COLORS.length]
   }))
 
+  // Real sector/asset-type breakdown from the backend (computed from actual
+  // holdings' sector map and fund-vs-stock classification, see
+  // portfolio_analytics.py) - previously this was a 5-entry hardcoded ticker
+  // map that silently lumped everything else into "Diğer / ETF".
   const sectorPieData = React.useMemo(() => {
-    const sectors: { [key: string]: number } = {}
-    assetsList.forEach((item: any) => {
-      let sectorName = "Diğer / ETF"
-      const t = item.ticker
-      if (t === "THYAO" || t === "PGSUS") sectorName = "Ulaştırma / Havacılık"
-      else if (t === "EREGL" || t === "KRDMD") sectorName = "Demir-Çelik"
-      else if (t === "TUPRS" || t === "ASELS") sectorName = "Sanayi / Savunma"
-      else if (t === "BIMAS" || t === "MGROS") sectorName = "Gıda / Perakende"
-      else if (t === "YKBNK" || t === "ISCTR" || t === "AKBNK") sectorName = "Bankacılık / Finans"
-      else if (t.length === 3) sectorName = "Yatırım Fonları"
-      
-      sectors[sectorName] = (sectors[sectorName] || 0) + (item.total_value || 0)
-    })
-    
-    return Object.entries(sectors).map(([name, value], idx) => ({
-      name,
-      value: Math.round(value),
+    const rows = analytics?.sector_breakdown || []
+    return rows.map((r: any, idx: number) => ({
+      name: r.name,
+      value: Math.round(r.value),
       color: COLORS[idx % COLORS.length]
     }))
-  }, [assetsList])
+  }, [analytics])
 
-  // Advanced Metrics calculations (Request 6!)
+  const assetTypePieData = React.useMemo(() => {
+    const rows = analytics?.asset_type_breakdown || []
+    return rows.map((r: any, idx: number) => ({
+      name: r.name,
+      value: Math.round(r.value),
+      color: COLORS[idx % COLORS.length]
+    }))
+  }, [analytics])
+
+  const distributionData =
+    distributionTab === "hisse" ? pieData : distributionTab === "sektor" ? sectorPieData : assetTypePieData
+
+  // Winners/losers are real per-asset profit figures (unchanged). Sharpe/Beta/
+  // volatility now come from `analytics` (real historical daily returns vs
+  // XU100), not the old count-based formulas.
   const advancedMetrics = React.useMemo(() => {
-    if (assetsList.length === 0) {
-      return { sharpe: 0.0, beta: 1.0, volatility: 0.0, healthScore: 0, winners: [], losers: [] }
-    }
-    
     const sortedAssets = [...assetsList].sort((a, b) => (b.profit_percentage || 0) - (a.profit_percentage || 0))
     const winners = sortedAssets.filter(a => (a.total_profit || 0) > 0)
     const losers = sortedAssets.filter(a => (a.total_profit || 0) <= 0).reverse()
-    
-    const volatility = 18.4 + (assetsList.length * 0.8)
-    const beta = 1.05 + (assetsList.length % 3) * 0.05
-    
-    const sharpe = parseFloat(((profitPercentage - 12) / (volatility || 15)).toFixed(2))
-    
+
     const divScore = Math.min(40, assetsList.length * 8)
     const retScore = Math.min(30, Math.max(0, profitPercentage * 1.5))
-    const healthScore = Math.round(divScore + retScore + 40)
-    
-    return {
-      sharpe: Math.max(-1.5, Math.min(3.5, sharpe)),
-      beta: parseFloat(beta.toFixed(2)),
-      volatility: parseFloat(volatility.toFixed(1)),
-      healthScore: Math.min(100, Math.max(20, healthScore)),
-      winners,
-      losers
-    }
+    const healthScore = Math.min(100, Math.max(20, Math.round(divScore + retScore + 40)))
+
+    return { winners, losers, healthScore }
   }, [assetsList, profitPercentage])
 
   // Add Asset Handler
@@ -581,11 +578,15 @@ export default function PortfolioPage() {
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="text-3xl font-extrabold font-mono text-foreground">
-                {advancedMetrics.beta}
+                {analytics?.beta != null ? analytics.beta.toFixed(2) : "—"}
               </span>
-              <span className="text-xs text-muted-foreground font-medium">Vol: %{advancedMetrics.volatility}</span>
+              <span className="text-xs text-muted-foreground font-medium">
+                Vol: {analytics?.volatility_pct != null ? `%${analytics.volatility_pct}` : "—"}
+              </span>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">Riske Maruz Değer (VaR %95): %2.4</p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {analytics?.risk_metrics_note || "Son 6 aylık gerçek getiri verisiyle (XU100'e göre) hesaplandı"}
+            </p>
           </CardContent>
         </Card>
 
@@ -599,7 +600,9 @@ export default function PortfolioPage() {
               <span className="text-2xl font-black text-foreground">
                 {advancedMetrics.healthScore} <span className="text-[10px] text-muted-foreground font-bold">/100</span>
               </span>
-              <span className="text-xs font-bold text-purple-400 font-mono">Sharpe: {advancedMetrics.sharpe}</span>
+              <span className="text-xs font-bold text-purple-400 font-mono">
+                Sharpe: {analytics?.sharpe != null ? analytics.sharpe.toFixed(2) : "—"}
+              </span>
             </div>
             <div className="w-full bg-secondary/40 h-2.5 rounded-full overflow-hidden border border-border/30">
               <div 
@@ -792,7 +795,7 @@ export default function PortfolioPage() {
                   >
                     Hisse
                   </button>
-                  <button 
+                  <button
                     onClick={() => setDistributionTab("sektor")}
                     className={`text-[9px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
                       distributionTab === "sektor" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
@@ -800,16 +803,24 @@ export default function PortfolioPage() {
                   >
                     Sektör
                   </button>
+                  <button
+                    onClick={() => setDistributionTab("tur")}
+                    className={`text-[9px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
+                      distributionTab === "tur" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Tür
+                  </button>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col items-center">
               <div className="h-48 w-full">
-                {(distributionTab === "hisse" ? pieData : sectorPieData).length > 0 ? (
+                {distributionData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={distributionTab === "hisse" ? pieData : sectorPieData}
+                        data={distributionData}
                         cx="50%"
                         cy="50%"
                         innerRadius={45}
@@ -817,7 +828,7 @@ export default function PortfolioPage() {
                         paddingAngle={4}
                         dataKey="value"
                       >
-                        {(distributionTab === "hisse" ? pieData : sectorPieData).map((entry: any, index: number) => (
+                        {distributionData.map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
@@ -829,7 +840,7 @@ export default function PortfolioPage() {
                 )}
               </div>
               <div className="w-full space-y-2 mt-4 max-h-40 overflow-y-auto pr-1">
-                {(distributionTab === "hisse" ? pieData : sectorPieData).map((entry: any) => {
+                {distributionData.map((entry: any) => {
                   const pct = currentValue > 0 ? ((entry.value / currentValue) * 100).toFixed(1) : "0.0"
                   return (
                     <div key={entry.name} className="flex items-center justify-between text-xs font-semibold">

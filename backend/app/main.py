@@ -35,8 +35,9 @@ app.include_router(api_router, prefix="/api/v1")
 async def start_background_jobs():
     from app.services.tefas import tefas_service
     tefas_service.start_daily_scheduler()
-    from app.services.strategy_engine import strategy_engine
+    from app.services.strategy_engine import strategy_engine, backtest_engine
     strategy_engine.start_background_refresh()
+    backtest_engine.start_background_refresh()
 
 @app.get("/")
 async def root():

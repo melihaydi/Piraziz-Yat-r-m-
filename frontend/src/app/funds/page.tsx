@@ -2,12 +2,41 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown } from "lucide-react"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/Dialog"
 import TradingViewChart from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
+
+const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
+
+function buildComparisonChartData(funds: any[]) {
+  const withCandles = funds.filter((f) => Array.isArray(f.candles) && f.candles.length > 0)
+  if (withCandles.length === 0) return []
+  const minLen = Math.min(...withCandles.map((f) => f.candles.length))
+  if (minLen === 0) return []
+  // Align on the most recent `minLen` candles of each fund (not the earliest)
+  // so series with different history lengths still compare the SAME shared
+  // trading-day window, then normalize each to % change from its own first
+  // point in that window - funds trade at wildly different NAV scales
+  // (e.g. ₺1.16 vs ₺7457) so raw price overlay would be meaningless.
+  const trimmed = withCandles.map((f) => f.candles.slice(-minLen))
+  const rows: any[] = []
+  for (let i = 0; i < minLen; i++) {
+    const row: any = { time: trimmed[0][i]?.time }
+    withCandles.forEach((f, idx) => {
+      const base = trimmed[idx][0]?.close
+      const cur = trimmed[idx][i]?.close
+      row[f.code] = base ? Number((((cur / base) - 1) * 100).toFixed(2)) : 0
+    })
+    rows.push(row)
+  }
+  return rows
+}
 
 export default function FundsPage() {
   const router = useRouter()
@@ -35,6 +64,46 @@ export default function FundsPage() {
   })
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(false)
+
+  // Fund comparison state (2-5 funds, matches the backend's GET /funds/compare cap)
+  const [compareCodes, setCompareCodes] = useState<string[]>([])
+  const [compareOpen, setCompareOpen] = useState(false)
+  const [compareLoading, setCompareLoading] = useState(false)
+  const [compareError, setCompareError] = useState<string | null>(null)
+  const [compareResult, setCompareResult] = useState<any[]>([])
+
+  const toggleCompare = (code: string) => {
+    setCompareCodes((prev) => {
+      if (prev.includes(code)) return prev.filter((c) => c !== code)
+      if (prev.length >= 5) return prev
+      return [...prev, code]
+    })
+  }
+
+  const runCompare = async () => {
+    if (compareCodes.length < 2) return
+    setCompareOpen(true)
+    setCompareLoading(true)
+    setCompareError(null)
+    try {
+      const res = await authFetch(`/funds/compare?codes=${compareCodes.join(",")}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setCompareError(body.detail || "Karşılaştırma başarısız oldu.")
+        setCompareResult([])
+        return
+      }
+      const data = await res.json()
+      setCompareResult(data.funds || [])
+    } catch (err) {
+      console.error("Failed to compare funds:", err)
+      setCompareError("Karşılaştırma sırasında bir hata oluştu.")
+    } finally {
+      setCompareLoading(false)
+    }
+  }
+
+  const compareChartData = useMemo(() => buildComparisonChartData(compareResult), [compareResult])
 
   // Load favorites from localStorage on mount
   useEffect(() => {
@@ -272,16 +341,28 @@ export default function FundsPage() {
 
               {/* Action row */}
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/40">
-                <Button 
-                  variant={showOnlyFavorites ? "default" : "outline"} 
-                  size="sm" 
-                  onClick={() => setShowOnlyFavorites(!showOnlyFavorites)} 
-                  className="text-xs h-7 px-2.5 cursor-pointer flex items-center"
-                >
-                  <Star className={`h-3.5 w-3.5 mr-1 ${showOnlyFavorites ? "fill-current" : ""}`} />
-                  Favori Fonlarım
-                </Button>
-                
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant={showOnlyFavorites ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+                    className="text-xs h-7 px-2.5 cursor-pointer flex items-center"
+                  >
+                    <Star className={`h-3.5 w-3.5 mr-1 ${showOnlyFavorites ? "fill-current" : ""}`} />
+                    Favori Fonlarım
+                  </Button>
+                  <Button
+                    variant={compareCodes.length >= 2 ? "default" : "outline"}
+                    size="sm"
+                    disabled={compareCodes.length < 2}
+                    onClick={runCompare}
+                    className="text-xs h-7 px-2.5 cursor-pointer flex items-center disabled:opacity-40"
+                  >
+                    <Scale className="h-3.5 w-3.5 mr-1" />
+                    Fonları Karşılaştır ({compareCodes.length})
+                  </Button>
+                </div>
+
                 <div className="flex items-center space-x-3">
                   <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs h-7 px-2 cursor-pointer flex items-center text-muted-foreground hover:text-foreground">
                     <RefreshCw className="h-3 w-3 mr-1" />
@@ -309,6 +390,7 @@ export default function FundsPage() {
                     <thead>
                       <tr className="border-b border-border/80 text-muted-foreground font-bold bg-secondary/15 h-9 sticky top-0 backdrop-blur z-10">
                         <th className="px-4 text-center w-8">Fav</th>
+                        <th className="px-4 text-center w-8">Kıyasla</th>
                         <th className="px-4 cursor-pointer hover:text-foreground" onClick={() => handleSort("code")}>
                           Kod <ArrowUpDown className="inline h-3 w-3 ml-0.5" />
                         </th>
@@ -347,6 +429,18 @@ export default function FundsPage() {
                                   <Star className={`h-4 w-4 ${isFav ? "text-amber-400 fill-amber-400" : ""}`} />
                                 </button>
                               </td>
+                              <td className="px-4 text-center" onClick={(e) => {
+                                e.stopPropagation()
+                                toggleCompare(fund.code)
+                              }}>
+                                <input
+                                  type="checkbox"
+                                  checked={compareCodes.includes(fund.code)}
+                                  onChange={() => {}}
+                                  disabled={!compareCodes.includes(fund.code) && compareCodes.length >= 5}
+                                  className="h-3.5 w-3.5 accent-primary cursor-pointer"
+                                />
+                              </td>
                               <td className="px-4 font-bold text-foreground">
                                 <span className={`px-2 py-0.5 rounded text-[10px] ${
                                   isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
@@ -367,7 +461,7 @@ export default function FundsPage() {
                         })
                       ) : (
                         <tr className="h-20">
-                          <td colSpan={6} className="text-center text-muted-foreground text-xs">
+                          <td colSpan={7} className="text-center text-muted-foreground text-xs">
                             Fon bulunamadı.
                           </td>
                         </tr>
@@ -464,6 +558,124 @@ export default function FundsPage() {
         </div>
 
       </div>
+
+      {/* Fund Comparison Dialog */}
+      <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Scale className="h-4 w-4 mr-2 text-primary" />
+              Fon Karşılaştırma
+            </DialogTitle>
+            <DialogDescription>
+              Seçilen fonların getiri, volatilite ve normalize edilmiş performans karşılaştırması.
+            </DialogDescription>
+          </DialogHeader>
+
+          {compareLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-3">
+              <Loader2 className="h-8 w-8 text-primary animate-spin" />
+              <span className="text-xs text-muted-foreground">Karşılaştırma hesaplanıyor...</span>
+            </div>
+          ) : compareError ? (
+            <div className="py-10 text-center text-xs text-rose-400">{compareError}</div>
+          ) : (
+            <div className="space-y-6">
+              {/* Normalized overlay chart */}
+              <div className="h-64 w-full">
+                {compareChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={compareChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                      <XAxis
+                        dataKey="time"
+                        tickFormatter={(t) => new Date(t * 1000).toLocaleDateString("tr-TR", { month: "short", day: "numeric" })}
+                        tick={{ fontSize: 10 }}
+                        minTickGap={30}
+                      />
+                      <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} />
+                      <RechartsTooltip
+                        labelFormatter={(t) => new Date(Number(t) * 1000).toLocaleDateString("tr-TR")}
+                        formatter={(value: any, name: any) => [`${value}%`, name]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {compareResult.map((f, idx) => (
+                        <Line
+                          key={f.code}
+                          type="monotone"
+                          dataKey={f.code}
+                          stroke={COMPARE_COLORS[idx % COMPARE_COLORS.length]}
+                          dot={false}
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                    Ortak tarih aralığında grafik verisi bulunamadı.
+                  </div>
+                )}
+              </div>
+
+              {/* Stats table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="border-b border-border/60 text-muted-foreground font-bold h-9">
+                      <th className="px-3">Fon</th>
+                      <th className="px-3 text-right">Fiyat</th>
+                      <th className="px-3 text-right">1 Ay</th>
+                      <th className="px-3 text-right">3 Ay</th>
+                      <th className="px-3 text-right">1 Yıl</th>
+                      <th className="px-3 text-right">Volatilite (Yıllık)</th>
+                      <th className="px-3 text-center w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compareResult.map((f, idx) => (
+                      <tr key={f.code} className="border-b border-border/30 h-11">
+                        <td className="px-3">
+                          <span
+                            className="px-2 py-0.5 rounded text-[10px] font-bold text-black"
+                            style={{ backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length] }}
+                          >
+                            {f.code}
+                          </span>
+                          {f.is_simulated && (
+                            <span className="ml-1.5 text-[9px] text-amber-400 font-semibold">simüle</span>
+                          )}
+                        </td>
+                        <td className="px-3 text-right font-mono font-semibold">₺{Number(f.price).toFixed(4)}</td>
+                        {["return_1m_pct", "return_3m_pct", "return_1y_pct"].map((key) => (
+                          <td key={key} className="px-3 text-right font-mono font-semibold">
+                            {f[key] != null ? (
+                              <span className={f[key] >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                                {f[key] >= 0 ? "+" : ""}{f[key]}%
+                              </span>
+                            ) : "—"}
+                          </td>
+                        ))}
+                        <td className="px-3 text-right font-mono">
+                          {f.volatility_pct != null ? `%${f.volatility_pct}` : "—"}
+                        </td>
+                        <td className="px-3 text-center">
+                          <button
+                            onClick={() => setCompareCodes((prev) => prev.filter((c) => c !== f.code))}
+                            className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

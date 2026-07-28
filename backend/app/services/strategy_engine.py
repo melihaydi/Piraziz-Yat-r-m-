@@ -446,6 +446,263 @@ def _build_signal(ticker: str, name: str) -> Signal:
         )
 
 
+@dataclass
+class BacktestTrade:
+    direction: str
+    entry_date: str
+    entry_price: float
+    exit_date: str
+    exit_price: float
+    exit_reason: str  # "stop" | "target" | "timeout" | "açık pozisyon (güncel fiyat)"
+    return_pct: float
+
+
+@dataclass
+class BacktestResult:
+    ticker: str
+    name: str
+    total_trades: int
+    win_rate: Optional[float]
+    total_return_pct: Optional[float]
+    avg_return_pct: Optional[float]
+    best_trade_pct: Optional[float]
+    worst_trade_pct: Optional[float]
+    last_trade: Optional[BacktestTrade]
+    recent_trades: List[BacktestTrade]
+    error: Optional[str] = None
+
+
+BACKTEST_LOOKBACK_PERIOD = "2y"
+BACKTEST_WINDOW_BARS = 120    # bars of context fed to swing/structure/breakout detection at each step
+BACKTEST_WARMUP_BARS = 60     # need this many bars of history before evaluating the first signal
+BACKTEST_MAX_HOLD_BARS = 40   # force-close a still-open simulated trade after this many bars
+
+
+def _rsi_series(closes: pd.Series, period: int = 14) -> pd.Series:
+    delta = closes.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50.0)
+
+
+def _backtest_symbol(ticker: str, name: str) -> BacktestResult:
+    """Walk-forward simulation of the exact same signal logic _build_signal
+    uses live (swing structure, ATR-normalized breakout+retest, candle
+    pattern, risk/R:R floor) - re-evaluated at every historical bar using
+    only data available up to that point, so this can't "see the future".
+
+    One necessary difference from the live engine: TradingView's ta_signals
+    rating (used live for momentum confirmation) only reflects the CURRENT
+    moment - there's no API for "what would the rating have been on this
+    past date". The momentum condition here is a locally-computed RSI(14) +
+    price-vs-SMA50 check instead, applied consistently at every step -
+    close in spirit to the live filter, not a re-run of the identical
+    TradingView computation. This is a real, documented scope difference
+    (see STRATEGY_NOTES), not a shortcut that inflates results.
+    """
+    try:
+        df = borsapy.Ticker(ticker).history(period=BACKTEST_LOOKBACK_PERIOD, interval="1d")
+        if df is None or len(df) < BACKTEST_WARMUP_BARS + 10:
+            return BacktestResult(ticker, name, 0, None, None, None, None, None, None, [], error="Yeterli geçmiş veri yok")
+
+        rsi = _rsi_series(df["Close"])
+        sma50 = df["Close"].rolling(50).mean()
+
+        trades: List[BacktestTrade] = []
+        open_trade: Optional[Dict[str, Any]] = None
+
+        for i in range(BACKTEST_WARMUP_BARS, len(df)):
+            bar = df.iloc[i]
+
+            if open_trade:
+                d = open_trade
+                hit_stop = (bar["Low"] <= d["stop"]) if d["direction"] == "LONG" else (bar["High"] >= d["stop"])
+                hit_target = (bar["High"] >= d["target"]) if d["direction"] == "LONG" else (bar["Low"] <= d["target"])
+                bars_held = i - d["entry_idx"]
+                exit_price = exit_reason = None
+                if hit_stop:
+                    # Conservative: if both stop and target were technically
+                    # touchable within the same bar's range, assume the
+                    # worse outcome (stop) resolved first - avoids
+                    # overstating results from an ambiguous single-bar case.
+                    exit_price, exit_reason = d["stop"], "stop"
+                elif hit_target:
+                    exit_price, exit_reason = d["target"], "target"
+                elif bars_held >= BACKTEST_MAX_HOLD_BARS:
+                    exit_price, exit_reason = float(bar["Close"]), "timeout"
+
+                if exit_price is not None:
+                    ret = (exit_price - d["entry_price"]) / d["entry_price"] * 100
+                    if d["direction"] == "SHORT":
+                        ret = -ret
+                    trades.append(BacktestTrade(
+                        direction=d["direction"], entry_date=d["entry_date"], entry_price=round(d["entry_price"], 4),
+                        exit_date=str(df.index[i].date()), exit_price=round(exit_price, 4),
+                        exit_reason=exit_reason, return_pct=round(ret, 2),
+                    ))
+                    open_trade = None
+                continue
+
+            window_df = df.iloc[max(0, i - BACKTEST_WINDOW_BARS):i + 1]
+            swings = _find_swings(window_df)
+            structure, _ = _classify_structure(swings)
+            entry_price = float(bar["Close"])
+            levels = _cluster_levels(swings, entry_price)
+            atr = _atr(window_df)
+            if not atr or pd.isna(atr) or atr <= 0:
+                continue
+            breakout = _detect_breakout(window_df, levels, atr)
+            pattern = _candle_pattern(window_df)
+
+            structure_bullish = structure.startswith("Yükseliş")
+            structure_bearish = structure.startswith("Düşüş")
+            r = rsi.iloc[i]
+            sma_val = sma50.iloc[i]
+            price_above_sma = bool(entry_price > sma_val) if not pd.isna(sma_val) else True
+            momentum_ok_long = r < 72 and price_above_sma
+            momentum_ok_short = r > 28 and not price_above_sma
+
+            direction = None
+            if breakout and structure_bullish and breakout["direction"] == "LONG" and momentum_ok_long:
+                direction = "LONG"
+            elif breakout and structure_bearish and breakout["direction"] == "SHORT" and momentum_ok_short:
+                direction = "SHORT"
+            elif structure_bullish and momentum_ok_long and pattern and "Boğa" in pattern:
+                direction = "LONG"
+            elif structure_bearish and momentum_ok_short and pattern and "Ayı" in pattern:
+                direction = "SHORT"
+
+            if direction is None:
+                continue
+
+            resistances = sorted(l.price for l in levels if l.kind == "resistance" and l.price > entry_price)
+            supports = sorted((l.price for l in levels if l.kind == "support" and l.price < entry_price), reverse=True)
+
+            if direction == "LONG":
+                structural_stop = supports[0] if supports else entry_price - 2 * atr
+                stop = min(structural_stop, entry_price - 1.2 * atr)
+                risk = entry_price - stop
+                target = resistances[0] if resistances and resistances[0] - entry_price > risk * 0.8 else entry_price + risk * 2
+            else:
+                structural_stop = resistances[0] if resistances else entry_price + 2 * atr
+                stop = max(structural_stop, entry_price + 1.2 * atr)
+                risk = stop - entry_price
+                target = supports[0] if supports and entry_price - supports[0] > risk * 0.8 else entry_price - risk * 2
+
+            risk_amt = abs(entry_price - stop)
+            risk_pct = risk_amt / entry_price * 100 if entry_price else 100
+            rr = abs(target - entry_price) / risk_amt if risk_amt > 0 else 0
+            if risk_pct > MAX_RISK_PCT or rr < 1.0:
+                continue
+
+            open_trade = {
+                "direction": direction, "entry_idx": i, "entry_price": entry_price,
+                "entry_date": str(df.index[i].date()), "stop": stop, "target": target,
+            }
+
+        if open_trade:
+            last_close = float(df["Close"].iloc[-1])
+            ret = (last_close - open_trade["entry_price"]) / open_trade["entry_price"] * 100
+            if open_trade["direction"] == "SHORT":
+                ret = -ret
+            trades.append(BacktestTrade(
+                direction=open_trade["direction"], entry_date=open_trade["entry_date"],
+                entry_price=round(open_trade["entry_price"], 4), exit_date=str(df.index[-1].date()),
+                exit_price=round(last_close, 4), exit_reason="açık pozisyon (güncel fiyat)",
+                return_pct=round(ret, 2),
+            ))
+
+        if not trades:
+            return BacktestResult(ticker, name, 0, None, None, None, None, None, None, [], error=None)
+
+        wins = [t for t in trades if t.return_pct > 0]
+        returns = [t.return_pct for t in trades]
+        return BacktestResult(
+            ticker=ticker, name=name, total_trades=len(trades),
+            win_rate=round(len(wins) / len(trades) * 100, 1),
+            total_return_pct=round(sum(returns), 2),
+            avg_return_pct=round(sum(returns) / len(returns), 2),
+            best_trade_pct=round(max(returns), 2),
+            worst_trade_pct=round(min(returns), 2),
+            last_trade=trades[-1],
+            recent_trades=trades[-10:],
+        )
+    except Exception as e:
+        logger.error(f"Backtest failed for {ticker}: {e}")
+        return BacktestResult(ticker, name, 0, None, None, None, None, None, None, [], error=str(e))
+
+
+class BacktestEngine:
+    """Same "background-refreshed cache" shape as StrategyEngine, but on a
+    much longer cycle (once a day) - a walk-forward backtest over ~2 years
+    of daily bars per symbol is backward-looking and doesn't change
+    intraday, so there's no reason to recompute it every 3 minutes like the
+    live scanner."""
+
+    REFRESH_INTERVAL_SECONDS = 24 * 60 * 60
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._results: List[BacktestResult] = []
+        self._last_run: Optional[str] = None
+        self._scheduler_started = False
+
+    def _run_backtest(self) -> None:
+        names = {t["ticker"]: t["name"] for t in _ticker_names()}
+        results: List[BacktestResult] = []
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {}
+            for ticker in BIST30_TICKERS:
+                futures[pool.submit(_backtest_symbol, ticker, names.get(ticker, ticker))] = ticker
+                time.sleep(0.15)
+            for fut in as_completed(futures):
+                try:
+                    results.append(fut.result())
+                except Exception as e:
+                    logger.error(f"Backtest crashed for {futures[fut]}: {e}")
+        order = {t: i for i, t in enumerate(BIST30_TICKERS)}
+        results.sort(key=lambda r: order.get(r.ticker, 999))
+        with self._lock:
+            self._results = results
+            self._last_run = datetime.now(timezone.utc).isoformat()
+
+    def get_results(self) -> List[BacktestResult]:
+        if not self._results:
+            self._run_backtest()
+        with self._lock:
+            return list(self._results)
+
+    def get_last_run(self) -> Optional[str]:
+        with self._lock:
+            return self._last_run
+
+    def start_background_refresh(self) -> None:
+        if self._scheduler_started:
+            return
+        self._scheduler_started = True
+
+        def loop():
+            # First run happens lazily on the first request instead of
+            # blocking startup - a 2-year x 30-symbol backtest takes real
+            # time and there's no need to make every app boot wait on it.
+            while True:
+                time.sleep(self.REFRESH_INTERVAL_SECONDS)
+                try:
+                    self._run_backtest()
+                    logger.info(f"Backtest engine: re-ran walk-forward backtest for {len(BIST30_TICKERS)} symbols.")
+                except Exception as e:
+                    logger.error(f"Backtest refresh loop error: {e}")
+
+        threading.Thread(target=loop, daemon=True).start()
+
+
+backtest_engine = BacktestEngine()
+
+
 class StrategyEngine:
     """Owns the periodically-refreshed BIST30 scan result. Recomputing all
     30 symbols concurrently takes ~2-3s (see module docstring); refreshing

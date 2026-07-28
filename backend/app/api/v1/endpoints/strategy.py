@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api import deps
 from app.models.user import User
-from app.services.strategy_engine import strategy_engine
+from app.services.strategy_engine import strategy_engine, backtest_engine
 
 router = APIRouter()
 
@@ -32,6 +32,33 @@ def scan_one(
 ):
     signals = strategy_engine.scan_now()
     match = next((s for s in signals if s.ticker == ticker.upper()), None)
+    if not match:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sembol bulunamadı.")
+    return asdict(match)
+
+
+@router.get("/backtest")
+def backtest_bist30(
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Walk-forward backtest of the same signal logic over ~2 years of
+    history for every BIST30 symbol - serves the background-refreshed cache
+    (see BacktestEngine.REFRESH_INTERVAL_SECONDS, once/day) so this stays
+    fast; the first call after a cold backend start computes it inline."""
+    results = backtest_engine.get_results()
+    return {
+        "last_update": backtest_engine.get_last_run(),
+        "results": [asdict(r) for r in results],
+    }
+
+
+@router.get("/backtest/{ticker}")
+def backtest_one(
+    ticker: str,
+    current_user: User = Depends(deps.get_current_user),
+):
+    results = backtest_engine.get_results()
+    match = next((r for r in results if r.ticker == ticker.upper()), None)
     if not match:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sembol bulunamadı.")
     return asdict(match)

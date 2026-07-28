@@ -31,8 +31,33 @@ interface Signal {
   error: string | null
 }
 
+interface BacktestTrade {
+  direction: "LONG" | "SHORT"
+  entry_date: string
+  entry_price: number
+  exit_date: string
+  exit_price: number
+  exit_reason: string
+  return_pct: number
+}
+
+interface BacktestResult {
+  ticker: string
+  name: string
+  total_trades: number
+  win_rate: number | null
+  total_return_pct: number | null
+  avg_return_pct: number | null
+  best_trade_pct: number | null
+  worst_trade_pct: number | null
+  last_trade: BacktestTrade | null
+  recent_trades: BacktestTrade[]
+  error: string | null
+}
+
 type DirectionFilter = "ALL" | "LONG" | "SHORT"
 type SortKey = "score" | "ticker" | "change_percent" | "risk_reward"
+type BacktestSortKey = "total_return_pct" | "win_rate" | "ticker"
 
 const fmt = (n: number | null, digits = 2) => (n === null || n === undefined ? "-" : n.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits }))
 
@@ -80,6 +105,15 @@ export default function StrategyPage() {
   const [sortKey, setSortKey] = useState<SortKey>("score")
   const [expanded, setExpanded] = useState<string | null>(null)
 
+  const [tab, setTab] = useState<"live" | "backtest">("live")
+  const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([])
+  const [backtestLastUpdate, setBacktestLastUpdate] = useState<string | null>(null)
+  const [backtestLoading, setBacktestLoading] = useState(false)
+  const [backtestLoaded, setBacktestLoaded] = useState(false)
+  const [backtestQuery, setBacktestQuery] = useState("")
+  const [backtestSort, setBacktestSort] = useState<BacktestSortKey>("total_return_pct")
+  const [expandedBt, setExpandedBt] = useState<string | null>(null)
+
   const fetchScan = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true)
     try {
@@ -124,6 +158,45 @@ export default function StrategyPage() {
 
   const activeCount = signals.filter(s => s.direction !== "NONE").length
 
+  const fetchBacktest = useCallback(async () => {
+    setBacktestLoading(true)
+    try {
+      // First call after a server restart computes this inline (see
+      // BacktestEngine.get_results()) - can take up to ~1-2 minutes for all
+      // 30 symbols over ~2 years of daily bars. Later calls just read the
+      // once-a-day background-refreshed cache and return instantly.
+      const res = await authFetch("/strategy/backtest")
+      if (res.ok) {
+        const data = await res.json()
+        setBacktestResults(data.results || [])
+        setBacktestLastUpdate(data.last_update || null)
+        setBacktestLoaded(true)
+      }
+    } catch (e) {
+      console.error("Failed to load backtest results:", e)
+    } finally {
+      setBacktestLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === "backtest" && !backtestLoaded && !backtestLoading) {
+      fetchBacktest()
+    }
+  }, [tab, backtestLoaded, backtestLoading, fetchBacktest])
+
+  const filteredBacktest = useMemo(() => {
+    const q = backtestQuery.trim().toUpperCase()
+    const list = backtestResults.filter(r => !q || r.ticker.includes(q) || r.name.toUpperCase().includes(q))
+    return [...list].sort((a, b) => {
+      switch (backtestSort) {
+        case "ticker": return a.ticker.localeCompare(b.ticker)
+        case "win_rate": return (b.win_rate ?? -1) - (a.win_rate ?? -1)
+        default: return (b.total_return_pct ?? -999) - (a.total_return_pct ?? -999)
+      }
+    })
+  }, [backtestResults, backtestQuery, backtestSort])
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -155,6 +228,24 @@ export default function StrategyPage() {
         </div>
       </div>
 
+      {/* Tab switch */}
+      <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold w-fit">
+        <button
+          onClick={() => setTab("live")}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "live" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Canlı Tarama
+        </button>
+        <button
+          onClick={() => setTab("backtest")}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "backtest" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Backtest
+        </button>
+      </div>
+
+      {tab === "live" && (
+      <>
       {/* Stat strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-xl border border-border bg-card p-3">
@@ -341,6 +432,161 @@ export default function StrategyPage() {
         mum formasyonu ve TradingView teknik puanlama (RSI/MACD/hareketli ortalamalar) birlikte değerlendirilerek üretilir; risk/ödül oranı yetersiz olan
         adaylar otomatik elenir.
       </p>
+      </>
+      )}
+
+      {tab === "backtest" && (
+      <>
+      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-300/90 flex items-start gap-2">
+        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        <span>
+          Son ~2 yıllık günlük mumlar üzerinde, canlı tarayıcıyla aynı piyasa yapısı/kırılım/retest/mum mantığı geriye dönük (bar bar, yalnızca o ana kadarki
+          veriyle) simüle edilir. Tek fark: TradingView'in canlı teknik puanı geçmiş bir tarih için alınamadığından, momentum teyidi burada yerel olarak
+          hesaplanan RSI(14) ile yapılır. Sonuçlar geçmiş performanstır, gelecekteki getiriyi garanti etmez.
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            value={backtestQuery}
+            onChange={e => setBacktestQuery(e.target.value)}
+            placeholder="Sembol veya şirket ara..."
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
+          />
+        </div>
+        <select
+          value={backtestSort}
+          onChange={e => setBacktestSort(e.target.value as BacktestSortKey)}
+          className="h-9 px-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground focus:outline-none focus:border-amber-500/40 cursor-pointer"
+        >
+          <option value="total_return_pct">Sırala: Toplam Getiri</option>
+          <option value="win_rate">Sırala: Başarı Oranı</option>
+          <option value="ticker">Sırala: Sembol</option>
+        </select>
+        <button
+          onClick={fetchBacktest}
+          disabled={backtestLoading}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${backtestLoading ? "animate-spin" : ""}`} />
+          Yenile
+        </button>
+        {backtestLastUpdate && (
+          <span className="text-[10px] text-muted-foreground">
+            Son çalıştırma: {new Date(backtestLastUpdate).toLocaleString("tr-TR")}
+          </span>
+        )}
+      </div>
+
+      <div className="border border-border rounded-xl overflow-hidden bg-card">
+        {backtestLoading ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-20 text-center px-6">
+            <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+            <span className="text-[11px] text-muted-foreground">
+              30 sembol için ~2 yıllık geriye dönük simülasyon çalıştırılıyor - ilk çalıştırma birkaç dakika sürebilir...
+            </span>
+          </div>
+        ) : filteredBacktest.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+            <Info className="h-5 w-5" />
+            <span className="text-xs font-bold">Sonuç bulunamadı</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="text-muted-foreground font-bold border-b border-border h-10 bg-secondary/20">
+                  <th className="px-4">Sembol</th>
+                  <th className="px-4 text-right">İşlem Sayısı</th>
+                  <th className="px-4 text-right">Başarı Oranı</th>
+                  <th className="px-4 text-right">Toplam Getiri</th>
+                  <th className="px-4 text-right">Ort. Getiri</th>
+                  <th className="px-4 text-right">En İyi</th>
+                  <th className="px-4 text-right">En Kötü</th>
+                  <th className="px-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBacktest.map(r => {
+                  const isExpanded = expandedBt === r.ticker
+                  return (
+                    <React.Fragment key={r.ticker}>
+                      <tr
+                        onClick={() => setExpandedBt(isExpanded ? null : r.ticker)}
+                        className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-amber-500/5" : "hover:bg-secondary/30"}`}
+                      >
+                        <td className="px-4">
+                          <div className="font-black text-foreground">{r.ticker}</div>
+                          <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{r.name}</div>
+                        </td>
+                        <td className="px-4 text-right font-semibold text-foreground">{r.total_trades}</td>
+                        <td className="px-4 text-right font-semibold text-foreground">{r.win_rate != null ? `%${r.win_rate}` : "-"}</td>
+                        <td className={`px-4 text-right font-bold ${(r.total_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                          {r.total_return_pct != null ? `${r.total_return_pct >= 0 ? "+" : ""}${r.total_return_pct}%` : "-"}
+                        </td>
+                        <td className={`px-4 text-right font-semibold ${(r.avg_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                          {r.avg_return_pct != null ? `${r.avg_return_pct >= 0 ? "+" : ""}${r.avg_return_pct}%` : "-"}
+                        </td>
+                        <td className="px-4 text-right font-semibold text-emerald-400">{r.best_trade_pct != null ? `+${r.best_trade_pct}%` : "-"}</td>
+                        <td className="px-4 text-right font-semibold text-rose-500">{r.worst_trade_pct != null ? `${r.worst_trade_pct}%` : "-"}</td>
+                        <td className="px-4 text-center">
+                          {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-secondary/10 border-b border-border/60">
+                          <td colSpan={8} className="px-4 py-4">
+                            {r.error ? (
+                              <p className="text-[11px] text-muted-foreground">{r.error}</p>
+                            ) : r.recent_trades.length === 0 ? (
+                              <p className="text-[11px] text-muted-foreground">Bu dönemde sinyal koşulları hiç sağlanmadı.</p>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-[11px] text-left">
+                                  <thead>
+                                    <tr className="text-muted-foreground font-bold h-8">
+                                      <th className="px-2">Yön</th>
+                                      <th className="px-2">Giriş</th>
+                                      <th className="px-2">Çıkış</th>
+                                      <th className="px-2 text-right">Giriş Fiyatı</th>
+                                      <th className="px-2 text-right">Çıkış Fiyatı</th>
+                                      <th className="px-2">Sonuç</th>
+                                      <th className="px-2 text-right">Getiri</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {r.recent_trades.map((t, i) => (
+                                      <tr key={i} className="border-t border-border/30 h-8">
+                                        <td className="px-2"><DirectionBadge direction={t.direction} /></td>
+                                        <td className="px-2 text-muted-foreground">{t.entry_date}</td>
+                                        <td className="px-2 text-muted-foreground">{t.exit_date}</td>
+                                        <td className="px-2 text-right font-mono">{fmt(t.entry_price)}</td>
+                                        <td className="px-2 text-right font-mono">{fmt(t.exit_price)}</td>
+                                        <td className="px-2 text-muted-foreground">{t.exit_reason}</td>
+                                        <td className={`px-2 text-right font-bold ${t.return_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                          {t.return_pct >= 0 ? "+" : ""}{t.return_pct}%
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      </>
+      )}
     </div>
   )
 }

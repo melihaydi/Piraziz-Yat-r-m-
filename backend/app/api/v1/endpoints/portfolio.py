@@ -11,6 +11,7 @@ from app.models.portfolio import Portfolio, PortfolioAsset
 from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse
 from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
+from app.services.portfolio_analytics import compute_portfolio_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,37 @@ def get_user_portfolios(
         response_list.append(PortfolioResponse(**p_dict))
 
     return response_list
+
+@router.get("/analytics")
+def get_portfolio_analytics(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """Real sector/asset-type allocation and genuine Beta/Sharpe/volatility
+    computed from historical returns (see portfolio_analytics.py) - across
+    every portfolio the user owns, combined into one allocation view."""
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
+    all_assets = [asset for p in portfolios for asset in p.assets]
+
+    if not all_assets:
+        return {
+            "sector_breakdown": [], "asset_type_breakdown": [],
+            "beta": None, "sharpe": None, "volatility_pct": None,
+            "annualized_return_pct": None, "risk_free_rate_pct": None,
+            "risk_metrics_note": "Portföyünüzde henüz varlık bulunmuyor.",
+        }
+
+    tickers = sorted({a.ticker.upper() for a in all_assets})
+    with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
+        price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
+
+    asset_values = []
+    for a in all_assets:
+        price = price_by_ticker.get(a.ticker.upper()) or a.average_cost
+        asset_values.append({"ticker": a.ticker.upper(), "total_value": a.shares * price})
+
+    return compute_portfolio_analytics(asset_values)
+
 
 @router.post("/", response_model=PortfolioResponse, status_code=status.HTTP_201_CREATED)
 def create_portfolio(

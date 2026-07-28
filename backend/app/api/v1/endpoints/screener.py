@@ -5,6 +5,7 @@ from app.services.market_data import market_data_service
 from app.services.scoring import ScoringService
 from app.services.technical_analysis import TechnicalAnalysisService
 from app.schemas.screener import ScreenerStockResponse
+from app.services.sectors import SECTOR_MAP, get_sector
 
 router = APIRouter()
 
@@ -50,33 +51,6 @@ def calculate_techs(candles: list) -> dict:
         "rsi": rsi,
         "price_above_sma200": price_above_sma200
     }
-
-SECTOR_MAP = {
-    # Ulaştırma
-    "THYAO": "Ulaştırma", "PGSUS": "Ulaştırma", "TAVHL": "Ulaştırma", "CLEBI": "Ulaştırma",
-    # Metal Sanayi
-    "EREGL": "Metal Sanayi", "KRDMD": "Metal Sanayi", "KRDMA": "Metal Sanayi", "KRDMB": "Metal Sanayi", "BRSAN": "Metal Sanayi", "ISDMR": "Metal Sanayi",
-    # Enerji
-    "TUPRS": "Enerji", "AKSEN": "Enerji", "ENJSA": "Enerji", "ZOREN": "Enerji", "ASTOR": "Enerji", "KONTR": "Enerji", "ODAS": "Enerji", "SMRTG": "Enerji", "CWENE": "Enerji", "YEOTK": "Enerji", "ALFAS": "Enerji", "GESAN": "Enerji", "EUPWR": "Enerji",
-    # Savunma
-    "ASELS": "Savunma", "SDTTR": "Savunma", "OTKAR": "Savunma",
-    # Bankacılık
-    "AKBNK": "Bankacılık", "GARAN": "Bankacılık", "YKBNK": "Bankacılık", "ISCTR": "Bankacılık", "VAKBN": "Bankacılık", "HALKB": "Bankacılık", "TSKB": "Bankacılık", "SKBNK": "Bankacılık",
-    # Perakende
-    "BIMAS": "Perakende", "MGROS": "Perakende", "SOKM": "Perakende",
-    # Kimya
-    "SASA": "Kimya", "HEKTS": "Kimya", "PETKM": "Kimya", "GUBRF": "Kimya",
-    # Holding
-    "KCHOL": "Holding", "SAHOL": "Holding", "DOHOL": "Holding", "ALARK": "Holding", "AGHOL": "Holding",
-    # Sınai / Teknoloji / Çimento
-    "SISE": "Cam Sanayi", "ARCLK": "Dayanıklı Tüketim", "VESTL": "Dayanıklı Tüketim", "FROTO": "Otomotiv", "TOASO": "Otomotiv",
-    "MIATK": "Teknoloji", "REEDR": "Teknoloji", "ARDYZ": "Teknoloji",
-    "CIMSA": "Çimento", "AKCNS": "Çimento", "OYAKC": "Çimento"
-}
-
-def get_sector(ticker: str) -> str:
-    """Helper to return mapped BIST sector for a ticker."""
-    return SECTOR_MAP.get(ticker, "Mali" if any(x in ticker for x in ["FN", "BKO", "GR", "IS"]) else "Sınai")
 
 def _build_stock_response(ticker: str, name: str, quote: dict | None) -> ScreenerStockResponse:
     """Computes one ticker's full screener row (live quote fields + AI score) -
