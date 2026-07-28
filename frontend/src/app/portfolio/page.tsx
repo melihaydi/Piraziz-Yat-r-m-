@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/Dialog"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
 
@@ -676,9 +677,12 @@ export default function PortfolioPage() {
                         return (
                           <tr key={item.ticker} className="border-b border-border/40 hover:bg-secondary/20 transition-colors h-14">
                             <td className="px-6 font-bold text-foreground">
-                              <span className="bg-secondary px-2 py-1 rounded">
-                                {item.ticker}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <TickerLogo ticker={item.ticker} size={18} />
+                                <span className="bg-secondary px-2 py-1 rounded">
+                                  {item.ticker}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-6 text-right font-mono font-medium">{item.shares}</td>
                             <td className="px-6 text-right font-mono font-medium">₺{item.average_cost.toFixed(2)}</td>

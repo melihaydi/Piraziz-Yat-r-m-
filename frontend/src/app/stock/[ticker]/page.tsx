@@ -16,6 +16,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/Dialog"
 import TradingViewChart from "@/components/TradingViewChart"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
 
 export default function StockDetailPage() {
@@ -238,6 +239,7 @@ export default function StockDetailPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center space-x-3">
+            <TickerLogo ticker={ticker} size={32} />
             <span className="bg-primary text-primary-foreground font-black px-2.5 py-1 rounded text-lg">
               {ticker}
             </span>

@@ -1,13 +1,38 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, ArrowUpDown, Star, Eye, EyeOff } from "lucide-react"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, ArrowUpDown, Star, Eye, EyeOff, Scale, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Skeleton } from "@/components/ui/Skeleton"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/Dialog"
 import TradingViewChart from "@/components/TradingViewChart"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
+
+const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
+
+function buildStockComparisonChartData(stocks: any[]) {
+  const withCandles = stocks.filter((s) => Array.isArray(s.candles) && s.candles.length > 0)
+  if (withCandles.length === 0) return []
+  const minLen = Math.min(...withCandles.map((s) => s.candles.length))
+  if (minLen === 0) return []
+  const trimmed = withCandles.map((s) => s.candles.slice(-minLen))
+  const rows: any[] = []
+  for (let i = 0; i < minLen; i++) {
+    const row: any = { time: trimmed[0][i]?.time }
+    withCandles.forEach((s, idx) => {
+      const base = trimmed[idx][0]?.close
+      const cur = trimmed[idx][i]?.close
+      row[s.ticker] = base ? Number((((cur / base) - 1) * 100).toFixed(2)) : 0
+    })
+    rows.push(row)
+  }
+  return rows
+}
 
 // Memoized row: only re-renders when this specific stock's own data (or its
 // favorite/selected state) actually changes, instead of every row re-rendering
@@ -16,14 +41,20 @@ const StockRow = React.memo(function StockRow({
   comp,
   isFav,
   isSelected,
+  isCompared,
+  compareDisabled,
   onSelect,
   onToggleFavorite,
+  onToggleCompare,
 }: {
   comp: any
   isFav: boolean
   isSelected: boolean
+  isCompared: boolean
+  compareDisabled: boolean
   onSelect: (ticker: string) => void
   onToggleFavorite: (ticker: string) => void
+  onToggleCompare: (ticker: string) => void
 }) {
   return (
     <tr
@@ -40,14 +71,29 @@ const StockRow = React.memo(function StockRow({
           <Star className={`h-4 w-4 ${isFav ? "text-amber-400 fill-amber-400" : ""}`} />
         </button>
       </td>
+      <td className="px-4 text-center" onClick={(e) => {
+        e.stopPropagation()
+        onToggleCompare(comp.ticker)
+      }}>
+        <input
+          type="checkbox"
+          checked={isCompared}
+          onChange={() => {}}
+          disabled={!isCompared && compareDisabled}
+          className="h-3.5 w-3.5 accent-primary cursor-pointer"
+        />
+      </td>
       <td className="px-4 font-bold text-foreground">
-        <span className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
-          isSelected
-            ? (isFav ? "bg-amber-500 text-black border-amber-400 font-black shadow-[0_0_12px_rgba(245,158,11,0.2)]" : "bg-primary text-primary-foreground border-primary")
-            : (isFav ? "bg-amber-500/10 text-amber-400 border-amber-500/20 font-black shadow-[0_0_8px_rgba(245,158,11,0.08)]" : "bg-secondary text-muted-foreground border-transparent")
-        }`}>
-          {comp.ticker}
-        </span>
+        <div className="flex items-center gap-2">
+          <TickerLogo ticker={comp.ticker} size={18} />
+          <span className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
+            isSelected
+              ? (isFav ? "bg-amber-500 text-black border-amber-400 font-black shadow-[0_0_12px_rgba(245,158,11,0.2)]" : "bg-primary text-primary-foreground border-primary")
+              : (isFav ? "bg-amber-500/10 text-amber-400 border-amber-500/20 font-black shadow-[0_0_8px_rgba(245,158,11,0.08)]" : "bg-secondary text-muted-foreground border-transparent")
+          }`}>
+            {comp.ticker}
+          </span>
+        </div>
       </td>
       <td className="px-4 text-muted-foreground truncate max-w-[120px]">{comp.sector}</td>
       <td className="px-4 text-right font-mono font-bold">₺{comp.price.toFixed(2)}</td>
@@ -67,6 +113,8 @@ const StockRow = React.memo(function StockRow({
   return (
     prev.isFav === next.isFav &&
     prev.isSelected === next.isSelected &&
+    prev.isCompared === next.isCompared &&
+    prev.compareDisabled === next.compareDisabled &&
     prev.comp.ticker === next.comp.ticker &&
     prev.comp.sector === next.comp.sector &&
     prev.comp.price === next.comp.price &&
@@ -106,6 +154,46 @@ export default function ScreenerPage() {
   const [chartLoading, setChartLoading] = useState(false)
   const [scoreDetails, setScoreDetails] = useState<any>(null)
   const [scoreLoading, setScoreLoading] = useState(false)
+
+  // Stock comparison state (2-5 stocks, matches the backend's GET /screener/compare cap)
+  const [compareCodes, setCompareCodes] = useState<string[]>([])
+  const [compareOpen, setCompareOpen] = useState(false)
+  const [compareLoading, setCompareLoading] = useState(false)
+  const [compareError, setCompareError] = useState<string | null>(null)
+  const [compareResult, setCompareResult] = useState<any[]>([])
+
+  const toggleCompare = useCallback((ticker: string) => {
+    setCompareCodes((prev) => {
+      if (prev.includes(ticker)) return prev.filter((c) => c !== ticker)
+      if (prev.length >= 5) return prev
+      return [...prev, ticker]
+    })
+  }, [])
+
+  const runCompare = async () => {
+    if (compareCodes.length < 2) return
+    setCompareOpen(true)
+    setCompareLoading(true)
+    setCompareError(null)
+    try {
+      const res = await authFetch(`/screener/compare?tickers=${compareCodes.join(",")}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setCompareError(body.detail || "Karşılaştırma başarısız oldu.")
+        setCompareResult([])
+        return
+      }
+      const data = await res.json()
+      setCompareResult(data.stocks || [])
+    } catch (err) {
+      console.error("Failed to compare stocks:", err)
+      setCompareError("Karşılaştırma sırasında bir hata oluştu.")
+    } finally {
+      setCompareLoading(false)
+    }
+  }
+
+  const compareChartData = useMemo(() => buildStockComparisonChartData(compareResult), [compareResult])
 
   // Load favorites from localStorage on mount
   useEffect(() => {
@@ -419,17 +507,27 @@ export default function ScreenerPage() {
               {/* Reset & Toggle Favorites Row */}
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-border/40">
                 <div className="flex items-center space-x-2">
-                  <Button 
-                    variant={showOnlyFavorites ? "default" : "outline"} 
-                    size="sm" 
-                    onClick={() => setShowOnlyFavorites(!showOnlyFavorites)} 
+                  <Button
+                    variant={showOnlyFavorites ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
                     className="text-xs h-7 px-2.5 cursor-pointer flex items-center"
                   >
                     <Star className={`h-3.5 w-3.5 mr-1 ${showOnlyFavorites ? "fill-current" : ""}`} />
                     Favorilerim
                   </Button>
+                  <Button
+                    variant={compareCodes.length >= 2 ? "default" : "outline"}
+                    size="sm"
+                    disabled={compareCodes.length < 2}
+                    onClick={runCompare}
+                    className="text-xs h-7 px-2.5 cursor-pointer flex items-center disabled:opacity-40"
+                  >
+                    <Scale className="h-3.5 w-3.5 mr-1" />
+                    Hisseleri Karşılaştır ({compareCodes.length})
+                  </Button>
                 </div>
-                
+
                 <div className="flex items-center space-x-3">
                   <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs h-7 px-2 cursor-pointer flex items-center text-muted-foreground hover:text-foreground">
                     <RefreshCw className="h-3 w-3 mr-1" />
@@ -460,6 +558,7 @@ export default function ScreenerPage() {
                     <thead>
                       <tr className="border-b border-border/80 text-muted-foreground font-bold bg-secondary/15 h-9 sticky top-0 backdrop-blur z-10">
                         <th className="px-4 text-center w-8">Fav</th>
+                        <th className="px-4 text-center w-8">Kıyasla</th>
                         <th className="px-4 cursor-pointer hover:text-foreground" onClick={() => handleSort("ticker")}>
                           Kod <ArrowUpDown className="inline h-3 w-3 ml-0.5" />
                         </th>
@@ -485,13 +584,16 @@ export default function ScreenerPage() {
                             comp={comp}
                             isFav={favorites.includes(comp.ticker)}
                             isSelected={selectedTicker === comp.ticker}
+                            isCompared={compareCodes.includes(comp.ticker)}
+                            compareDisabled={compareCodes.length >= 5}
                             onSelect={handleSelectTicker}
                             onToggleFavorite={toggleFavorite}
+                            onToggleCompare={toggleCompare}
                           />
                         ))
                       ) : (
                         <tr className="h-20">
-                          <td colSpan={6} className="text-center text-muted-foreground text-xs">
+                          <td colSpan={7} className="text-center text-muted-foreground text-xs">
                             Şirket bulunamadı.
                           </td>
                         </tr>
@@ -633,6 +735,124 @@ export default function ScreenerPage() {
         </div>
 
       </div>
+
+      {/* Stock Comparison Dialog */}
+      <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Scale className="h-4 w-4 mr-2 text-primary" />
+              Hisse Karşılaştırma
+            </DialogTitle>
+            <DialogDescription>
+              Seçilen hisselerin getiri, volatilite ve normalize edilmiş performans karşılaştırması.
+            </DialogDescription>
+          </DialogHeader>
+
+          {compareLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-3">
+              <Loader2 className="h-8 w-8 text-primary animate-spin" />
+              <span className="text-xs text-muted-foreground">Karşılaştırma hesaplanıyor...</span>
+            </div>
+          ) : compareError ? (
+            <div className="py-10 text-center text-xs text-rose-400">{compareError}</div>
+          ) : (
+            <div className="space-y-6">
+              <div className="h-64 w-full">
+                {compareChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={compareChartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+                      <XAxis
+                        dataKey="time"
+                        tickFormatter={(t) => new Date(t * 1000).toLocaleDateString("tr-TR", { month: "short", day: "numeric" })}
+                        tick={{ fontSize: 10 }}
+                        minTickGap={30}
+                      />
+                      <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} />
+                      <RechartsTooltip
+                        labelFormatter={(t) => new Date(Number(t) * 1000).toLocaleDateString("tr-TR")}
+                        formatter={(value: any, name: any) => [`${value}%`, name]}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {compareResult.map((s, idx) => (
+                        <Line
+                          key={s.ticker}
+                          type="monotone"
+                          dataKey={s.ticker}
+                          stroke={COMPARE_COLORS[idx % COMPARE_COLORS.length]}
+                          dot={false}
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                    Ortak tarih aralığında grafik verisi bulunamadı.
+                  </div>
+                )}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="border-b border-border/60 text-muted-foreground font-bold h-9">
+                      <th className="px-3">Hisse</th>
+                      <th className="px-3">Sektör</th>
+                      <th className="px-3 text-right">Fiyat</th>
+                      <th className="px-3 text-right">1 Ay</th>
+                      <th className="px-3 text-right">3 Ay</th>
+                      <th className="px-3 text-right">1 Yıl</th>
+                      <th className="px-3 text-right">Volatilite (Yıllık)</th>
+                      <th className="px-3 text-center w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compareResult.map((s, idx) => (
+                      <tr key={s.ticker} className="border-b border-border/30 h-11">
+                        <td className="px-3">
+                          <div className="flex items-center gap-1.5">
+                            <TickerLogo ticker={s.ticker} size={16} />
+                            <span
+                              className="px-2 py-0.5 rounded text-[10px] font-bold text-black"
+                              style={{ backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length] }}
+                            >
+                              {s.ticker}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 text-muted-foreground">{s.sector}</td>
+                        <td className="px-3 text-right font-mono font-semibold">₺{Number(s.price).toFixed(2)}</td>
+                        {["return_1m_pct", "return_3m_pct", "return_1y_pct"].map((key) => (
+                          <td key={key} className="px-3 text-right font-mono font-semibold">
+                            {s[key] != null ? (
+                              <span className={s[key] >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                                {s[key] >= 0 ? "+" : ""}{s[key]}%
+                              </span>
+                            ) : "—"}
+                          </td>
+                        ))}
+                        <td className="px-3 text-right font-mono">
+                          {s.volatility_pct != null ? `%${s.volatility_pct}` : "—"}
+                        </td>
+                        <td className="px-3 text-center">
+                          <button
+                            onClick={() => setCompareCodes((prev) => prev.filter((c) => c !== s.ticker))}
+                            className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

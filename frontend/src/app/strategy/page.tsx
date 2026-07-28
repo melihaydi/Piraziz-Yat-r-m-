@@ -6,6 +6,7 @@ import {
   ArrowUpCircle, ArrowDownCircle, Info, ShieldAlert
 } from "lucide-react"
 import { authFetch } from "@/lib/auth"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 type Direction = "LONG" | "SHORT" | "NONE"
 
@@ -399,7 +400,10 @@ export default function StrategyPage() {
                         className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-amber-500/5" : "hover:bg-secondary/30"}`}
                       >
                         <td className="px-4">
-                          <div className="font-black text-foreground">{s.ticker}</div>
+                          <div className="flex items-center gap-1.5">
+                            <TickerLogo ticker={s.ticker} size={16} />
+                            <div className="font-black text-foreground">{s.ticker}</div>
+                          </div>
                           <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{s.name}</div>
                         </td>
                         <td className="px-4 text-right">
@@ -564,7 +568,10 @@ export default function StrategyPage() {
                   <tr key={`${h.ticker}-${h.timestamp}-${i}`} className="border-b border-border/60 h-12 hover:bg-secondary/20 transition-colors">
                     <td className="px-4 text-muted-foreground font-mono">{new Date(h.timestamp).toLocaleTimeString("tr-TR")}</td>
                     <td className="px-4">
-                      <div className="font-black text-foreground">{h.ticker}</div>
+                      <div className="flex items-center gap-1.5">
+                        <TickerLogo ticker={h.ticker} size={16} />
+                        <div className="font-black text-foreground">{h.ticker}</div>
+                      </div>
                       <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{h.name}</div>
                     </td>
                     <td className="px-4"><DirectionBadge direction={h.direction} /></td>
@@ -666,7 +673,10 @@ export default function StrategyPage() {
                         className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-amber-500/5" : "hover:bg-secondary/30"}`}
                       >
                         <td className="px-4">
-                          <div className="font-black text-foreground">{r.ticker}</div>
+                          <div className="flex items-center gap-1.5">
+                            <TickerLogo ticker={r.ticker} size={16} />
+                            <div className="font-black text-foreground">{r.ticker}</div>
+                          </div>
                           <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{r.name}</div>
                         </td>
                         <td className="px-4 text-right font-semibold text-foreground">{r.total_trades}</td>

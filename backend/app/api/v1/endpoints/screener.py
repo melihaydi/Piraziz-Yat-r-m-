@@ -1,5 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.services.market_data import market_data_service
 from app.services.scoring import ScoringService
@@ -158,6 +159,100 @@ def get_screener_stock_detail(ticker: str):
     name = match["name"] if match else f"{ticker} Ticaret AŞ"
     quote = market_data_service.get_all_quotes().get(ticker)
     return _build_stock_response(ticker, name, quote)
+
+def _period_return_pct(closes: List[float], bars: int) -> Optional[float]:
+    if len(closes) < 2:
+        return None
+    start = closes[-1 - bars] if len(closes) > bars else closes[0]
+    if start == 0:
+        return None
+    return round((closes[-1] / start - 1) * 100, 2)
+
+
+def _comparison_stats(candles: List[dict]) -> dict:
+    closes = [c["close"] for c in candles if c.get("close") is not None]
+    if len(closes) < 2:
+        return {"return_1m_pct": None, "return_3m_pct": None, "return_1y_pct": None, "volatility_pct": None}
+
+    daily_returns = [(closes[i] / closes[i - 1] - 1) for i in range(1, len(closes)) if closes[i - 1] != 0]
+    volatility_pct = None
+    if len(daily_returns) >= 5:
+        mean = sum(daily_returns) / len(daily_returns)
+        variance = sum((r - mean) ** 2 for r in daily_returns) / len(daily_returns)
+        volatility_pct = round((variance ** 0.5) * (252 ** 0.5) * 100, 1)
+
+    return {
+        "return_1m_pct": _period_return_pct(closes, 21),
+        "return_3m_pct": _period_return_pct(closes, 63),
+        "return_1y_pct": _period_return_pct(closes, 252),
+        "volatility_pct": volatility_pct,
+    }
+
+
+def _fetch_compare_candles(ticker: str) -> List[dict]:
+    # Prefer the shared live-stream cache (instant, subscribe=False so this
+    # never steals the single shared chart session other pages rely on -
+    # see market_data.py's patched_subscribe_chart notes). Falls back to
+    # borsapy's independent one-shot history() for any ticker not already
+    # cached there, same pattern as portfolio.py's signal candle fetcher.
+    candles = market_data_service.get_candles(ticker, "1d", count=252, wait=False, subscribe=False)
+    if candles and len(candles) >= 20:
+        return candles
+    try:
+        import borsapy
+        hist_df = borsapy.Ticker(ticker).history(period="1y", interval="1d")
+        if hist_df is not None and not hist_df.empty:
+            return [
+                {"time": int(idx.timestamp()), "close": float(row["Close"])}
+                for idx, row in hist_df.iterrows()
+            ]
+    except Exception:
+        pass
+    return candles or []
+
+
+@router.get("/compare")
+def compare_stocks(tickers: str):
+    """Side-by-side comparison of 2-5 BIST stocks: latest price, 1mo/3mo/1yr
+    return and annualized volatility, plus each stock's own candle series so
+    the frontend can plot them overlaid (normalized to % change from a
+    common start date, since stocks trade at very different price scales).
+    Mirrors GET /funds/compare - must stay registered before any bare
+    /{ticker}-style route is ever added here."""
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    ticker_list = list(dict.fromkeys(ticker_list))[:5]
+    if len(ticker_list) < 2:
+        raise HTTPException(status_code=400, detail="Karşılaştırma için en az 2 hisse kodu gerekli.")
+
+    cached_quotes = market_data_service.get_all_quotes()
+    names = {t["ticker"]: t["name"] for t in market_data_service.tickers}
+
+    with ThreadPoolExecutor(max_workers=len(ticker_list)) as pool:
+        candles_by_ticker = dict(zip(ticker_list, pool.map(_fetch_compare_candles, ticker_list)))
+
+    results = []
+    for ticker in ticker_list:
+        candles = candles_by_ticker.get(ticker) or []
+        if not candles:
+            continue
+        quote = cached_quotes.get(ticker)
+        price = quote.get("last") if quote else candles[-1]["close"]
+        change_percent = quote.get("change_percent") if quote else None
+        results.append({
+            "ticker": ticker,
+            "name": names.get(ticker, ticker),
+            "sector": get_sector(ticker),
+            "price": price,
+            "change_percent": change_percent,
+            "candles": [{"time": c["time"], "close": c["close"]} for c in candles],
+            **_comparison_stats(candles),
+        })
+
+    if len(results) < 2:
+        raise HTTPException(status_code=404, detail="Girilen hisse kodlarından en az ikisi bulunamadı.")
+
+    return {"stocks": results}
+
 
 @router.get("/chart/{symbol}")
 def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")):
