@@ -38,6 +38,8 @@ async def start_background_jobs():
     from app.services.strategy_engine import strategy_engine, backtest_engine
     strategy_engine.start_background_refresh()
     backtest_engine.start_background_refresh()
+    from app.services.seed_data import seed_companies
+    seed_companies()
 
 @app.get("/")
 async def root():
