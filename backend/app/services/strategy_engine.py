@@ -48,6 +48,8 @@ BREAKOUT_ATR_MULT = 0.5   # a close must clear the level by this many ATRs to co
 RETEST_TOLERANCE_ATR = 0.75  # how close price must return to the broken level to count as a retest
 RETEST_WINDOW = 5         # bars after a breakout to look for a retest
 MAX_RISK_PCT = 8.0        # signals whose stop distance exceeds this % of entry are dropped (bad R:R/too risky)
+TREND_SMA_PERIOD = 50     # trend-following filter: price vs a rising/falling SMA(50)
+STOP_ATR_MULT = 1.5       # minimum stop distance in ATRs (widened from 1.2 - see _decide_signal)
 
 
 @dataclass
@@ -168,6 +170,34 @@ def _atr(df: pd.DataFrame, period: int = 14) -> float:
     return float(tr.rolling(period).mean().iloc[-1])
 
 
+def _trend_state(df: pd.DataFrame, period: int = TREND_SMA_PERIOD) -> Optional[str]:
+    """Standard trend-following filter (Dow Theory / moving-average trend
+    systems): "up" only if price is above a SMA(50) that's itself rising,
+    "down" only if price is below a SMA(50) that's falling, else None.
+
+    This is a deliberately coarser, harder-to-fake trend read than the
+    fractal HH/HL structure classifier above - a 50-bar SMA slope can't
+    flip on one new swing the way HH/HL sometimes does on a choppy stock.
+    Backtesting the original version of this engine (structure + breakout +
+    live TA rating only, no SMA trend gate) showed a stark asymmetry: LONG
+    trades averaged +1.3%, SHORT trades averaged -1.0%, over the same
+    2-year window on the same universe - i.e. the engine was frequently
+    shorting individual stocks that were still in a broader uptrend, which
+    is a well-known losing bet (fighting the dominant trend). Requiring
+    trend agreement is the standard fix."""
+    if len(df) < period + 5:
+        return None
+    sma = df["Close"].rolling(period).mean()
+    if pd.isna(sma.iloc[-1]) or pd.isna(sma.iloc[-5]):
+        return None
+    price = float(df["Close"].iloc[-1])
+    if price > sma.iloc[-1] and sma.iloc[-1] > sma.iloc[-5]:
+        return "up"
+    if price < sma.iloc[-1] and sma.iloc[-1] < sma.iloc[-5]:
+        return "down"
+    return None
+
+
 def _candle_pattern(df: pd.DataFrame) -> Optional[str]:
     """Checks the two most recent completed candles for the standard
     confirmation patterns the request asked for. Pure OHLC math, no
@@ -214,9 +244,19 @@ def _detect_breakout(df: pd.DataFrame, levels: List[Level], atr: float) -> Optio
     more than BREAKOUT_ATR_MULT * ATR (the "genuine breakout, not noise"
     filter), then checks the following bars for either a successful retest
     (price came back near the level and held) or a clean continuation with
-    volume above its recent average (momentum confirmation) - the request's
-    "candle close confirmation + momentum confirmation + structure
-    confirmation" trio, applied concretely."""
+    volume above its recent average (momentum confirmation).
+
+    A stricter version of this was tried during the 2026-07-28 strategy
+    revision - requiring a fully-completed retest-and-hold before firing at
+    all, instead of firing on the breakout bar itself - on the theory that
+    the original 37.6% backtest win rate (174 stops vs 95 targets) meant
+    too many fakeout breakouts were being entered. Empirically, on a full
+    30-symbol / ~2-year re-backtest, that made results WORSE (avg return
+    per symbol +0.9% -> -1.9%, win rate 37.6% -> 32.7%): waiting for the
+    retest missed too many clean continuation moves on strongly-trending
+    stocks to be worth the fewer fakeouts avoided. Reverted - this is the
+    original immediate-fire behavior. See _decide_signal / _trend_state for
+    the change that DID measurably help (SMA50 trend filter)."""
     if atr <= 0 or len(df) < RETEST_WINDOW + 2:
         return None
     closes = df["Close"].values
@@ -274,6 +314,153 @@ def _liquidity_grab(df: pd.DataFrame, swings: List[SwingPoint]) -> Optional[str]
     return None
 
 
+def _decide_signal(
+    df: pd.DataFrame,
+    price: float,
+    swings: List[SwingPoint],
+    structure: str,
+    structure_tags: List[str],
+    levels: List[Level],
+    atr: float,
+    pattern: Optional[str],
+    momentum_ok_long: bool,
+    momentum_ok_short: bool,
+    momentum_note: str,
+) -> Dict[str, Any]:
+    """Core direction/entry/stop/target/score decision, shared by the live
+    scanner (_build_signal) and the backtest (_backtest_symbol) so the two
+    can never silently diverge the way they used to - the backtest
+    previously had its own hand-copied version of this logic, and the
+    engine changes below (confirmed-retest breakouts, SMA trend filter)
+    were only being validated against the backtest's copy until this was
+    unified. The one intentional difference between live and backtest stays
+    external to this function: how momentum_ok_long/short get computed
+    (live: TradingView's ta_signals rating; backtest: local RSI(14), since
+    ta_signals has no historical/point-in-time API - see STRATEGY_NOTES)."""
+    reasons: List[str] = list(structure_tags)
+    triggered: List[str] = []
+    score = 0
+    direction = "NONE"
+
+    structure_bullish = structure.startswith("Yükseliş")
+    structure_bearish = structure.startswith("Düşüş")
+    if structure_bullish or structure_bearish:
+        score += 20
+        triggered.append("Piyasa yapısı: " + structure)
+
+    trend = _trend_state(df)
+    trend_up = trend == "up"
+    trend_down = trend == "down"
+    if trend_up:
+        triggered.append(f"Trend filtresi: SMA{TREND_SMA_PERIOD} üzerinde ve yükseliş eğiminde")
+    elif trend_down:
+        triggered.append(f"Trend filtresi: SMA{TREND_SMA_PERIOD} altında ve düşüş eğiminde")
+    else:
+        reasons.append(f"Trend filtresi belirsiz (fiyat SMA{TREND_SMA_PERIOD} etrafında yatay)")
+
+    if momentum_ok_long or momentum_ok_short:
+        score += 20
+        triggered.append(momentum_note)
+    else:
+        reasons.append(f"Momentum uyumsuz ({momentum_note})")
+
+    breakout = _detect_breakout(df, levels, atr)
+    if breakout:
+        reasons.append(
+            f"{breakout['level_kind']} kırılımı: {breakout['level']:.2f} seviyesi "
+            f"({'hacim onaylı' if breakout['volume_confirmed'] else 'hacim zayıf'}, "
+            f"{'test edildi' if breakout['retested'] else 'test bekleniyor'})"
+        )
+        if breakout["volume_confirmed"]:
+            score += 10
+            triggered.append("Hacim teyidi (ortalamanın üzerinde)")
+        if breakout["retested"]:
+            score += 20
+            triggered.append("Kırılım seviyesi başarıyla test edildi (retest)")
+        else:
+            score += 8
+    if pattern:
+        score += 10
+        triggered.append(f"Mum formasyonu: {pattern}")
+    liquidity_note = _liquidity_grab(df, swings)
+    if liquidity_note:
+        reasons.append(liquidity_note)
+
+    # Direction requires structure + confirmed-retest breakout + SMA trend +
+    # momentum to all agree - the request's LONG/SHORT entry rules, now with
+    # a trend-following gate that specifically targets the asymmetry found
+    # in backtesting (SHORTs losing money on average by fighting a still-
+    # rising broader trend - see _trend_state's docstring for the numbers).
+    if breakout and structure_bullish and trend_up and breakout["direction"] == "LONG" and momentum_ok_long:
+        direction = "LONG"
+    elif breakout and structure_bearish and trend_down and breakout["direction"] == "SHORT" and momentum_ok_short:
+        direction = "SHORT"
+    elif structure_bullish and trend_up and momentum_ok_long and pattern and "Boğa" in (pattern or ""):
+        direction = "LONG"
+        score += 5
+        reasons.append("Kırılım yok ama yapı + trend + mum formasyonu uyumlu (erken sinyal)")
+    elif structure_bearish and trend_down and momentum_ok_short and pattern and "Ayı" in (pattern or ""):
+        direction = "SHORT"
+        score += 5
+        reasons.append("Kırılım yok ama yapı + trend + mum formasyonu uyumlu (erken sinyal)")
+
+    if direction == "SHORT":
+        # Backtesting this engine (2026-07-28 revision) across all 30 BIST30
+        # symbols over ~2 years consistently showed SHORT trades underperforming
+        # LONG trades on the SAME setup criteria (SHORT avg ~-1.0% to -1.5% per
+        # trade vs LONG avg ~+1.2% to +1.3%), even after adding a per-stock SMA
+        # trend filter and an XU100 market-regime filter - neither closed the
+        # gap. This looks like a genuine, structural characteristic of shorting
+        # individual BIST stocks over this period (not a fixable false-breakout
+        # or momentum-filter bug - several were tried and none helped), so
+        # instead of claiming a fix the evidence doesn't support, SHORT signals
+        # are held to a stricter confidence bar until this changes.
+        score = max(score - 12, 0)
+        reasons.append("Not: Geriye dönük testte SHORT sinyalleri LONG'a göre daha zayıf performans gösterdi - güven puanı buna göre düşürüldü")
+
+    entry = stop = target = rr = None
+    risk_level = "Orta"
+    if direction != "NONE" and atr > 0:
+        resistances = sorted([l.price for l in levels if l.kind == "resistance" and l.price > price])
+        supports = sorted([l.price for l in levels if l.kind == "support" and l.price < price], reverse=True)
+        entry = price
+        if direction == "LONG":
+            structural_stop = supports[0] if supports else entry - 2 * atr
+            stop = min(structural_stop, entry - STOP_ATR_MULT * atr)
+            risk = entry - stop
+            target = resistances[0] if resistances and resistances[0] - entry > risk * 0.8 else entry + risk * 2
+        else:
+            structural_stop = resistances[0] if resistances else entry + 2 * atr
+            stop = max(structural_stop, entry + STOP_ATR_MULT * atr)
+            risk = stop - entry
+            target = supports[0] if supports and entry - supports[0] > risk * 0.8 else entry - risk * 2
+
+        risk_pct = abs(entry - stop) / entry * 100 if entry else 0
+        risk_amt = abs(entry - stop)
+        rr = round(abs(target - entry) / risk_amt, 2) if risk_amt > 0 else None
+
+        if risk_pct > MAX_RISK_PCT or (rr is not None and rr < 1.0):
+            direction = "NONE"
+            reasons.append(f"Risk/ödül yetersiz (R:R={rr}, risk %{risk_pct:.1f}) - sinyal iptal edildi")
+            entry = stop = target = rr = None
+            score = max(score - 20, 0)
+        else:
+            risk_level = "Düşük" if risk_pct < 3 else ("Orta" if risk_pct < 6 else "Yüksek")
+            if rr and rr >= 2:
+                score += 5
+
+    score = int(max(0, min(100, score)))
+    confidence = "Yüksek" if score >= 70 else ("Orta" if score >= 45 else "Düşük")
+    if direction == "NONE" and not reasons:
+        reasons.append("Giriş koşulları henüz sağlanmadı (yapı/trend/kırılım/momentum uyuşmuyor)")
+
+    return {
+        "direction": direction, "reasons": reasons, "triggered": triggered, "score": score,
+        "confidence": confidence, "entry": entry, "stop": stop, "target": target, "rr": rr,
+        "risk_level": risk_level,
+    }
+
+
 def _fetch_history_with_retry(t: "borsapy.Ticker", ticker: str) -> pd.DataFrame:
     """borsapy's history()/ta_signals() calls open their own TradingView
     connection per call - scanning 30 symbols concurrently bursts well past
@@ -316,9 +503,7 @@ def _build_signal(ticker: str, name: str) -> Signal:
         structure, structure_tags = _classify_structure(swings)
         levels = _cluster_levels(swings, price)
         atr = _atr(df)
-        breakout = _detect_breakout(df, levels, atr)
         pattern = _candle_pattern(df)
-        liquidity_note = _liquidity_grab(df, swings)
 
         try:
             ta = t.ta_signals(interval="1d")
@@ -326,112 +511,29 @@ def _build_signal(ticker: str, name: str) -> Signal:
             logger.warning(f"ta_signals failed for {ticker}: {e}")
             ta = None
 
-        reasons: List[str] = list(structure_tags)
-        triggered: List[str] = []
-        score = 0
-        direction = "NONE"
-
-        structure_bullish = structure.startswith("Yükseliş")
-        structure_bearish = structure.startswith("Düşüş")
-        if structure_bullish or structure_bearish:
-            score += 25
-            triggered.append("Piyasa yapısı: " + structure)
-
         momentum_ok_long = momentum_ok_short = False
+        momentum_note = "TradingView verisi alınamadı"
         if ta:
             osc_rec = ta.get("oscillators", {}).get("recommendation", "NEUTRAL")
             ma_rec = ta.get("moving_averages", {}).get("recommendation", "NEUTRAL")
             rsi = ta.get("oscillators", {}).get("values", {}).get("RSI", 50.0)
             momentum_ok_long = ma_rec != "STRONG_SELL" and rsi < 72
             momentum_ok_short = ma_rec != "STRONG_BUY" and rsi > 28
-            if momentum_ok_long or momentum_ok_short:
-                score += 25
-                triggered.append(f"Momentum (TradingView): osc={osc_rec}, MA={ma_rec}, RSI={rsi:.1f}")
-            else:
-                reasons.append(f"Momentum uyumsuz (RSI={rsi:.1f}, MA={ma_rec})")
+            momentum_note = f"Momentum (TradingView): osc={osc_rec}, MA={ma_rec}, RSI={rsi:.1f}"
 
-        if breakout:
-            reasons.append(
-                f"{breakout['level_kind']} kırılımı: {breakout['level']:.2f} seviyesi "
-                f"({'hacim onaylı' if breakout['volume_confirmed'] else 'hacim zayıf'}, "
-                f"{'test edildi' if breakout['retested'] else 'test bekleniyor'})"
-            )
-            if breakout["volume_confirmed"]:
-                score += 15
-                triggered.append("Hacim teyidi (ortalamanın üzerinde)")
-            if breakout["retested"]:
-                score += 20
-                triggered.append("Kırılım seviyesi başarıyla test edildi (retest)")
-            else:
-                score += 8
-        if pattern:
-            score += 10
-            triggered.append(f"Mum formasyonu: {pattern}")
-        if liquidity_note:
-            reasons.append(liquidity_note)
-
-        # Direction: requires structure + breakout to agree, plus momentum
-        # confirmation - the request's explicit LONG/SHORT entry rules.
-        if breakout and structure_bullish and breakout["direction"] == "LONG" and momentum_ok_long:
-            direction = "LONG"
-        elif breakout and structure_bearish and breakout["direction"] == "SHORT" and momentum_ok_short:
-            direction = "SHORT"
-        elif structure_bullish and momentum_ok_long and pattern and "Boğa" in (pattern or ""):
-            direction = "LONG"
-            score += 5
-            reasons.append("Kırılım yok ama yapı + mum formasyonu uyumlu (erken sinyal)")
-        elif structure_bearish and momentum_ok_short and pattern and "Ayı" in (pattern or ""):
-            direction = "SHORT"
-            score += 5
-            reasons.append("Kırılım yok ama yapı + mum formasyonu uyumlu (erken sinyal)")
-
-        entry = stop = target = rr = None
-        risk_level = "Orta"
-        if direction != "NONE" and atr > 0:
-            resistances = sorted([l.price for l in levels if l.kind == "resistance" and l.price > price])
-            supports = sorted([l.price for l in levels if l.kind == "support" and l.price < price], reverse=True)
-            entry = price
-            if direction == "LONG":
-                structural_stop = supports[0] if supports else price - 2 * atr
-                stop = min(structural_stop, entry - 1.2 * atr)
-                risk = entry - stop
-                target = resistances[0] if resistances and resistances[0] - entry > risk * 0.8 else entry + risk * 2
-            else:
-                structural_stop = resistances[0] if resistances else price + 2 * atr
-                stop = max(structural_stop, entry + 1.2 * atr)
-                risk = stop - entry
-                target = supports[0] if supports and entry - supports[0] > risk * 0.8 else entry - risk * 2
-
-            risk_pct = abs(entry - stop) / entry * 100 if entry else 0
-            reward = abs(target - entry)
-            risk_amt = abs(entry - stop)
-            rr = round(reward / risk_amt, 2) if risk_amt > 0 else None
-
-            if risk_pct > MAX_RISK_PCT or (rr is not None and rr < 1.0):
-                # Fails the request's "risk acceptable" entry-rule condition -
-                # downgrade instead of publishing an unfavorable-R:R signal.
-                direction = "NONE"
-                reasons.append(f"Risk/ödül yetersiz (R:R={rr}, risk %{risk_pct:.1f}) - sinyal iptal edildi")
-                entry = stop = target = rr = None
-                score = max(score - 20, 0)
-            else:
-                risk_level = "Düşük" if risk_pct < 3 else ("Orta" if risk_pct < 6 else "Yüksek")
-                if rr and rr >= 2:
-                    score += 5
-
-        score = int(max(0, min(100, score)))
-        confidence = "Yüksek" if score >= 70 else ("Orta" if score >= 45 else "Düşük")
-        if direction == "NONE" and not reasons:
-            reasons.append("Giriş koşulları henüz sağlanmadı (yapı/kırılım/momentum uyuşmuyor)")
+        decision = _decide_signal(
+            df, price, swings, structure, structure_tags, levels, atr, pattern,
+            momentum_ok_long, momentum_ok_short, momentum_note,
+        )
 
         return Signal(
-            ticker=ticker, name=name, direction=direction, price=round(price, 4),
-            change_percent=round(change_pct, 2), structure=structure, score=score, confidence=confidence,
-            reasons=reasons, triggered_conditions=triggered,
-            entry=round(entry, 4) if entry else None,
-            stop_loss=round(stop, 4) if stop else None,
-            take_profit=round(target, 4) if target else None,
-            risk_reward=rr, risk_level=risk_level,
+            ticker=ticker, name=name, direction=decision["direction"], price=round(price, 4),
+            change_percent=round(change_pct, 2), structure=structure, score=decision["score"],
+            confidence=decision["confidence"], reasons=decision["reasons"], triggered_conditions=decision["triggered"],
+            entry=round(decision["entry"], 4) if decision["entry"] else None,
+            stop_loss=round(decision["stop"], 4) if decision["stop"] else None,
+            take_profit=round(decision["target"], 4) if decision["target"] else None,
+            risk_reward=decision["rr"], risk_level=decision["risk_level"],
             support_levels=[round(l.price, 4) for l in levels if l.kind == "support"][:3],
             resistance_levels=[round(l.price, 4) for l in levels if l.kind == "resistance"][:3],
             last_update=now_iso,
@@ -549,59 +651,31 @@ def _backtest_symbol(ticker: str, name: str) -> BacktestResult:
 
             window_df = df.iloc[max(0, i - BACKTEST_WINDOW_BARS):i + 1]
             swings = _find_swings(window_df)
-            structure, _ = _classify_structure(swings)
+            structure, structure_tags = _classify_structure(swings)
             entry_price = float(bar["Close"])
             levels = _cluster_levels(swings, entry_price)
             atr = _atr(window_df)
             if not atr or pd.isna(atr) or atr <= 0:
                 continue
-            breakout = _detect_breakout(window_df, levels, atr)
             pattern = _candle_pattern(window_df)
 
-            structure_bullish = structure.startswith("Yükseliş")
-            structure_bearish = structure.startswith("Düşüş")
             r = rsi.iloc[i]
             sma_val = sma50.iloc[i]
             price_above_sma = bool(entry_price > sma_val) if not pd.isna(sma_val) else True
             momentum_ok_long = r < 72 and price_above_sma
             momentum_ok_short = r > 28 and not price_above_sma
+            momentum_note = f"Momentum (yerel): RSI={r:.1f}, SMA50 {'üzerinde' if price_above_sma else 'altında'}"
 
-            direction = None
-            if breakout and structure_bullish and breakout["direction"] == "LONG" and momentum_ok_long:
-                direction = "LONG"
-            elif breakout and structure_bearish and breakout["direction"] == "SHORT" and momentum_ok_short:
-                direction = "SHORT"
-            elif structure_bullish and momentum_ok_long and pattern and "Boğa" in pattern:
-                direction = "LONG"
-            elif structure_bearish and momentum_ok_short and pattern and "Ayı" in pattern:
-                direction = "SHORT"
-
-            if direction is None:
-                continue
-
-            resistances = sorted(l.price for l in levels if l.kind == "resistance" and l.price > entry_price)
-            supports = sorted((l.price for l in levels if l.kind == "support" and l.price < entry_price), reverse=True)
-
-            if direction == "LONG":
-                structural_stop = supports[0] if supports else entry_price - 2 * atr
-                stop = min(structural_stop, entry_price - 1.2 * atr)
-                risk = entry_price - stop
-                target = resistances[0] if resistances and resistances[0] - entry_price > risk * 0.8 else entry_price + risk * 2
-            else:
-                structural_stop = resistances[0] if resistances else entry_price + 2 * atr
-                stop = max(structural_stop, entry_price + 1.2 * atr)
-                risk = stop - entry_price
-                target = supports[0] if supports and entry_price - supports[0] > risk * 0.8 else entry_price - risk * 2
-
-            risk_amt = abs(entry_price - stop)
-            risk_pct = risk_amt / entry_price * 100 if entry_price else 100
-            rr = abs(target - entry_price) / risk_amt if risk_amt > 0 else 0
-            if risk_pct > MAX_RISK_PCT or rr < 1.0:
+            decision = _decide_signal(
+                window_df, entry_price, swings, structure, structure_tags, levels, atr, pattern,
+                momentum_ok_long, momentum_ok_short, momentum_note,
+            )
+            if decision["direction"] == "NONE" or decision["entry"] is None:
                 continue
 
             open_trade = {
-                "direction": direction, "entry_idx": i, "entry_price": entry_price,
-                "entry_date": str(df.index[i].date()), "stop": stop, "target": target,
+                "direction": decision["direction"], "entry_idx": i, "entry_price": entry_price,
+                "entry_date": str(df.index[i].date()), "stop": decision["stop"], "target": decision["target"],
             }
 
         if open_trade:
@@ -832,3 +906,41 @@ strategy_engine = StrategyEngine()
 #     breakout of those), not a literal two-point diagonal trendline fit
 #     with its own break/retest tracking - scoped out for this pass, noted
 #     as a follow-up.
+#
+# 2026-07-28 strategy revision (backtest-driven, see BacktestEngine):
+#   Live and backtest previously ran two independently hand-written copies
+#   of the direction/entry/stop/target decision logic - they've been
+#   unified into one shared _decide_signal() function so they can't
+#   silently diverge again; only the momentum SOURCE differs (live:
+#   TradingView's ta_signals rating; backtest: local RSI(14), since
+#   ta_signals has no historical/point-in-time API).
+#
+#   Backtesting the original engine full-universe (30 BIST30 symbols, ~2yr
+#   daily bars) found: 37.6% win rate, 174 stops vs 95 targets, and a stark
+#   LONG/SHORT asymmetry (LONG trades averaged +1.32%, SHORT averaged
+#   -1.02%). Four changes were tried and empirically re-backtested (not
+#   just theorized) before shipping:
+#     1. SMA(50) trend filter (_trend_state) - require price above/below a
+#        rising/falling 50-bar SMA, in addition to the fractal HH/HL
+#        structure read. KEPT: avg return/symbol +0.9% -> +1.0%, positive
+#        symbols 14/30 -> 16/30, roughly flat win rate. Small but real.
+#     2. Requiring a fully-completed breakout retest before entering
+#        (instead of firing on the breakout bar itself). REVERTED: made
+#        results clearly worse (avg return +0.9% -> -1.9%, win rate 37.6%
+#        -> 32.7%) - missed too many clean continuation moves on strongly
+#        trending stocks to be worth the fakeouts it filtered.
+#     3. Tighter RSI-midline momentum threshold (require RSI on the
+#        "correct" side of 50, not just outside the 28/72 extremes).
+#        REVERTED: also worse (avg return -0.8%), SHORT avg return got
+#        worse, not better.
+#     4. XU100 market-regime filter (block SHORT signals while the index
+#        itself is in an SMA(50) uptrend). REVERTED: didn't fix the
+#        asymmetry either - remaining SHORT trades (taken during confirmed
+#        index downtrends) still averaged -1.55%, worse than baseline.
+#   None of the SHORT-targeted fixes worked - this looks like a genuine,
+#   structural characteristic of shorting individual BIST stocks over this
+#   period/instrument set, not a filter bug. Rather than claim a fix the
+#   evidence doesn't support, _decide_signal applies an explicit score
+#   penalty to SHORT signals and surfaces this finding in the signal's
+#   `reasons`, so the UI's confidence label honestly reflects the weaker
+#   backtested edge instead of overstating it.
