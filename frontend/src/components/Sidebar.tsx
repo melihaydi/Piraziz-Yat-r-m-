@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { usePathname } from "next/navigation"
+import Link from "next/link"
 import {
   LayoutDashboard,
   Search,
@@ -27,7 +28,6 @@ interface SidebarProps {
 
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
 
   // The collapsed width only applies at the desktop (lg, >=1024px) layout -
   // below that the sidebar is always the full-width off-canvas drawer
@@ -120,10 +120,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     },
   ]
 
-  const handleNav = (href: string) => {
-    router.push(href)
-    onClose?.()
-  }
 
   return (
     <>
@@ -146,18 +142,19 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         {/* Brand Header */}
         <div className={cn("h-16 flex items-center border-b border-border shrink-0", isCollapsedNow ? "justify-center px-0" : "px-6 justify-between")}>
           {!isCollapsedNow && (
-            <div onClick={() => handleNav("/")} className="flex items-center cursor-pointer min-w-0">
+            <Link href="/" onClick={() => onClose?.()} className="flex items-center cursor-pointer min-w-0">
               <Logo />
-            </div>
+            </Link>
           )}
           {/* Collapsed-desktop: just the mark, no wordmark, no wasted space */}
           {isCollapsedNow && (
-            <div
-              onClick={() => handleNav("/")}
+            <Link
+              href="/"
+              onClick={() => onClose?.()}
               className="flex h-9 w-9 rounded-xl overflow-hidden cursor-pointer shrink-0"
             >
               <img src="/logo.png" alt="Piraziz Yatırım" className="h-full w-full object-cover" />
-            </div>
+            </Link>
           )}
           {!isCollapsedNow && (
             <button
@@ -180,8 +177,9 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             const Icon = item.icon
             return (
               <div key={item.name} className="relative group/navitem">
-                <button
-                  onClick={() => handleNav(item.href)}
+                <Link
+                  href={item.href}
+                  onClick={() => onClose?.()}
                   className={cn(
                     "w-full flex items-center h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
                     isCollapsedNow ? "justify-center px-0" : "px-4",
@@ -194,7 +192,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     isActive ? item.iconClass : "text-muted-foreground group-hover:text-foreground"
                   )} />
                   {!isCollapsedNow && <span className="truncate">{item.name}</span>}
-                </button>
+                </Link>
                 {/* Tooltip - collapsed desktop only, shown on hover next to the icon */}
                 {isCollapsedNow && (
                   <div className="hidden group-hover/navitem:block absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-semibold text-foreground whitespace-nowrap shadow-lg z-50 pointer-events-none">

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
@@ -472,8 +473,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         {/* User Badge */}
-        <div 
-          onClick={() => router.push("/settings")}
+        <Link
+          href="/settings"
           className="flex items-center space-x-3 pl-2 border-l border-border cursor-pointer hover:opacity-85 transition-opacity"
         >
           <div className="flex flex-col text-right hidden sm:flex">
@@ -490,7 +491,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               avatarEmoji
             )}
           </div>
-        </div>
+        </Link>
       </div>
     </header>
   )
