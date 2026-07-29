@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
@@ -23,3 +23,23 @@ class PortfolioAsset(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     company = relationship("Company", backref="portfolio_assets")
+
+
+class PortfolioSnapshot(Base):
+    """One row per (user, day): the user's total portfolio value across all
+    their portfolios, recorded once daily by PortfolioSnapshotService (see
+    app/services/portfolio_snapshot.py). This is what powers the equity
+    curve on the Portföyüm page - there was no historical value tracking
+    before this, so the curve only starts accumulating from whenever this
+    table starts getting written to; it cannot be backfilled."""
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    snapshot_date = Column(Date, nullable=False, index=True)
+    total_value = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", backref="portfolio_snapshots")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "snapshot_date", name="uq_portfolio_snapshot_user_date"),
+    )

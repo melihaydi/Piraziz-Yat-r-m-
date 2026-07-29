@@ -4,7 +4,7 @@ from app.models.user import User
 from app.models.company import Company
 from app.models.financial import FinancialStatement
 from app.models.kap import KapNotification
-from app.models.portfolio import Portfolio, PortfolioAsset
+from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.models.alert import Alert
 
 __all__ = [
@@ -15,5 +15,6 @@ __all__ = [
     "KapNotification",
     "Portfolio",
     "PortfolioAsset",
+    "PortfolioSnapshot",
     "Alert"
 ]

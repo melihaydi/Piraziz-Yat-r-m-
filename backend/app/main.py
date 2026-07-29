@@ -44,6 +44,8 @@ async def start_background_jobs():
     from app.services.strategy_engine import strategy_engine, backtest_engine
     strategy_engine.start_background_refresh()
     backtest_engine.start_background_refresh()
+    from app.services.portfolio_snapshot import portfolio_snapshot_service
+    portfolio_snapshot_service.start_daily_scheduler()
     from app.services.seed_data import seed_companies
     seed_companies()
 

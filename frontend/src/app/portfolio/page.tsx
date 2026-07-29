@@ -1,12 +1,17 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  ResponsiveContainer, 
-  Tooltip 
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid
 } from "recharts"
 import { 
   Plus, 
@@ -83,6 +88,8 @@ export default function PortfolioPage() {
   const [alerts, setAlerts] = useState<any[]>([])
   const [analytics, setAnalytics] = useState<any>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  const [equityHistory, setEquityHistory] = useState<{ date: string; total_value: number }[]>([])
+  const [equityHistoryLoading, setEquityHistoryLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur">("hisse")
   
@@ -179,9 +186,25 @@ export default function PortfolioPage() {
     }
   }
 
+  const loadEquityHistory = async () => {
+    setEquityHistoryLoading(true)
+    try {
+      const historyRes = await authFetch("/portfolio/history")
+      if (historyRes.ok) {
+        const data = await historyRes.json()
+        setEquityHistory(data.history || [])
+      }
+    } catch (err) {
+      console.error("Failed to load portfolio equity history:", err)
+    } finally {
+      setEquityHistoryLoading(false)
+    }
+  }
+
   const loadData = () => {
     loadCore()
     loadAnalytics()
+    loadEquityHistory()
   }
 
   useEffect(() => {
@@ -687,6 +710,50 @@ export default function PortfolioPage() {
         
         {/* Assets List Table */}
         <div className="lg:col-span-2 space-y-8">
+          <Card glass={true}>
+            <CardHeader>
+              <CardTitle className="text-lg">Portföy Değeri (Zaman İçinde)</CardTitle>
+              <CardDescription>Her gün bir kez kaydedilen gerçek toplam portföy değeriniz</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {equityHistoryLoading ? (
+                <div className="h-56 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={equityHistory}>
+                        <defs>
+                          <linearGradient id="portfolioEquityGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
+                        <YAxis stroke="#64748b" fontSize={10} domain={["auto", "auto"]} />
+                        <Tooltip
+                          contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
+                          labelStyle={{ color: "#94a3b8" }}
+                          formatter={(value: any) => [`₺${Number(value).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`, "Portföy Değeri"]}
+                        />
+                        <Area type="monotone" dataKey="total_value" stroke="#a855f7" fill="url(#portfolioEquityGradient)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {equityHistory.length <= 1 && (
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      Bu grafik, portföyünüzün gerçek günlük değeriyle gün geçtikçe dolacak - geçmişe dönük veri
+                      tutulmadığı için geriye doğru doldurulamaz, bugünden itibaren birikmeye başlar.
+                    </p>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
           <Card glass={true}>
             <CardHeader>
               <CardTitle className="text-lg">Portföy Varlıkları</CardTitle>

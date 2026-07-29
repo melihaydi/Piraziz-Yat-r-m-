@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.db.session import SessionLocal
 from app.models.user import User
-from app.models.portfolio import Portfolio, PortfolioAsset
+from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse
 from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
@@ -108,6 +108,31 @@ def get_user_portfolios(
         response_list.append(PortfolioResponse(**p_dict))
 
     return response_list
+
+@router.get("/history")
+def get_portfolio_history(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """Equity curve: daily total-portfolio-value snapshots recorded by
+    PortfolioSnapshotService's daily scheduler (see app/services/
+    portfolio_snapshot.py). Honest limitation: no historical backfill is
+    possible - nothing recorded portfolio value before this feature
+    existed, so the curve only has data from whenever the daily snapshot
+    job first ran on this deployment and accumulates one point per day
+    from there."""
+    snapshots = (
+        db.query(PortfolioSnapshot)
+        .filter(PortfolioSnapshot.user_id == current_user.id)
+        .order_by(PortfolioSnapshot.snapshot_date.asc())
+        .all()
+    )
+    return {
+        "history": [
+            {"date": s.snapshot_date.isoformat(), "total_value": s.total_value}
+            for s in snapshots
+        ]
+    }
 
 # Redis-backed cache for /analytics, keyed by (user_id, holdings composition) -
 # not by live-priced total_value, since that changes on every quote tick and
