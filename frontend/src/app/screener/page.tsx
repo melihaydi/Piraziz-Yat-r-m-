@@ -614,12 +614,9 @@ export default function ScreenerPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2.5">
                     <TickerLogo ticker={selectedTicker} size={28} />
-                    <span className="bg-primary text-primary-foreground font-black px-2 py-0.5 rounded text-sm">
-                      {selectedTicker}
-                    </span>
                     <div>
                       <CardTitle className="text-sm font-black line-clamp-1">{selectedStockDetails.name}</CardTitle>
-                      <CardDescription className="text-[10px] mt-0.5">{selectedStockDetails.sector}</CardDescription>
+                      <CardDescription className="text-[10px] mt-0.5">{selectedTicker} · {selectedStockDetails.sector}</CardDescription>
                     </div>
                   </div>
                   <button 

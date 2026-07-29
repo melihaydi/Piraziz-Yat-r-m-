@@ -240,13 +240,10 @@ export default function StockDetailPage() {
         <div>
           <div className="flex items-center space-x-3">
             <TickerLogo ticker={ticker} size={32} />
-            <span className="bg-primary text-primary-foreground font-black px-2.5 py-1 rounded text-lg">
-              {ticker}
-            </span>
             <h1 className="text-3xl font-extrabold tracking-tight">{stockDetails.name}</h1>
           </div>
           <p className="text-muted-foreground mt-1.5 flex items-center text-sm">
-            {stockDetails.sector} Sektörü • BIST Canlı Veri Motoru
+            {ticker} · {stockDetails.sector} Sektörü • BIST Canlı Veri Motoru
           </p>
         </div>
 
