@@ -1,12 +1,12 @@
-import json
 import logging
-import os
 import pandas as pd
 import threading
 import time
 import datetime
 from typing import Dict, List, Any, Optional
 from datetime import timedelta
+
+from app.core.redis import cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,17 @@ class TefasService:
         self._snapshot_cache_days = 0
         self._snapshot_fetched_at = datetime.datetime.min
         self._snapshot_ttl = timedelta(minutes=10)
+        # Separate from self._lock (which only ever guards fast in-memory
+        # state updates) - held for the full duration of an actual TEFAS
+        # network fetch, so a second caller that also misses the cache
+        # blocks here instead of firing its own concurrent request. TEFAS's
+        # API does not tolerate concurrent requests well: confirmed live,
+        # two threads racing into _get_snapshot() at once (the price
+        # refresh and history rebuild loops both doing their initial fetch
+        # at startup) made TEFAS drop both connections
+        # ("RemoteDisconnected"), silently leaving prices on stale fallback
+        # data for the entire run.
+        self._snapshot_fetch_lock = threading.Lock()
 
         for code, info in BASE_FUNDS.items():
             f = FALLBACKS[code]
@@ -86,22 +97,25 @@ class TefasService:
                 "monthly_return": f["monthly"]
             }
 
-        # Persisted on disk (relative to cwd, same convention as the sqlite
-        # dev DB - see app/db/session.py) so a fresh backend process (every
-        # single app launch, since nothing stays running between sessions)
-        # starts from the last real TEFAS fetch instead of the hardcoded
-        # FALLBACKS above - otherwise every app restart showed months-old
-        # placeholder numbers for the ~5 minutes it takes to re-fetch from
-        # TEFAS, even if a real fetch had already completed minutes earlier.
-        self._cache_file = "tefas_cache.json"
+        # Persisted in Redis (not a local JSON file - see git history for
+        # the old on-disk version) so a fresh backend process starts from
+        # the last real TEFAS fetch instead of the hardcoded FALLBACKS
+        # above. A plain file under the container's CWD doesn't survive a
+        # redeploy (docker compose build/up recreates the container's
+        # filesystem from scratch, wiping it) - confirmed live: after a
+        # routine redeploy, /app/tefas_cache.json was simply gone, so
+        # every deploy silently reset live fund prices back to their
+        # July-2026 fallback values until the next fetch completed. Redis
+        # is a separate, already-persistent container this data survives
+        # a backend redeploy in.
+        self._cache_key = "tefas:persisted_cache"
         self._load_persisted_cache()
 
     def _load_persisted_cache(self):
-        if not os.path.exists(self._cache_file):
+        data = cache_service.get_json(self._cache_key)
+        if not data:
             return
         try:
-            with open(self._cache_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
             if data.get("cached_funds"):
                 self._cached_funds.update(data["cached_funds"])
             if data.get("history_cache"):
@@ -110,7 +124,7 @@ class TefasService:
                 self._last_refresh = datetime.datetime.fromisoformat(data["last_refresh"])
             if data.get("history_last_built"):
                 self._history_last_built = datetime.datetime.fromisoformat(data["history_last_built"])
-            logger.info(f"Loaded persisted TEFAS cache from {self._cache_file} (last refresh: {self._last_refresh}).")
+            logger.info(f"Loaded persisted TEFAS cache from Redis (last refresh: {self._last_refresh}).")
         except Exception as e:
             logger.warning(f"Could not load persisted TEFAS cache: {e}")
 
@@ -123,8 +137,11 @@ class TefasService:
                     "last_refresh": self._last_refresh.isoformat(),
                     "history_last_built": self._history_last_built.isoformat(),
                 }
-            with open(self._cache_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
+            # Long TTL, not "forever" - if this data ever stops being
+            # refreshed (a stuck scheduler, TEFAS down for days), it should
+            # eventually expire back to the hardcoded FALLBACKS rather than
+            # serve indefinitely-stale "real" numbers.
+            cache_service.set_json(self._cache_key, data, expire_seconds=7 * 24 * 60 * 60)
         except Exception as e:
             logger.warning(f"Could not persist TEFAS cache: {e}")
 
@@ -342,14 +359,26 @@ class TefasService:
                     and now - self._snapshot_fetched_at < self._snapshot_ttl):
                 return self._snapshot_cache
 
-        snapshot = self._fetch_tefas_snapshot(days)
+        # Serialize the actual network fetch (see _snapshot_fetch_lock's
+        # docstring in __init__) - a second caller that also missed the
+        # cache above blocks here instead of racing its own concurrent
+        # TEFAS request, then re-checks the (now warm) cache below instead
+        # of always fetching again.
+        with self._snapshot_fetch_lock:
+            now = datetime.datetime.now()
+            with self._lock:
+                if (self._snapshot_cache and self._snapshot_cache_days >= days
+                        and now - self._snapshot_fetched_at < self._snapshot_ttl):
+                    return self._snapshot_cache
 
-        with self._lock:
-            if snapshot:
-                self._snapshot_cache = snapshot
-                self._snapshot_cache_days = days
-                self._snapshot_fetched_at = datetime.datetime.now()
-            return self._snapshot_cache
+            snapshot = self._fetch_tefas_snapshot(days)
+
+            with self._lock:
+                if snapshot:
+                    self._snapshot_cache = snapshot
+                    self._snapshot_cache_days = days
+                    self._snapshot_fetched_at = datetime.datetime.now()
+                return self._snapshot_cache
 
     def _fetch_tefas_snapshot(self, days: int) -> Dict[str, Any]:
         """Fetch TEFAS 'info' data for all 5 fund kinds across the last `days`
@@ -392,21 +421,37 @@ class TefasService:
         return per_day_df
 
     def start_daily_scheduler(self, hour: int = 19, minute: int = 30):
-        """Guarantee at least one real TEFAS check per day, independent of user
-        traffic. Previously funds/returns only refreshed lazily inside get_funds()
-        when someone happened to open the funds page AND the 1h cache had expired -
-        so on a quiet day, or right after a backend restart, the numbers stayed
-        stuck on stale/placeholder data indefinitely. This runs a fetch immediately
-        on startup and then once every day at `hour`:`minute` local time (TEFAS
-        publishes end-of-day NAVs in the evening, so the default targets after
-        that), in one dedicated daemon thread that outlives the app.
+        """Guarantee TEFAS prices/returns stay fresh independent of user
+        traffic, and rebuild the real NAV history once a day.
+
+        Previously this only ran a fetch once at startup and once daily at
+        `hour`:`minute` - in between, get_funds() only refreshed prices
+        lazily, when someone happened to open the funds page AND the 1h
+        cache had already expired. On a quiet stretch with nobody visiting
+        the funds page, that left prices stuck stale for however long -
+        confirmed live in production, where last_refresh sat 3+ hours
+        behind with nothing re-triggering it. Now runs a lightweight
+        price-only refresh every `_refresh_interval` (1h) in its own loop,
+        independent of traffic, plus the original once-daily full refresh
+        (prices + the more expensive real NAV history rebuild) at
+        `hour`:`minute` (TEFAS publishes end-of-day NAVs in the evening, so
+        the default targets after that). Two separate daemon threads so a
+        slow history rebuild never delays the hourly price refresh.
         """
         if self._scheduler_started:
             return
         self._scheduler_started = True
 
-        def loop():
+        def price_loop():
+            # Runs the initial fetch too (not just the periodic ones) so
+            # this thread - not the FastAPI startup event calling this
+            # method - is what blocks on the first real TEFAS network call.
             self._fetch_prices_sync()
+            while True:
+                time.sleep(max(self._refresh_interval.total_seconds(), 1))
+                self._fetch_prices_sync()
+
+        def history_loop():
             self._build_history_sync(count=20)
             while True:
                 now = datetime.datetime.now()
@@ -417,7 +462,8 @@ class TefasService:
                 self._fetch_prices_sync()
                 self._build_history_sync(count=20)
 
-        threading.Thread(target=loop, daemon=True).start()
+        threading.Thread(target=price_loop, daemon=True).start()
+        threading.Thread(target=history_loop, daemon=True).start()
 
     def get_funds(self, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
         """Get all funds. Refreshes cache asynchronously if expired."""

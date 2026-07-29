@@ -19,10 +19,18 @@ _HEADERS = {
 # Note: "https://www.bloomberght.com/piyasa/rss" and ".../borsa/rss" (previously
 # listed here) no longer resolve to a valid feed - each request against them was
 # silently eating up to the full timeout before falling through, adding to the
-# page's load time for nothing. Verified working feeds only.
+# page's load time for nothing. "https://www.bloomberght.com/rss" (also
+# previously used) DOES resolve and parse fine, but was confirmed - by
+# directly checking its items' <pubDate> against the current time - to be
+# stuck serving articles from ~6.5 days ago, not actually live; that's the
+# real explanation behind "piyasa haberleri geç geliyor" complaints (Bloomberg
+# items just sat there stale, dragging the merged/sorted feed's apparent
+# freshness down). Replaced with HaberTürk's dedicated ekonomi feed, which
+# was verified live the same way (newest item ~1-50 min old, <ttl>1</ttl>).
+# Verified working + genuinely live feeds only.
 _RSS_FEEDS = [
     ("https://www.aa.com.tr/tr/rss/default?cat=ekonomi", "Anadolu Ajansı"),
-    ("https://www.bloomberght.com/rss", "Bloomberg HT"),
+    ("https://www.haberturk.com/rss/ekonomi.xml", "Habertürk Ekonomi"),
 ]
 
 def format_date_tr(dt: datetime) -> str:

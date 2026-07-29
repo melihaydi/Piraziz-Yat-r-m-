@@ -123,7 +123,7 @@ export default function EconomyNewsPage() {
             Ekonomi Haberleri
           </h1>
           <p className="text-muted-foreground mt-1.5">
-            Anadolu Ajansı, Bloomberg HT ve KAP bildirimlerinden gerçek zamanlı akış - KAP duyuruları yapay zekâ ile analiz edilir.
+            Anadolu Ajansı, Habertürk Ekonomi ve KAP bildirimlerinden gerçek zamanlı akış - KAP duyuruları yapay zekâ ile analiz edilir.
           </p>
         </div>
         <Button
