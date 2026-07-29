@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { ArrowUpCircle, ArrowDownCircle, Loader2, Info, Receipt } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 // Kept in sync with backend/app/services/trade_service.py's COMMISSION_RATE -
 // this is only an on-screen estimate before submitting; the real commission
@@ -93,9 +94,12 @@ export default function OrderPanel() {
       {/* Selected instrument header */}
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-black text-white">{instrument.symbol}</div>
-            <div className="text-[10px] text-slate-500 truncate max-w-[160px]">{instrument.name}</div>
+          <div className="flex items-center gap-2">
+            <TickerLogo ticker={instrument.underlying_symbol || instrument.symbol} size={20} />
+            <div>
+              <div className="text-sm font-black text-white">{instrument.symbol}</div>
+              <div className="text-[10px] text-slate-500 truncate max-w-[160px]">{instrument.name}</div>
+            </div>
           </div>
           <div className="text-right">
             <div className="text-lg font-black text-white">{lastPrice.toFixed(2)}</div>

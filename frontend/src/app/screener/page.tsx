@@ -613,6 +613,7 @@ export default function ScreenerPage() {
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2.5">
+                    <TickerLogo ticker={selectedTicker} size={28} />
                     <span className="bg-primary text-primary-foreground font-black px-2 py-0.5 rounded text-sm">
                       {selectedTicker}
                     </span>
