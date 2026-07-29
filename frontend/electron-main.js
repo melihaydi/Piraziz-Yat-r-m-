@@ -124,39 +124,55 @@ const LOADING_HTML = loadingHtml(
  */
 function ensurePythonEnv() {
   if (!isPackaged) return true
-  if (fs.existsSync(venvPythonPath())) return true
 
-  console.log('First launch detected - setting up Python environment at', VENV_DIR)
+  if (!fs.existsSync(venvPythonPath())) {
+    console.log('First launch detected - setting up Python environment at', VENV_DIR)
 
-  const pythonLaunchers = [
-    { cmd: 'py', args: ['-3'] },
-    { cmd: 'python', args: [] },
-  ]
+    const pythonLaunchers = [
+      { cmd: 'py', args: ['-3'] },
+      { cmd: 'python', args: [] },
+    ]
 
-  let created = false
-  for (const launcher of pythonLaunchers) {
-    try {
-      const result = spawnSync(launcher.cmd, [...launcher.args, '-m', 'venv', VENV_DIR], {
-        shell: true,
-        windowsHide: true,
-      })
-      if (result.status === 0 && fs.existsSync(venvPythonPath())) {
-        created = true
-        break
+    let created = false
+    for (const launcher of pythonLaunchers) {
+      try {
+        const result = spawnSync(launcher.cmd, [...launcher.args, '-m', 'venv', VENV_DIR], {
+          shell: true,
+          windowsHide: true,
+        })
+        if (result.status === 0 && fs.existsSync(venvPythonPath())) {
+          created = true
+          break
+        }
+      } catch (e) {
+        // Try the next launcher candidate.
       }
-    } catch (e) {
-      // Try the next launcher candidate.
+    }
+
+    if (!created) {
+      console.error(
+        'Could not create a Python virtual environment. Please install Python 3 ' +
+        '(python.org) and make sure it is available on PATH, then restart the app.'
+      )
+      return false
     }
   }
 
-  if (!created) {
-    console.error(
-      'Could not create a Python virtual environment. Please install Python 3 ' +
-      '(python.org) and make sure it is available on PATH, then restart the app.'
-    )
-    return false
-  }
-
+  // Runs on every launch, not just when the venv is first created - an
+  // existing install's venv is from whatever version of requirements.txt
+  // was bundled at THAT install time, and ensurePythonEnv used to only
+  // check "does the venv folder exist", never "does it actually satisfy
+  // the CURRENT bundled requirements.txt". An app update that adds a new
+  // dependency (this version added slowapi/pyotp/qrcode for rate limiting
+  // and 2FA) would leave an existing install's venv without it, so the
+  // backend process would import-error and exit immediately - silently,
+  // since its stdio is intentionally suppressed - and the app would sit on
+  // "Sunucuya bağlanılamadı" with no indication why. Confirmed locally:
+  // this exact build's own dev-machine venv (created before this version's
+  // requirements.txt changes) was missing all three new packages. pip
+  // install against an already-satisfied requirements.txt is fast (a
+  // couple seconds), so paying that cost on every launch is worth the
+  // correctness guarantee.
   const pipInstall = spawnSync(
     venvPythonPath(),
     ['-m', 'pip', 'install', '-r', path.join(BACKEND_SOURCE_DIR, 'requirements.txt')],
