@@ -15,6 +15,8 @@ export const API_BASE_URL = `${API_ORIGIN}/api/v1`
 export interface AuthResult {
   ok: boolean
   error?: string
+  requires2FA?: boolean
+  tempToken?: string
 }
 
 /**
@@ -50,6 +52,31 @@ export async function login(email: string, password: string): Promise<AuthResult
     })
     if (!res.ok) {
       return { ok: false, error: await firstErrorDetail(res, "E-posta veya şifre hatalı.") }
+    }
+    const data = await res.json()
+    if (data.requires_2fa) {
+      // Password was correct, but the account has 2FA enabled - no token
+      // yet, the caller must collect a code and call verifyTwoFactor().
+      return { ok: false, requires2FA: true, tempToken: data.temp_token }
+    }
+    localStorage.setItem("token", data.access_token)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: "Sunucuya ulaşılamadı." }
+  }
+}
+
+/** Second step of a 2FA login - exchanges the temp_token from login() plus
+ * the current authenticator code for a real session token. */
+export async function verifyTwoFactor(tempToken: string, code: string): Promise<AuthResult> {
+  try {
+    const res = await fetchWithRetry(`${API_BASE_URL}/auth/login/2fa`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ temp_token: tempToken, code }),
+    })
+    if (!res.ok) {
+      return { ok: false, error: await firstErrorDetail(res, "Kod hatalı veya süresi dolmuş.") }
     }
     const data = await res.json()
     localStorage.setItem("token", data.access_token)

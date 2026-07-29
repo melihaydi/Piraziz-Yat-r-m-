@@ -13,6 +13,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 class TokenPayload(BaseModel):
     sub: Optional[str] = None
+    scope: Optional[str] = None
 
 def get_db() -> Generator[Session, None, None]:
     """Database session dependency generator."""
@@ -33,6 +34,13 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         token_data = TokenPayload(**payload)
         if token_data.sub is None:
+            raise credentials_exception
+        # A scope="2fa_pending" token (issued mid-login, before the TOTP
+        # code is verified - see /auth/login) proves the password was
+        # correct but must never work as a real bearer token. Tokens
+        # issued before this field existed have no "scope" claim at all,
+        # so None is treated the same as "access" for backward compatibility.
+        if token_data.scope not in (None, "access"):
             raise credentials_exception
     except JWTError:
         raise credentials_exception

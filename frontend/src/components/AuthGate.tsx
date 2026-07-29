@@ -1,11 +1,11 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2 } from "lucide-react"
+import { User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2, ShieldCheck } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { login, register, fetchCurrentUser } from "@/lib/auth"
+import { login, register, fetchCurrentUser, verifyTwoFactor } from "@/lib/auth"
 
 interface AuthGateProps {
   children: React.ReactNode
@@ -22,6 +22,11 @@ export default function AuthGate({ children }: AuthGateProps) {
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+
+  // 2FA step: set once login() reports requires2FA - the form switches to
+  // asking for the authenticator code instead of email/password.
+  const [pendingTempToken, setPendingTempToken] = useState<string | null>(null)
+  const [twoFACode, setTwoFACode] = useState("")
 
   // Validate any stored token against the backend on load, instead of
   // trusting a "bip_logged_in" flag that (previously) was set once and
@@ -57,6 +62,32 @@ export default function AuthGate({ children }: AuthGateProps) {
       : await login(email, password)
     setLoading(false)
 
+    if (result.requires2FA && result.tempToken) {
+      setPendingTempToken(result.tempToken)
+      return
+    }
+
+    if (!result.ok) {
+      setError(result.error || "Bir hata oluştu.")
+      return
+    }
+
+    localStorage.setItem("bip_username", fullName || email)
+    setIsLoggedIn(true)
+    window.dispatchEvent(new Event("profile-updated"))
+  }
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (!pendingTempToken || twoFACode.length < 6) {
+      setError("Lütfen 6 haneli kodu girin.")
+      return
+    }
+    setLoading(true)
+    const result = await verifyTwoFactor(pendingTempToken, twoFACode)
+    setLoading(false)
+
     if (!result.ok) {
       setError(result.error || "Bir hata oluştu.")
       return
@@ -77,6 +108,61 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   if (isLoggedIn) {
     return <>{children}</>
+  }
+
+  if (pendingTempToken) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl p-4">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
+
+        <div className="w-full max-w-md relative z-10">
+          <Card glass={true} className="border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-2xl">
+            <CardHeader className="text-center pb-2">
+              <div className="mx-auto h-12 w-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
+                <ShieldCheck className="h-6 w-6 text-purple-400" />
+              </div>
+              <CardTitle className="text-xl font-black tracking-tight text-foreground">
+                İki Adımlı Doğrulama
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-1">
+                Authenticator uygulamanızdaki 6 haneli kodu girin
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-semibold text-center">
+                  {error}
+                </div>
+              )}
+              <form onSubmit={handleVerify2FA} className="space-y-3.5">
+                <Input
+                  value={twoFACode}
+                  onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  inputMode="numeric"
+                  autoFocus
+                  className="text-center text-2xl tracking-[0.5em] font-mono bg-zinc-900/60 border-zinc-800"
+                />
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-foreground font-black text-sm py-2.5 flex items-center justify-center gap-1.5 border-0 shadow-lg shadow-purple-500/10"
+                >
+                  {loading ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : "Doğrula ve Giriş Yap"}
+                </Button>
+              </form>
+              <button
+                onClick={() => { setPendingTempToken(null); setTwoFACode(""); setError("") }}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                Geri dön
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (

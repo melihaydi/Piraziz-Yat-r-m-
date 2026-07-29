@@ -17,6 +17,7 @@ class UserUpdate(UserBase):
 class UserInDBBase(UserBase):
     id: int
     is_superuser: bool
+    totp_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 

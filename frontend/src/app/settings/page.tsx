@@ -3,12 +3,201 @@
 import React, { useState, useEffect } from "react"
 import {
   User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon,
-  Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle
+  Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle,
+  Smartphone, XCircle
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { authFetch, fetchCurrentUser } from "@/lib/auth"
+
+function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
+  const [step, setStep] = useState<"idle" | "setup" | "disable">("idle")
+  const [qrCode, setQrCode] = useState("")
+  const [secret, setSecret] = useState("")
+  const [code, setCode] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  const startSetup = async () => {
+    setError("")
+    setLoading(true)
+    try {
+      const res = await authFetch("/auth/2fa/setup", { method: "POST" })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail || "Kurulum başlatılamadı.")
+        setLoading(false)
+        return
+      }
+      const data = await res.json()
+      setQrCode(data.qr_code_base64)
+      setSecret(data.secret)
+      setStep("setup")
+    } catch {
+      setError("Sunucuya ulaşılamadı.")
+    }
+    setLoading(false)
+  }
+
+  const confirmSetup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const res = await authFetch("/auth/2fa/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail || "Kod hatalı.")
+        setLoading(false)
+        return
+      }
+      setStep("idle")
+      setCode("")
+      onChanged()
+    } catch {
+      setError("Sunucuya ulaşılamadı.")
+    }
+    setLoading(false)
+  }
+
+  const confirmDisable = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const res = await authFetch("/auth/2fa/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail || "Kod hatalı.")
+        setLoading(false)
+        return
+      }
+      setStep("idle")
+      setCode("")
+      onChanged()
+    } catch {
+      setError("Sunucuya ulaşılamadı.")
+    }
+    setLoading(false)
+  }
+
+  return (
+    <Card glass={true}>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center justify-between">
+          <span className="flex items-center">
+            <Smartphone className="h-4.5 w-4.5 mr-2 text-primary" />
+            İki Adımlı Doğrulama (2FA)
+          </span>
+          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase ${
+            totpEnabled ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+          }`}>
+            {totpEnabled ? "Aktif" : "Kapalı"}
+          </span>
+        </CardTitle>
+        <CardDescription>
+          Google Authenticator, Microsoft Authenticator gibi bir uygulamayla girişlerinizi ekstra bir kodla koruyun.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && (
+          <div className="flex items-center space-x-2 text-rose-400 text-xs font-semibold bg-rose-500/10 p-3 rounded-lg border border-rose-500/15">
+            <span>{error}</span>
+          </div>
+        )}
+
+        {step === "idle" && !totpEnabled && (
+          <Button onClick={startSetup} disabled={loading} className="cursor-pointer font-bold text-xs h-10">
+            {loading ? "Hazırlanıyor..." : "2FA'yı Etkinleştir"}
+          </Button>
+        )}
+
+        {step === "idle" && totpEnabled && (
+          <Button
+            onClick={() => setStep("disable")}
+            variant="destructive"
+            className="cursor-pointer font-bold text-xs h-10"
+          >
+            <XCircle className="h-4 w-4 mr-1.5" />
+            2FA'yı Devre Dışı Bırak
+          </Button>
+        )}
+
+        {step === "setup" && (
+          <form onSubmit={confirmSetup} className="space-y-4">
+            <div className="flex flex-col items-center gap-3 p-4 bg-secondary/15 rounded-xl border border-border/30">
+              <img src={qrCode} alt="2FA QR Kodu" className="h-40 w-40 rounded-lg border border-border/40 bg-white p-1" />
+              <p className="text-[10px] text-muted-foreground text-center">
+                Authenticator uygulamanızla QR kodu okutun. Okutamıyorsanız bu anahtarı elle girin:
+              </p>
+              <code className="text-[11px] font-mono bg-secondary/40 px-2 py-1 rounded break-all text-center">{secret}</code>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground font-semibold">Uygulamadaki 6 haneli kodu girin</label>
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                inputMode="numeric"
+                className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={loading || code.length < 6} className="flex-1 cursor-pointer font-bold text-xs h-10">
+                {loading ? "Doğrulanıyor..." : "Doğrula ve Etkinleştir"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setStep("idle"); setCode(""); setError("") }}
+                className="cursor-pointer font-bold text-xs h-10"
+              >
+                Vazgeç
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {step === "disable" && (
+          <form onSubmit={confirmDisable} className="space-y-4">
+            <p className="text-[11px] text-muted-foreground">
+              Devre dışı bırakmak için authenticator uygulamanızdaki güncel kodu girin.
+            </p>
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              inputMode="numeric"
+              className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono"
+            />
+            <div className="flex gap-2">
+              <Button type="submit" variant="destructive" disabled={loading || code.length < 6} className="flex-1 cursor-pointer font-bold text-xs h-10">
+                {loading ? "İşleniyor..." : "Devre Dışı Bırak"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setStep("idle"); setCode(""); setError("") }}
+                className="cursor-pointer font-bold text-xs h-10"
+              >
+                Vazgeç
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 // Content for the "Güvenlik & Yetkiler" section (Request: professional security/permissions overview)
 const SECURITY_ITEMS = [
@@ -96,6 +285,14 @@ export default function SettingsPage() {
   const [authSuccess, setAuthSuccess] = useState(false)
   const [authError, setAuthError] = useState("")
   const [authSubmitting, setAuthSubmitting] = useState(false)
+  const [totpEnabled, setTotpEnabled] = useState(false)
+
+  const refreshProfile = () => {
+    fetchCurrentUser().then(user => {
+      if (user?.email) setEmail(user.email)
+      setTotpEnabled(!!user?.totp_enabled)
+    })
+  }
 
   // Load display prefs from localStorage, but the email is the backend's -
   // it's the real source of truth for the account, not a local cache.
@@ -107,9 +304,7 @@ export default function SettingsPage() {
     if (savedEmoji) setAvatarEmoji(savedEmoji)
     if (savedPic) setProfilePic(savedPic)
 
-    fetchCurrentUser().then(user => {
-      if (user?.email) setEmail(user.email)
-    })
+    refreshProfile()
   }, [])
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -373,6 +568,8 @@ export default function SettingsPage() {
               </form>
             </CardContent>
           </Card>
+
+          <TwoFactorSection totpEnabled={totpEnabled} onChanged={refreshProfile} />
 
           {/* Security & Permissions */}
           <Card glass={true} id="section-security" className="border-primary/10">
