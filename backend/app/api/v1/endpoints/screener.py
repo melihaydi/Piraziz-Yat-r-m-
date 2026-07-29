@@ -534,9 +534,10 @@ def analyze_stock_ai(symbol: str):
 
 _KAP_DIVIDEND_KEYWORDS = ("temettü", "kar payı", "kâr payı", "temettü dağıtım")
 
-# In-memory cache, same pattern as NewsService - the whole point is to never
-# make a page load wait on N Gemini calls more than once per TTL window.
-_KAP_CACHE: dict = {}
+# Redis-backed cache, same pattern as NewsService - the whole point is to
+# never make a page load wait on N Gemini calls more than once per TTL
+# window, and (since this moved off process memory) to keep serving that
+# cached analysis across a backend restart too.
 _KAP_CACHE_TTL_SECONDS = 180
 
 
@@ -603,26 +604,26 @@ def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10)):
     disclosures) concurrently, same pattern as NewsService's KAP enrichment,
     and caches the analyzed result for a few minutes so repeat page loads
     don't redo the AI analysis."""
-    import time as _time
+    from app.core.redis import cache_service
     from app.services.kap_service import kap_service
 
-    cache_key = limit
-    cached = _KAP_CACHE.get(cache_key)
-    if cached and (_time.time() - cached[0]) < _KAP_CACHE_TTL_SECONDS:
-        return cached[1]
+    cache_key = f"kap_analysis:{limit}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
 
     all_disclosures, is_sample = kap_service.fetch_latest_disclosures()
     disclosures = all_disclosures[:limit]
     if not disclosures:
         result = {"is_sample": is_sample, "items": []}
-        _KAP_CACHE[cache_key] = (_time.time(), result)
+        cache_service.set_json(cache_key, result, expire_seconds=_KAP_CACHE_TTL_SECONDS)
         return result
 
     with ThreadPoolExecutor(max_workers=min(len(disclosures), 6)) as pool:
         analyzed_list = list(pool.map(_analyze_one_disclosure, disclosures))
 
     result = {"is_sample": is_sample, "items": analyzed_list}
-    _KAP_CACHE[cache_key] = (_time.time(), result)
+    cache_service.set_json(cache_key, result, expire_seconds=_KAP_CACHE_TTL_SECONDS)
     return result
 
 

@@ -1,5 +1,4 @@
 import logging
-import time
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,6 +12,7 @@ from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioA
 from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
 from app.services.portfolio_analytics import compute_portfolio_analytics
+from app.core.redis import cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ def get_user_portfolios(
 
     return response_list
 
-# In-memory cache for /analytics, keyed by (user_id, holdings composition) -
+# Redis-backed cache for /analytics, keyed by (user_id, holdings composition) -
 # not by live-priced total_value, since that changes on every quote tick and
 # would defeat caching entirely. Beta/Sharpe/volatility come from historical
 # daily closes and don't meaningfully change within minutes, so a real
@@ -117,8 +117,9 @@ def get_user_portfolios(
 # key), while repeat visits with the same holdings hit cache instead of
 # re-fetching 6mo history per ticker from TradingView every time - that
 # network round-trip was the actual cause of "Portföyüm" taking many
-# seconds to render every single time it was opened.
-_ANALYTICS_CACHE: dict = {}
+# seconds to render every single time it was opened. Backed by Redis (not
+# process memory) so it survives backend restarts/redeploys and stays
+# consistent across multiple backend instances.
 _ANALYTICS_CACHE_TTL_SECONDS = 900
 
 
@@ -141,11 +142,12 @@ def get_portfolio_analytics(
             "risk_metrics_note": "Portföyünüzde henüz varlık bulunmuyor.",
         }
 
-    composition_key = tuple(sorted((a.ticker.upper(), round(a.shares, 4)) for a in all_assets))
-    cache_key = (current_user.id, composition_key)
-    cached = _ANALYTICS_CACHE.get(cache_key)
-    if cached and (time.time() - cached[0]) < _ANALYTICS_CACHE_TTL_SECONDS:
-        return cached[1]
+    composition = sorted((a.ticker.upper(), round(a.shares, 4)) for a in all_assets)
+    composition_key = "|".join(f"{ticker}:{shares}" for ticker, shares in composition)
+    cache_key = f"portfolio_analytics:{current_user.id}:{composition_key}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
 
     tickers = sorted({a.ticker.upper() for a in all_assets})
     with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
@@ -157,7 +159,7 @@ def get_portfolio_analytics(
         asset_values.append({"ticker": a.ticker.upper(), "total_value": a.shares * price})
 
     result = compute_portfolio_analytics(asset_values)
-    _ANALYTICS_CACHE[cache_key] = (time.time(), result)
+    cache_service.set_json(cache_key, result, expire_seconds=_ANALYTICS_CACHE_TTL_SECONDS)
     return result
 
 
@@ -325,8 +327,8 @@ def sell_portfolio_asset(
 # computation from scratch every 15s indefinitely for the same holdings -
 # a real, constant background load contributing to overall app sluggishness.
 # Daily-bar-based indicators don't meaningfully change within a couple of
-# minutes, so this is cached per (user, holdings) like /analytics.
-_SIGNALS_CACHE: dict = {}
+# minutes, so this is cached per (user, holdings) like /analytics, and for
+# the same reason lives in Redis rather than process memory.
 _SIGNALS_CACHE_TTL_SECONDS = 120
 
 
@@ -348,10 +350,11 @@ def get_portfolio_signals(
         symbols_to_check = ["THYAO", "EREGL", "TUPRS", "BIMAS", "ODINE"]
         is_fallback = True
 
-    cache_key = (current_user.id, tuple(sorted(t.upper() for t in symbols_to_check)))
-    cached = _SIGNALS_CACHE.get(cache_key)
-    if cached and (time.time() - cached[0]) < _SIGNALS_CACHE_TTL_SECONDS:
-        return cached[1]
+    symbols_key = "|".join(sorted(t.upper() for t in symbols_to_check))
+    cache_key = f"portfolio_signals:{current_user.id}:{symbols_key}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
 
     signals = []
     from app.services.technical_analysis import TechnicalAnalysisService
@@ -578,5 +581,5 @@ def get_portfolio_signals(
         "is_fallback": is_fallback,
         "signals": signals
     }
-    _SIGNALS_CACHE[cache_key] = (time.time(), result)
+    cache_service.set_json(cache_key, result, expire_seconds=_SIGNALS_CACHE_TTL_SECONDS)
     return result

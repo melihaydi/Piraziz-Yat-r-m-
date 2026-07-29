@@ -26,13 +26,15 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import borsapy
+
+from app.core.redis import cache_service
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,20 @@ RETEST_WINDOW = 5         # bars after a breakout to look for a retest
 MAX_RISK_PCT = 8.0        # signals whose stop distance exceeds this % of entry are dropped (bad R:R/too risky)
 TREND_SMA_PERIOD = 50     # trend-following filter: price vs a rising/falling SMA(50)
 STOP_ATR_MULT = 1.5       # minimum stop distance in ATRs (widened from 1.2 - see _decide_signal)
+
+# StrategyEngine/BacktestEngine write their in-memory state through to these
+# Redis keys on every recompute, and hydrate from them on __init__ - so a
+# backend restart/redeploy serves the last real scan/backtest instantly
+# instead of forcing every visitor to wait for a fresh ~20s scan (or, for
+# the backtest, several minutes) before the dashboard shows anything. The
+# in-memory lists remain the hot-path read (no Redis round-trip per
+# request); Redis is the durability layer underneath them.
+_SIGNALS_REDIS_KEY = "strategy_engine:signals"
+_HISTORY_REDIS_KEY = "strategy_engine:history"
+_BACKTEST_REDIS_KEY = "backtest_engine:results"
+STRATEGY_REDIS_TTL_SECONDS = 900          # generous vs. the 180s scan interval
+HISTORY_REDIS_TTL_SECONDS = 24 * 60 * 60  # the log itself resets daily anyway
+BACKTEST_REDIS_TTL_SECONDS = 3 * 24 * 60 * 60  # backtest only refreshes once/day
 
 
 @dataclass
@@ -593,6 +609,16 @@ class BacktestResult:
     error: Optional[str] = None
 
 
+def _backtest_result_from_dict(d: dict) -> BacktestResult:
+    """Reverses asdict(BacktestResult(...)) - needed because BacktestResult
+    nests BacktestTrade dataclasses, which json.loads() only gives back as
+    plain dicts."""
+    d = dict(d)
+    d["last_trade"] = BacktestTrade(**d["last_trade"]) if d.get("last_trade") else None
+    d["recent_trades"] = [BacktestTrade(**t) for t in d.get("recent_trades", [])]
+    return BacktestResult(**d)
+
+
 BACKTEST_LOOKBACK_PERIOD = "2y"
 BACKTEST_WINDOW_BARS = 120    # bars of context fed to swing/structure/breakout detection at each step
 BACKTEST_WARMUP_BARS = 60     # need this many bars of history before evaluating the first signal
@@ -744,6 +770,25 @@ class BacktestEngine:
         self._last_run: Optional[str] = None
         self._scheduler_started = False
         self._running = False
+        self._hydrate_from_redis()
+
+    def _hydrate_from_redis(self) -> None:
+        data = cache_service.get_json(_BACKTEST_REDIS_KEY)
+        if not data:
+            return
+        try:
+            self._results = [_backtest_result_from_dict(r) for r in data["results"]]
+            self._last_run = data["last_run"]
+        except Exception as e:
+            logger.warning(f"Backtest engine: failed to hydrate from Redis: {e}")
+
+    def _persist_to_redis(self) -> None:
+        with self._lock:
+            payload = {
+                "results": [asdict(r) for r in self._results],
+                "last_run": self._last_run,
+            }
+        cache_service.set_json(_BACKTEST_REDIS_KEY, payload, expire_seconds=BACKTEST_REDIS_TTL_SECONDS)
 
     def _run_backtest(self) -> None:
         with self._lock:
@@ -768,6 +813,7 @@ class BacktestEngine:
             with self._lock:
                 self._results = results
                 self._last_run = datetime.now(timezone.utc).isoformat()
+            self._persist_to_redis()
         finally:
             with self._lock:
                 self._running = False
@@ -843,6 +889,38 @@ class StrategyEngine:
         self._history: List[SignalHistoryEntry] = []
         self._last_direction: Dict[str, str] = {}
         self._history_day: Optional[str] = None
+        self._hydrate_from_redis()
+
+    def _hydrate_from_redis(self) -> None:
+        signals_data = cache_service.get_json(_SIGNALS_REDIS_KEY)
+        if signals_data:
+            try:
+                self._signals = [Signal(**s) for s in signals_data["signals"]]
+                self._last_run = signals_data["last_run"]
+            except Exception as e:
+                logger.warning(f"Strategy engine: failed to hydrate signals from Redis: {e}")
+        history_data = cache_service.get_json(_HISTORY_REDIS_KEY)
+        if history_data:
+            try:
+                self._history = [SignalHistoryEntry(**h) for h in history_data["history"]]
+                self._last_direction = history_data["last_direction"]
+                self._history_day = history_data["history_day"]
+            except Exception as e:
+                logger.warning(f"Strategy engine: failed to hydrate history from Redis: {e}")
+
+    def _persist_to_redis(self) -> None:
+        with self._lock:
+            signals_payload = {
+                "signals": [asdict(s) for s in self._signals],
+                "last_run": self._last_run,
+            }
+            history_payload = {
+                "history": [asdict(h) for h in self._history],
+                "last_direction": self._last_direction,
+                "history_day": self._history_day,
+            }
+        cache_service.set_json(_SIGNALS_REDIS_KEY, signals_payload, expire_seconds=STRATEGY_REDIS_TTL_SECONDS)
+        cache_service.set_json(_HISTORY_REDIS_KEY, history_payload, expire_seconds=HISTORY_REDIS_TTL_SECONDS)
 
     def _run_scan(self) -> None:
         names = {t["ticker"]: t["name"] for t in _ticker_names()}
@@ -886,6 +964,7 @@ class StrategyEngine:
             self._history = self._history[: self.MAX_HISTORY_ENTRIES]
             self._signals = results
             self._last_run = now.isoformat()
+        self._persist_to_redis()
 
     def scan_now(self) -> List[Signal]:
         if not self._signals:
