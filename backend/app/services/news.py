@@ -190,7 +190,13 @@ class NewsService:
                         news_list.append(entry)
 
             try:
-                disclosures = kap_future.result()
+                disclosures, kap_is_sample = kap_future.result()
+                # Sample/fallback disclosures aren't real news - merging them
+                # into the general feed here (unlike the dedicated KAP tab,
+                # which explicitly flags is_sample) would misrepresent them
+                # as live. Just show the real RSS items in that case.
+                if kap_is_sample:
+                    disclosures = []
             except Exception as e:
                 logger.error(f"KAP disclosure fetch failed: {e}")
                 disclosures = []

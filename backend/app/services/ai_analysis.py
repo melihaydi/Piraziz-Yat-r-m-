@@ -9,8 +9,12 @@ logger = logging.getLogger(__name__)
 class AIAnalysisService:
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        # gemini-2.5-flash - faster + better structured-output quality than 1.5-flash
-        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+        # "gemini-2.5-flash" is listed in the models catalog for this key but
+        # actually calling it 404s with "no longer available to new users" -
+        # verified directly against the API before picking this. gemini-flash-
+        # latest is Google's maintained alias for the current-recommended
+        # flash model, confirmed working with a live test call.
+        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
 
     def _call_gemini(self, prompt: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         """Calls Gemini API via raw HTTP with structured JSON output schema."""

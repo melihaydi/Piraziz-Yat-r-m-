@@ -109,6 +109,53 @@ function ConfidenceBar({ score, confidence }: { score: number; confidence: strin
   )
 }
 
+function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; stopLoss: number | null }) {
+  const [accountSize, setAccountSize] = useState("100000")
+  const [riskPct, setRiskPct] = useState("1")
+
+  if (!entry || !stopLoss) {
+    return <p className="text-[11px] text-muted-foreground">Giriş/stop seviyesi olmadığı için hesaplanamıyor.</p>
+  }
+
+  const acc = parseFloat(accountSize) || 0
+  const risk = parseFloat(riskPct) || 0
+  const riskAmount = acc * (risk / 100)
+  const perShareRisk = Math.abs(entry - stopLoss)
+  const lot = perShareRisk > 0 ? Math.floor(riskAmount / perShareRisk) : 0
+  const positionValue = lot * entry
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">Hesap (₺)</span>
+          <input
+            type="number"
+            value={accountSize}
+            onChange={e => setAccountSize(e.target.value)}
+            className="w-28 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-amber-500/40"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground">Risk %</span>
+          <input
+            type="number"
+            step="0.1"
+            value={riskPct}
+            onChange={e => setRiskPct(e.target.value)}
+            className="w-16 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-amber-500/40"
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-4 text-[11px] flex-wrap">
+        <span>Önerilen lot: <b className="text-foreground font-mono text-xs">{lot}</b></span>
+        <span className="text-muted-foreground">Pozisyon değeri: ₺{positionValue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</span>
+        <span className="text-muted-foreground">Risk tutarı: ₺{riskAmount.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function StrategyPage() {
   const [signals, setSignals] = useState<Signal[]>([])
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
@@ -477,6 +524,10 @@ export default function StrategyPage() {
                                   )}
                                 </div>
                               </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-border/40">
+                              <div className="text-[10px] font-black text-muted-foreground uppercase mb-2">Pozisyon Boyutu Hesaplayıcı</div>
+                              <PositionSizeCalculator entry={s.entry} stopLoss={s.stop_loss} />
                             </div>
                           </td>
                         </tr>

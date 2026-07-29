@@ -34,6 +34,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Skeleton } from "@/components/ui/Skeleton"
+import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
+import SectorHeatmap from "@/components/SectorHeatmap"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 
@@ -77,6 +79,11 @@ export default function Home() {
   const [favoriteStocks, setFavoriteStocks] = useState<any[]>([])
   const [favoriteFunds, setFavoriteFunds] = useState<any[]>([])
   const [loadingFavorites, setLoadingFavorites] = useState(true)
+
+  // Sector heatmap - derived client-side from the same full stock list the
+  // favorites widget already fetches (no new backend endpoint needed).
+  const [allStocks, setAllStocks] = useState<any[]>([])
+  const [loadingHeatmap, setLoadingHeatmap] = useState(true)
 
   // Fetch index chart data dynamically when selectedIndex changes (Request 4!)
   useEffect(() => {
@@ -180,10 +187,26 @@ export default function Home() {
       setLoadingFavorites(false)
     }
 
+    // 5. Fetch the full stock list once for the sector heatmap (grouped
+    // client-side by sector - no new backend endpoint needed).
+    const loadHeatmapData = () => {
+      fetch(`${API_BASE_URL}/api/v1/screener/`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAllStocks(data)
+          setLoadingHeatmap(false)
+        })
+        .catch(err => {
+          console.error("Failed to load sector heatmap data:", err)
+          setLoadingHeatmap(false)
+        })
+    }
+
     // Initial fetch
     fetchMarketSummary()
     bootstrapAndLoad()
     loadFavorites()
+    loadHeatmapData()
 
     // Market summary reads from an in-memory cache on the backend (no extra
     // network cost per call), so it can refresh close to real-time.
@@ -191,12 +214,35 @@ export default function Home() {
     // Favorites involve fetching the full stock/fund lists, so keep that on a
     // slower cadence to avoid unnecessary load.
     const favoritesInterval = setInterval(loadFavorites, 10000)
+    const heatmapInterval = setInterval(loadHeatmapData, 15000)
 
     return () => {
       clearInterval(marketInterval)
       clearInterval(favoritesInterval)
+      clearInterval(heatmapInterval)
     }
   }, [])
+
+  // Group the full stock list into per-sector aggregates: total market cap
+  // (box size) and value-weighted average daily change (box color).
+  const sectorHeatmapData = useMemo(() => {
+    const bySector: Record<string, { totalCap: number; weightedChange: number }> = {}
+    for (const s of allStocks) {
+      if (!s.sector || !s.market_cap) continue
+      const entry = bySector[s.sector] || { totalCap: 0, weightedChange: 0 }
+      entry.weightedChange += s.market_cap * (s.change_percent || 0)
+      entry.totalCap += s.market_cap
+      bySector[s.sector] = entry
+    }
+    return Object.entries(bySector)
+      .map(([name, { totalCap, weightedChange }]) => ({
+        name,
+        value: totalCap,
+        changePercent: totalCap > 0 ? weightedChange / totalCap : 0,
+      }))
+      .filter(s => s.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }, [allStocks])
 
   // Dynamic index details depending on selection (Request 4!)
   const indexDetails = useMemo(() => {
@@ -551,41 +597,18 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Economy Calendar (Request 8!) */}
+          {/* Economy Calendar - real, live TradingView widget (previously a
+              hardcoded 3-event array that never changed) */}
           <Card glass={true} className="border-purple-500/15 hover:border-purple-500/30 transition-colors duration-300">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-purple-400">
                 <Calendar className="h-4.5 w-4.5 text-purple-400 mr-2 animate-pulse" />
                 Ekonomi Takvimi
               </CardTitle>
-              <CardDescription className="text-[10px] mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar</CardDescription>
+              <CardDescription className="text-[10px] mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar (canlı, TradingView)</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3.5 text-xs font-semibold">
-              {[
-                { time: "Bugün 14:00", event: "TCMB Haftalık Para ve Banka İstatistikleri", impact: "Orta", desc: "Para arzı, yabancı rezervler ve yerleşiklerin döviz mevduatı verileri açıklanacak." },
-                { time: "23 Temmuz 10:00", event: "TÜİK Tüketici Güven Endeksi (Haziran)", impact: "Yüksek", desc: "Tüketicilerin maddi durum ve genel ekonomiye yönelik eğilim endeksleri yayınlanacak." },
-                { time: "24 Temmuz 17:00", event: "ABD Üretim PMI Öncü Verisi", impact: "Yüksek", desc: "Küresel piyasaların faiz indirim döngüsü beklentilerine yön verecek kritik aktivite verisi." }
-              ].map((ev, idx) => (
-                <div 
-                  key={idx} 
-                  className="p-3.5 bg-secondary/15 border border-border/30 rounded-xl space-y-2 hover:bg-purple-500/5 hover:border-purple-500/30 transition-all duration-300 transform hover:-translate-y-0.5 cursor-pointer shadow-sm hover:shadow-[0_4px_16px_rgba(168,85,247,0.06)] group"
-                >
-                  <div className="flex items-center justify-between font-bold text-muted-foreground text-[9px] uppercase tracking-wider">
-                    <span>{ev.time}</span>
-                    <span className={`px-2 py-0.5 rounded-[4px] text-[8px] font-black border ${
-                      ev.impact === "Yüksek" ? "bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_8px_rgba(244,63,94,0.08)]" :
-                      ev.impact === "Orta" ? "bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.08)]" :
-                      "bg-slate-500/10 text-slate-400 border-slate-500/20"
-                    }`}>
-                      Etki: {ev.impact}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="font-extrabold text-foreground group-hover:text-purple-400 transition-colors leading-snug">{ev.event}</p>
-                    <p className="text-[10px] text-muted-foreground/80 mt-1 font-normal leading-relaxed line-clamp-2">{ev.desc}</p>
-                  </div>
-                </div>
-              ))}
+            <CardContent>
+              <EconomicCalendarWidget />
             </CardContent>
           </Card>
 
@@ -623,6 +646,29 @@ export default function Home() {
         </div>
 
       </div>
+
+      {/* Sector Heatmap - full width for readability. Grouped client-side
+          from the same full stock list the favorites widget already uses;
+          box size = total sector market cap, color = value-weighted avg
+          daily change. */}
+      <Card glass={true}>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center">
+            <Flame className="h-5 w-5 text-orange-400 mr-2" />
+            Sektör Isı Haritası
+          </CardTitle>
+          <CardDescription>Kutu boyutu piyasa değeri, renk günlük değişim - BIST 30 + takip listesi</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingHeatmap ? (
+            <Skeleton className="h-72 w-full rounded-xl" />
+          ) : sectorHeatmapData.length > 0 ? (
+            <SectorHeatmap data={sectorHeatmapData} height={320} />
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-10">Sektör verisi yüklenemedi.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

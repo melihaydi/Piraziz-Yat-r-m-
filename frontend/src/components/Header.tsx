@@ -3,10 +3,22 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles } from "lucide-react"
+import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
+
+// role -> display label/styling. Previously the header just hardcoded
+// "Pro Üye" for every single user regardless of their real subscription
+// tier - a free-tier user saw the same badge as a paying one.
+const ROLE_DISPLAY: Record<string, { label: string; className: string }> = {
+  free: { label: "Ücretsiz Üye", className: "text-muted-foreground" },
+  starter: { label: "Starter Üye", className: "text-cyan-400" },
+  pro: { label: "Pro Üye", className: "text-emerald-400" },
+  premium: { label: "Premium Üye", className: "text-amber-400" },
+  institutional: { label: "Kurumsal Üye", className: "text-blue-400" },
+}
 
 const HEADER_TICKERS_CACHE_KEY = "bip_header_tickers"
 
@@ -54,6 +66,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const [username, setUsername] = useState("Kullanıcı")
   const [avatarEmoji, setAvatarEmoji] = useState("💼")
   const [profilePic, setProfilePic] = useState("")
+  const [role, setRole] = useState("free")
 
   // Notification states (Request 10!)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -158,6 +171,21 @@ export default function Header({ onMenuClick }: HeaderProps) {
     loadProfile()
     window.addEventListener("profile-updated", loadProfile)
     return () => window.removeEventListener("profile-updated", loadProfile)
+  }, [])
+
+  // Real subscription tier, not a hardcoded label - re-fetched whenever a
+  // subscription change might have happened (profile-updated is dispatched
+  // by Settings after any /auth/me PUT, and this also covers plan changes).
+  useEffect(() => {
+    const loadRole = () => {
+      authFetch("/auth/me")
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data?.role) setRole(data.role) })
+        .catch(() => {})
+    }
+    loadRole()
+    window.addEventListener("profile-updated", loadRole)
+    return () => window.removeEventListener("profile-updated", loadRole)
   }, [])
 
   // 1. Fetch live market indexes
@@ -479,9 +507,13 @@ export default function Header({ onMenuClick }: HeaderProps) {
         >
           <div className="flex flex-col text-right hidden sm:flex">
             <span className="text-xs font-bold text-foreground">{username}</span>
-            <span className="text-[10px] text-emerald-400 font-semibold flex items-center justify-end">
-              <Sparkles className="h-2.5 w-2.5 mr-0.5" />
-              Pro Üye
+            <span className={`text-[10px] font-semibold flex items-center justify-end ${(ROLE_DISPLAY[role] || ROLE_DISPLAY.free).className}`}>
+              {role === "free" ? (
+                <ShieldCheck className="h-2.5 w-2.5 mr-0.5" />
+              ) : (
+                <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+              )}
+              {(ROLE_DISPLAY[role] || ROLE_DISPLAY.free).label}
             </span>
           </div>
           <div className="h-9 w-9 rounded-full bg-secondary/60 border border-border/80 flex items-center justify-center text-lg shadow-md overflow-hidden shrink-0">

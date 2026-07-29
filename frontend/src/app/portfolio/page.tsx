@@ -39,6 +39,45 @@ import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
 
+function PortfolioStressTest({ beta, currentValue }: { beta: number | null; currentValue: number }) {
+  const [scenario, setScenario] = useState(-10)
+
+  if (beta == null) {
+    return <p className="text-[11px] text-muted-foreground py-4 text-center">Beta hesaplanamadığı için stres testi yapılamıyor.</p>
+  }
+
+  const estimatedChangePct = beta * scenario
+  const estimatedValue = currentValue * (1 + estimatedChangePct / 100)
+  const estimatedDiff = estimatedValue - currentValue
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-xs font-bold">
+        <span className="text-muted-foreground">XU100 senaryosu</span>
+        <span className={scenario >= 0 ? "text-emerald-400" : "text-rose-500"}>{scenario >= 0 ? "+" : ""}{scenario}%</span>
+      </div>
+      <input
+        type="range"
+        min={-30}
+        max={30}
+        step={1}
+        value={scenario}
+        onChange={e => setScenario(Number(e.target.value))}
+        className="w-full accent-purple-500 cursor-pointer"
+      />
+      <div className="flex items-center justify-between text-xs pt-1">
+        <span className="text-muted-foreground">Tahmini portföy etkisi</span>
+        <span className={`font-mono font-bold ${estimatedChangePct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+          {estimatedChangePct >= 0 ? "+" : ""}{estimatedChangePct.toFixed(1)}% (₺{estimatedDiff.toLocaleString("tr-TR", { maximumFractionDigits: 0 })})
+        </span>
+      </div>
+      <p className="text-[9px] text-muted-foreground/70 leading-relaxed pt-1">
+        Beta ({beta.toFixed(2)}) kullanılarak yapılan doğrusal bir yaklaşık tahmindir, kesin bir risk modeli değildir.
+      </p>
+    </div>
+  )
+}
+
 export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<any[]>([])
   const [alerts, setAlerts] = useState<any[]>([])
@@ -889,6 +928,20 @@ export default function PortfolioPage() {
                   )
                 })}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Portfolio Stress Test */}
+          <Card glass={true}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-rose-400">
+                <Activity className="h-4.5 w-4.5 text-rose-400 mr-2" />
+                Portföy Stres Testi
+              </CardTitle>
+              <CardDescription className="text-[10px]">Beta&apos;ya dayalı yaklaşık senaryo simülasyonu</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PortfolioStressTest beta={analytics?.beta ?? null} currentValue={currentValue} />
             </CardContent>
           </Card>
 

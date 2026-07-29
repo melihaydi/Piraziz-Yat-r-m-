@@ -532,70 +532,98 @@ def analyze_stock_ai(symbol: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Analysis execution failed: {str(e)}")
 
-@router.get("/kap")
-def get_latest_kap_analysis():
-    """Fetch latest disclosures from KAP RSS feed and dynamically analyze them with live context using Gemini."""
-    from app.services.kap_service import kap_service
+_KAP_DIVIDEND_KEYWORDS = ("temettü", "kar payı", "kâr payı", "temettü dağıtım")
+
+# In-memory cache, same pattern as NewsService - the whole point is to never
+# make a page load wait on N Gemini calls more than once per TTL window.
+_KAP_CACHE: dict = {}
+_KAP_CACHE_TTL_SECONDS = 180
+
+
+def _analyze_one_disclosure(disc: dict) -> dict:
     from app.services.ai_analysis import ai_analysis_service
-    
-    disclosures = kap_service.fetch_latest_disclosures()
-    
-    analyzed_list = []
-    # Take top 3 latest disclosures for dashboard display
-    for disc in disclosures[:3]:
-        ticker = disc["ticker"] or "BIST"
-        title = disc["title"]
-        summary = disc["summary"]
-        
-        # Analyze using live context
-        try:
-            analysis = ai_analysis_service.analyze_kap_announcement(ticker, title, summary)
-        except Exception:
-            analysis = {
-                "summary": summary,
-                "importance": "medium",
-                "affected_financial_lines": ["Genel Karlılık"],
-                "short_term_impact": "Nötr etki bekleniyor.",
-                "long_term_impact": "Etki sınırlı.",
-                "sentiment": "neutral",
-                "impact_score": 50
-            }
-            
-        # Format time display
-        time_diff = "Biraz önce"
-        try:
-            pub_date = disc["publish_date"]
-            # Convert publish_date to timezone-aware UTC if needed
-            if pub_date.tzinfo is None:
-                pub_date = pub_date.replace(tzinfo=timezone.utc)
-            delta = datetime.now(timezone.utc) - pub_date
-            minutes = int(delta.total_seconds() / 60)
-            if minutes < 60:
-                time_diff = f"{max(1, minutes)} dakika önce"
-            else:
-                hours = int(minutes / 60)
-                if hours < 24:
-                    time_diff = f"{hours} saat önce"
-                else:
-                    time_diff = f"{int(hours / 24)} gün önce"
-        except Exception:
-            pass
-            
-        analyzed_list.append({
-            "id": disc["id"],
-            "ticker": ticker,
-            "title": title,
-            "summary": analysis["summary"],
-            "importance": analysis["importance"],
-            "affected_financial_lines": analysis["affected_financial_lines"],
-            "short_term_impact": analysis["short_term_impact"],
-            "long_term_impact": analysis["long_term_impact"],
-            "sentiment": "Pozitif" if analysis["sentiment"] == "positive" else "Negatif" if analysis["sentiment"] == "negative" else "Nötr",
-            "score": analysis["impact_score"],
-            "time": time_diff
-        })
-        
-    return analyzed_list
+    ticker = disc["ticker"] or "BIST"
+    title = disc["title"]
+    summary = disc["summary"]
+
+    try:
+        analysis = ai_analysis_service.analyze_kap_announcement(ticker, title, summary)
+    except Exception:
+        analysis = {
+            "summary": summary,
+            "importance": "medium",
+            "affected_financial_lines": ["Genel Karlılık"],
+            "short_term_impact": "Nötr etki bekleniyor.",
+            "long_term_impact": "Etki sınırlı.",
+            "sentiment": "neutral",
+            "impact_score": 50
+        }
+
+    time_diff = "Biraz önce"
+    try:
+        pub_date = disc["publish_date"]
+        if pub_date.tzinfo is None:
+            pub_date = pub_date.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - pub_date
+        minutes = int(delta.total_seconds() / 60)
+        if minutes < 60:
+            time_diff = f"{max(1, minutes)} dakika önce"
+        else:
+            hours = int(minutes / 60)
+            time_diff = f"{hours} saat önce" if hours < 24 else f"{int(hours / 24)} gün önce"
+    except Exception:
+        pass
+
+    haystack = f"{title} {summary}".lower()
+    is_dividend = any(kw in haystack for kw in _KAP_DIVIDEND_KEYWORDS)
+
+    return {
+        "id": disc["id"],
+        "ticker": ticker,
+        "title": title,
+        "summary": analysis["summary"],
+        "importance": analysis["importance"],
+        "affected_financial_lines": analysis["affected_financial_lines"],
+        "short_term_impact": analysis["short_term_impact"],
+        "long_term_impact": analysis["long_term_impact"],
+        "sentiment": "Pozitif" if analysis["sentiment"] == "positive" else "Negatif" if analysis["sentiment"] == "negative" else "Nötr",
+        "score": analysis["impact_score"],
+        "time": time_diff,
+        "is_dividend": is_dividend,
+    }
+
+
+@router.get("/kap")
+def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10)):
+    """Fetch latest KAP disclosures and analyze each with live-context Gemini
+    AI (importance/sentiment/impact score/affected lines). Previously only
+    ever analyzed the top 3 SEQUENTIALLY (each Gemini call ~1-5s) with no
+    caching - fine for a 3-item dashboard widget, too slow for a real KAP
+    page. Now processes up to `limit` (kap_service itself caps at ~10
+    disclosures) concurrently, same pattern as NewsService's KAP enrichment,
+    and caches the analyzed result for a few minutes so repeat page loads
+    don't redo the AI analysis."""
+    import time as _time
+    from app.services.kap_service import kap_service
+
+    cache_key = limit
+    cached = _KAP_CACHE.get(cache_key)
+    if cached and (_time.time() - cached[0]) < _KAP_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    all_disclosures, is_sample = kap_service.fetch_latest_disclosures()
+    disclosures = all_disclosures[:limit]
+    if not disclosures:
+        result = {"is_sample": is_sample, "items": []}
+        _KAP_CACHE[cache_key] = (_time.time(), result)
+        return result
+
+    with ThreadPoolExecutor(max_workers=min(len(disclosures), 6)) as pool:
+        analyzed_list = list(pool.map(_analyze_one_disclosure, disclosures))
+
+    result = {"is_sample": is_sample, "items": analyzed_list}
+    _KAP_CACHE[cache_key] = (_time.time(), result)
+    return result
 
 
 
