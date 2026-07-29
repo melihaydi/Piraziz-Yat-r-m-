@@ -35,7 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Skeleton } from "@/components/ui/Skeleton"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
-import SectorHeatmap from "@/components/SectorHeatmap"
+import Heatmap from "@/components/Heatmap"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 
@@ -223,24 +223,16 @@ export default function Home() {
     }
   }, [])
 
-  // Group the full stock list into per-sector aggregates: total market cap
-  // (box size) and value-weighted average daily change (box color).
-  const sectorHeatmapData = useMemo(() => {
-    const bySector: Record<string, { totalCap: number; weightedChange: number }> = {}
-    for (const s of allStocks) {
-      if (!s.sector || !s.market_cap) continue
-      const entry = bySector[s.sector] || { totalCap: 0, weightedChange: 0 }
-      entry.weightedChange += s.market_cap * (s.change_percent || 0)
-      entry.totalCap += s.market_cap
-      bySector[s.sector] = entry
-    }
-    return Object.entries(bySector)
-      .map(([name, { totalCap, weightedChange }]) => ({
-        name,
-        value: totalCap,
-        changePercent: totalCap > 0 ? weightedChange / totalCap : 0,
+  // Per-stock heatmap: one box per ticker (not aggregated by sector) - box
+  // size is market cap, color is that stock's own daily change%.
+  const stockHeatmapData = useMemo(() => {
+    return allStocks
+      .filter(s => s.ticker && s.market_cap > 0)
+      .map(s => ({
+        name: s.ticker,
+        value: s.market_cap,
+        changePercent: s.change_percent || 0,
       }))
-      .filter(s => s.value > 0)
       .sort((a, b) => b.value - a.value)
   }, [allStocks])
 
@@ -647,25 +639,25 @@ export default function Home() {
 
       </div>
 
-      {/* Sector Heatmap - full width for readability. Grouped client-side
-          from the same full stock list the favorites widget already uses;
-          box size = total sector market cap, color = value-weighted avg
-          daily change. */}
+      {/* Stock Heatmap - full width for readability. One box per ticker
+          (not aggregated by sector) from the same full stock list the
+          favorites widget already uses; box size = market cap, color =
+          that stock's own daily change. */}
       <Card glass={true}>
         <CardHeader>
           <CardTitle className="text-lg flex items-center">
             <Flame className="h-5 w-5 text-orange-400 mr-2" />
-            Sektör Isı Haritası
+            Hisse Isı Haritası
           </CardTitle>
           <CardDescription>Kutu boyutu piyasa değeri, renk günlük değişim - BIST 30 + takip listesi</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingHeatmap ? (
             <Skeleton className="h-72 w-full rounded-xl" />
-          ) : sectorHeatmapData.length > 0 ? (
-            <SectorHeatmap data={sectorHeatmapData} height={320} />
+          ) : stockHeatmapData.length > 0 ? (
+            <Heatmap data={stockHeatmapData} height={320} />
           ) : (
-            <p className="text-xs text-muted-foreground text-center py-10">Sektör verisi yüklenemedi.</p>
+            <p className="text-xs text-muted-foreground text-center py-10">Hisse verisi yüklenemedi.</p>
           )}
         </CardContent>
       </Card>

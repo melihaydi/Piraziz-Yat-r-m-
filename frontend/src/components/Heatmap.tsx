@@ -18,10 +18,9 @@ interface Rect extends HeatmapDatum {
 /**
  * Squarified treemap layout (Bruls, Huizing, van Wijk) - lays out
  * rectangles proportional to `value` while keeping aspect ratios close to
- * 1, so sector boxes read as roughly comparable tiles instead of the long
- * thin slivers a plain row/column slice-and-dice produces when sizes vary
- * a lot (BIST sector market caps vary by 10-20x between the biggest and
- * smallest).
+ * 1, so boxes read as roughly comparable tiles instead of the long thin
+ * slivers a plain row/column slice-and-dice produces when sizes vary a lot
+ * (BIST stock market caps vary by 100x+ between the biggest and smallest).
  */
 function squarify(items: HeatmapDatum[], width: number, height: number): Rect[] {
   const total = items.reduce((s, i) => s + i.value, 0)
@@ -101,7 +100,7 @@ function colorFor(changePercent: number): string {
   return `hsl(350, 65%, ${l}%)`
 }
 
-export default function SectorHeatmap({ data, height = 320 }: { data: HeatmapDatum[]; height?: number }) {
+export default function Heatmap({ data, height = 320 }: { data: HeatmapDatum[]; height?: number }) {
   const width = 1000 // viewBox units, scales via SVG's own responsiveness
   const [hovered, setHovered] = useState<string | null>(null)
   const rects = useMemo(() => squarify(data, width, height), [data, height])
