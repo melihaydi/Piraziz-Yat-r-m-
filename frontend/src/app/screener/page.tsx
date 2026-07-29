@@ -73,15 +73,19 @@ const StockRow = React.memo(function StockRow({
       </td>
       <td className="px-4 text-center" onClick={(e) => {
         e.stopPropagation()
-        onToggleCompare(comp.ticker)
+        if (isCompared || !compareDisabled) onToggleCompare(comp.ticker)
       }}>
-        <input
-          type="checkbox"
-          checked={isCompared}
-          onChange={() => {}}
+        <button
           disabled={!isCompared && compareDisabled}
-          className="h-3.5 w-3.5 accent-primary cursor-pointer"
-        />
+          title={isCompared ? "Karşılaştırmadan çıkar" : "Karşılaştırmaya ekle"}
+          className={`h-6 w-6 rounded-md border flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+            isCompared
+              ? "bg-cyan-500 border-cyan-400 text-black shadow-[0_0_10px_rgba(34,211,238,0.3)]"
+              : "border-border/60 text-muted-foreground hover:border-cyan-500/50 hover:text-cyan-400"
+          }`}
+        >
+          <Scale className="h-3.5 w-3.5" />
+        </button>
       </td>
       <td className="px-4 font-bold text-foreground">
         <div className="flex items-center gap-2">
@@ -516,16 +520,6 @@ export default function ScreenerPage() {
                     <Star className={`h-3.5 w-3.5 mr-1 ${showOnlyFavorites ? "fill-current" : ""}`} />
                     Favorilerim
                   </Button>
-                  <Button
-                    variant={compareCodes.length >= 2 ? "default" : "outline"}
-                    size="sm"
-                    disabled={compareCodes.length < 2}
-                    onClick={runCompare}
-                    className="text-xs h-7 px-2.5 cursor-pointer flex items-center disabled:opacity-40"
-                  >
-                    <Scale className="h-3.5 w-3.5 mr-1" />
-                    Hisseleri Karşılaştır ({compareCodes.length})
-                  </Button>
                 </div>
 
                 <div className="flex items-center space-x-3">
@@ -851,6 +845,57 @@ export default function ScreenerPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Floating comparison tray - replaces the old checkbox-column +
+          buried filter-row button combo. Appears once at least one stock is
+          marked for comparison (via the Scale icon-toggle in each row) and
+          floats above the page content instead of competing for space among
+          the filter controls. */}
+      {compareCodes.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4">
+          <div className="bg-card/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl shadow-cyan-500/10 px-4 py-3 flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+              <Scale className="h-4 w-4 text-cyan-400 shrink-0" />
+              {compareCodes.map((ticker) => (
+                <div
+                  key={ticker}
+                  className="flex items-center gap-1.5 bg-secondary/50 border border-border/50 rounded-lg pl-1.5 pr-1 py-1"
+                >
+                  <TickerLogo ticker={ticker} size={16} />
+                  <span className="text-[11px] font-bold text-foreground">{ticker}</span>
+                  <button
+                    onClick={() => toggleCompare(ticker)}
+                    className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {compareCodes.length < 2 && (
+                <span className="text-[10px] text-muted-foreground">En az 2 hisse seçin</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCompareCodes([])}
+                className="text-xs h-8 px-2 cursor-pointer text-muted-foreground hover:text-foreground"
+              >
+                Temizle
+              </Button>
+              <Button
+                size="sm"
+                disabled={compareCodes.length < 2}
+                onClick={runCompare}
+                className="text-xs h-8 px-3.5 cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-black font-bold disabled:opacity-40"
+              >
+                Karşılaştır
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
