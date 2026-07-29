@@ -1,10 +1,11 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core import security
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.api import deps
 from app.models.user import User
 from app.schemas.user import UserOut, UserCreate, UserUpdate
@@ -12,8 +13,12 @@ from app.schemas.token import Token
 
 router = APIRouter()
 
+# 5 attempts/minute per IP - generous enough for a real user who mistypes a
+# password, tight enough to make credential-stuffing/brute-force impractical.
+# Previously there was no limit at all on either endpoint.
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register_user(user_in: UserCreate, db: Session = Depends(deps.get_db)):
+@limiter.limit("5/minute")
+def register_user(request: Request, user_in: UserCreate, db: Session = Depends(deps.get_db)):
     """Register a new user."""
     # Check if user already exists
     user = db.query(User).filter(User.email == user_in.email).first()
@@ -43,8 +48,9 @@ def register_user(user_in: UserCreate, db: Session = Depends(deps.get_db)):
     return db_user
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 def login_access_token(
-    db: Session = Depends(deps.get_db), form_data: OAuth2PasswordRequestForm = Depends()
+    request: Request, db: Session = Depends(deps.get_db), form_data: OAuth2PasswordRequestForm = Depends()
 ):
     """OAuth2 compatible token login, get an access token for future requests."""
     user = db.query(User).filter(User.email == form_data.username).first()

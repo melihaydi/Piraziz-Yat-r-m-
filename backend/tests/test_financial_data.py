@@ -68,10 +68,14 @@ def test_get_price_blocked_provider_skipped(mock_cache):
 def test_kap_service_fallback(mock_get):
     # Simulate network failure
     mock_get.side_effect = Exception("Connection refused")
-    
+
     service = KapService()
-    disclosures = service.fetch_latest_disclosures()
-    
+    disclosures, is_sample = service.fetch_latest_disclosures()
+
+    # is_sample=True is the whole point of this fallback path - callers
+    # (GET /screener/kap) rely on it to avoid presenting placeholder
+    # content as if it were live KAP data.
+    assert is_sample is True
     assert len(disclosures) > 0
     assert disclosures[0]["ticker"] == "THYAO"
     assert "mock disclosures" in disclosures[0]["title"].lower() or "thyao" in disclosures[0]["title"].lower()

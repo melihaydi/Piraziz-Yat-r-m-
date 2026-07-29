@@ -24,7 +24,16 @@ def auth_headers_user(client):
         "user_id": user_id
     }
 
-def test_subscription_workflow(client, auth_headers_user):
+def test_subscription_workflow(client, auth_headers_user, monkeypatch):
+    # The webhook endpoint requires a shared secret (X-Webhook-Secret header
+    # matching STRIPE_WEBHOOK_SECRET) - added after a real vulnerability
+    # where anyone could POST {"user_id": <any>} to upgrade any account for
+    # free with zero verification. This test previously predated that fix
+    # and never sent the header, so it started failing (401) the moment the
+    # fix landed - set a known secret for this test and send it.
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "test-webhook-secret")
+
     headers = auth_headers_user["headers"]
     user_id = auth_headers_user["user_id"]
 
@@ -44,14 +53,23 @@ def test_subscription_workflow(client, auth_headers_user):
     assert test_prem_free.status_code == 403
     assert "Premium üyelik gereklidir" in test_prem_free.json()["detail"]
 
-    # 3. Simulate Webhook Upgrade from Stripe
+    # 2b. The same webhook call without the secret header must be rejected -
+    # this is the actual security property being protected here.
+    unauthenticated_webhook = client.post(
+        "/api/v1/subscription/webhook",
+        json={"event_type": "payment_intent.succeeded", "user_id": user_id, "tier": "institutional"}
+    )
+    assert unauthenticated_webhook.status_code == 401
+
+    # 3. Simulate Webhook Upgrade from Stripe (with the correct shared secret)
     webhook_response = client.post(
         "/api/v1/subscription/webhook",
         json={
             "event_type": "payment_intent.succeeded",
             "user_id": user_id,
             "tier": "premium"
-        }
+        },
+        headers={"X-Webhook-Secret": "test-webhook-secret"}
     )
     assert webhook_response.status_code == 200
     assert webhook_response.json()["status"] == "success"

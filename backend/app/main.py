@@ -1,12 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 from app.core.config import settings
+from app.core.limiter import limiter
 
 app = FastAPI(
     title="BIST Intelligence Platform (BIP) API",
     description="AI-powered analysis and tracking platform for Borsa Istanbul (BIST)",
     version="1.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration
 origins = [

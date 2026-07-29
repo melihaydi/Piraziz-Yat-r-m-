@@ -33,6 +33,20 @@ def db():
     connection.close()
     Base.metadata.drop_all(bind=engine)
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The rate limiter (app/core/limiter.py) is a module-level singleton,
+    so without this its in-memory counters persist ACROSS test functions in
+    the same pytest process - multiple tests calling /auth/login a few
+    times each would eventually trip the same 5/minute limit and start
+    failing with 429s that have nothing to do with what that test is
+    actually checking (this broke test_auth, test_portfolio_alert_api, and
+    test_subscription the moment rate limiting was added, until this
+    fixture was added)."""
+    from app.core.limiter import limiter
+    limiter.reset()
+    yield
+
 @pytest.fixture(scope="function")
 def client(db):
     """Create a TestClient with overridden get_db dependency."""
@@ -41,7 +55,7 @@ def client(db):
             yield db
         finally:
             pass
-            
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client

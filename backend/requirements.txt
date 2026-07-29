@@ -25,3 +25,6 @@ borsapy==0.10.2
 pytefas==0.4.1
 pandas==3.0.3
 bcrypt==5.0.0
+slowapi==0.1.9
+pyotp==2.9.0
+qrcode[pil]==8.0
