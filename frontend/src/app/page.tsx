@@ -223,8 +223,10 @@ export default function Home() {
     }
   }, [])
 
-  // Per-stock heatmap: one box per ticker (not aggregated by sector) - box
-  // size is market cap, color is that stock's own daily change%.
+  // Per-stock heatmap, grouped by sector (TradingView's own stock heatmap
+  // groups this way too) - each stock's own box size is its market cap,
+  // color is its own daily change%; the sector is just the outer grouping,
+  // not an aggregate box like the old sector-only heatmap.
   const stockHeatmapData = useMemo(() => {
     return allStocks
       .filter(s => s.ticker && s.market_cap > 0)
@@ -232,6 +234,7 @@ export default function Home() {
         name: s.ticker,
         value: s.market_cap,
         changePercent: s.change_percent || 0,
+        group: s.sector || "Diğer",
       }))
       .sort((a, b) => b.value - a.value)
   }, [allStocks])
