@@ -25,7 +25,7 @@ deliverables report, not read by the API).
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone, timedelta
 
@@ -57,6 +57,19 @@ RETEST_WINDOW = 5         # bars after a breakout to look for a retest
 MAX_RISK_PCT = 8.0        # signals whose stop distance exceeds this % of entry are dropped (bad R:R/too risky)
 TREND_SMA_PERIOD = 50     # trend-following filter: price vs a rising/falling SMA(50)
 STOP_ATR_MULT = 1.5       # minimum stop distance in ATRs (widened from 1.2 - see _decide_signal)
+
+# Hard ceiling on how long a full 30-symbol batch (scan or backtest) is
+# allowed to wait on in-flight network calls before giving up on whatever
+# hasn't finished yet. Without this, a single ticker's borsapy/TradingView
+# call hanging forever (no read/connect timeout of its own - confirmed
+# live: this is exactly what made the desktop app's Frantic Strateji page
+# spin forever with "TARANAN: -", since GET /strategy/scan calls
+# scan_now() -> _run_scan() synchronously the first time and that request
+# never got a response) blocks the *entire* batch indefinitely, since
+# concurrent.futures.as_completed() has no timeout by default and a plain
+# `with ThreadPoolExecutor(...)` waits for every submitted task on exit.
+SCAN_TIMEOUT_SECONDS = 60        # generous vs. the ~20s a normal live scan takes
+BACKTEST_TIMEOUT_SECONDS = 240   # generous vs. backtest's own much heavier per-symbol workload
 
 # StrategyEngine/BacktestEngine write their in-memory state through to these
 # Redis keys on every recompute, and hydrate from them on __init__ - so a
@@ -910,16 +923,28 @@ class BacktestEngine:
         try:
             names = {t["ticker"]: t["name"] for t in _ticker_names()}
             results: List[BacktestResult] = []
-            with ThreadPoolExecutor(max_workers=4) as pool:
+            pool = ThreadPoolExecutor(max_workers=4)
+            try:
                 futures = {}
                 for ticker in BIST30_TICKERS:
                     futures[pool.submit(_backtest_symbol, ticker, names.get(ticker, ticker))] = ticker
                     time.sleep(0.15)
-                for fut in as_completed(futures):
-                    try:
-                        results.append(fut.result())
-                    except Exception as e:
-                        logger.error(f"Backtest crashed for {futures[fut]}: {e}")
+                try:
+                    for fut in as_completed(futures, timeout=BACKTEST_TIMEOUT_SECONDS):
+                        try:
+                            results.append(fut.result())
+                        except Exception as e:
+                            logger.error(f"Backtest crashed for {futures[fut]}: {e}")
+                except FutureTimeoutError:
+                    stuck = [futures[f] for f in futures if not f.done()]
+                    logger.error(
+                        f"Backtest timed out after {BACKTEST_TIMEOUT_SECONDS}s with "
+                        f"{len(stuck)} symbol(s) still stuck ({', '.join(stuck[:10])}); "
+                        f"proceeding with the {len(results)} that did finish instead of "
+                        f"blocking this run forever."
+                    )
+            finally:
+                pool.shutdown(wait=False)
             order = {t: i for i, t in enumerate(BIST30_TICKERS)}
             results.sort(key=lambda r: order.get(r.ticker, 999))
             with self._lock:
@@ -1042,17 +1067,29 @@ class StrategyEngine:
         # Requests during testing. 4 workers with a 150ms stagger keeps the
         # whole 30-symbol scan under ~20s while staying under that limit.
         results: List[Signal] = []
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        pool = ThreadPoolExecutor(max_workers=4)
+        try:
             futures = {}
             for ticker in BIST30_TICKERS:
                 futures[pool.submit(_build_signal, ticker, names.get(ticker, ticker))] = ticker
                 time.sleep(0.15)
-            for fut in as_completed(futures):
-                try:
-                    results.append(fut.result())
-                except Exception as e:
-                    ticker = futures[fut]
-                    logger.error(f"Signal build crashed for {ticker}: {e}")
+            try:
+                for fut in as_completed(futures, timeout=SCAN_TIMEOUT_SECONDS):
+                    try:
+                        results.append(fut.result())
+                    except Exception as e:
+                        ticker = futures[fut]
+                        logger.error(f"Signal build crashed for {ticker}: {e}")
+            except FutureTimeoutError:
+                stuck = [futures[f] for f in futures if not f.done()]
+                logger.error(
+                    f"Scan timed out after {SCAN_TIMEOUT_SECONDS}s with "
+                    f"{len(stuck)} symbol(s) still stuck ({', '.join(stuck[:10])}); "
+                    f"proceeding with the {len(results)} that did finish instead of "
+                    f"blocking this run forever."
+                )
+        finally:
+            pool.shutdown(wait=False)
         order = {t: i for i, t in enumerate(BIST30_TICKERS)}
         results.sort(key=lambda s: order.get(s.ticker, 999))
 
