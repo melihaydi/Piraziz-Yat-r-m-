@@ -27,7 +27,12 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+# Turkey has used a fixed UTC+3 offset year-round since abolishing DST in
+# 2016 - used only to compute the intraday history's "which trading day is
+# this" boundary (see _run_scan below), not for any other timestamp.
+_TR_TZ = timezone(timedelta(hours=3))
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -945,7 +950,16 @@ class StrategyEngine:
         results.sort(key=lambda s: order.get(s.ticker, 999))
 
         now = datetime.now(timezone.utc)
-        today = now.date().isoformat()
+        # The intraday history resets once per real Turkey trading day, not
+        # once per UTC calendar day - using now.date() directly (UTC) reset
+        # 3 hours after Turkey's actual local midnight (Turkey is UTC+3),
+        # so a scan run between 00:00-03:00 Turkey time kept logging into
+        # the PREVIOUS day's bucket, which then got wiped a few hours into
+        # the user's new day instead of at their actual midnight. Confirmed
+        # live: a signal was still landing in "yesterday's" bucket well
+        # after Turkey's midnight, then the whole log reset once UTC
+        # finally ticked over.
+        today = now.astimezone(_TR_TZ).date().isoformat()
         with self._lock:
             if self._history_day != today:
                 self._history = []

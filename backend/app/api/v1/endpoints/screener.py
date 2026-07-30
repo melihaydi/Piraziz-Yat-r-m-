@@ -470,11 +470,28 @@ def get_stock_score_details(symbol: str):
     score_details = ScoringService.calculate_ai_score_details(symbol, quote, candles)
     return score_details
 
+_ANALYZE_CACHE_TTL_SECONDS = 300
+
+
 @router.post("/analyze/{symbol}")
 def analyze_stock_ai(symbol: str):
     """Retrieve live metrics and call Gemini to output real-time grounded investment analysis comments."""
     symbol = symbol.upper()
-    
+
+    # This call was completely uncached - every single request (even a
+    # repeat request for the same ticker seconds later) blocked on a live
+    # Gemini call, confirmed live taking 12-15s every time. The underlying
+    # financial-ratio analysis doesn't meaningfully change minute-to-minute,
+    # so this now serves a short-lived Redis-cached copy, same pattern as
+    # the KAP analysis cache below - the first visitor to a stock's detail
+    # page in a given window pays the real Gemini latency, everyone else
+    # (including that same user re-opening the page) gets it instantly.
+    from app.core.redis import cache_service
+    cache_key = f"stock_analysis:{symbol}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     # 1. Fetch live TradingView quote
     quote = market_data_service.get_quote(symbol)
     if not quote:
@@ -528,6 +545,7 @@ def analyze_stock_ai(symbol: str):
             sector_name=get_sector(symbol),
             candles=candles
         )
+        cache_service.set_json(cache_key, report, expire_seconds=_ANALYZE_CACHE_TTL_SECONDS)
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Analysis execution failed: {str(e)}")
