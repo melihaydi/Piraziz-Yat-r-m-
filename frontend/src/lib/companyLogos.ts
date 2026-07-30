@@ -41,6 +41,7 @@ export const TICKER_LOGO_DOMAINS: Record<string, string> = {
   FROTO: "fordotosan.com.tr",
   GARAN: "garantibbva.com.tr",
   HEKTS: "hektas.com.tr",
+  IEYHO: "isiklarenerjiyapiholding.com.tr",
   ISCTR: "isbank.com.tr",
   KCHOL: "koc.com.tr",
   KOZAL: "kozaaltin.com.tr",
