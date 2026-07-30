@@ -29,6 +29,10 @@ interface Signal {
   support_levels: number[]
   resistance_levels: number[]
   last_update: string
+  stochastic_k: number | null
+  stochastic_d: number | null
+  ichimoku_position: string | null
+  fibonacci_levels: { ratio: number; price: number }[]
   error: string | null
 }
 
@@ -521,6 +525,48 @@ export default function StrategyPage() {
                                   ))}
                                   {s.resistance_levels.length === 0 && s.support_levels.length === 0 && (
                                     <span className="text-[11px] text-muted-foreground">Belirgin seviye bulunamadı.</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-border/40">
+                              <div className="text-[10px] font-black text-muted-foreground uppercase mb-2">Ek Teknik İndikatörler</div>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                  <div className="text-[10px] text-muted-foreground font-bold mb-1">Stochastic Osilatör</div>
+                                  {s.stochastic_k != null && s.stochastic_d != null ? (
+                                    <span className="text-[11px] font-mono text-foreground">
+                                      %K: {fmt(s.stochastic_k, 1)} · %D: {fmt(s.stochastic_d, 1)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-muted-foreground">Yetersiz veri</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-muted-foreground font-bold mb-1">Ichimoku Bulutu</div>
+                                  {s.ichimoku_position ? (
+                                    <span className={`text-[11px] font-bold ${
+                                      s.ichimoku_position === "Bulut Üzerinde" ? "text-emerald-400" :
+                                      s.ichimoku_position === "Bulut Altında" ? "text-rose-500" : "text-muted-foreground"
+                                    }`}>
+                                      {s.ichimoku_position}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-muted-foreground">Yetersiz veri</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-muted-foreground font-bold mb-1">Fibonacci Düzeltme Seviyeleri</div>
+                                  {s.fibonacci_levels.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {s.fibonacci_levels.map((lvl, i) => (
+                                        <span key={i} className="px-1.5 py-0.5 rounded bg-secondary/60 text-[10px] font-mono font-bold text-foreground border border-border/40">
+                                          %{(lvl.ratio * 100).toFixed(1)}: {fmt(lvl.price)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-[11px] text-muted-foreground">Yetersiz swing verisi</span>
                                   )}
                                 </div>
                               </div>

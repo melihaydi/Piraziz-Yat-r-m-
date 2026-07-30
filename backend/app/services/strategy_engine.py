@@ -108,6 +108,10 @@ class Signal:
     support_levels: List[float]
     resistance_levels: List[float]
     last_update: str
+    stochastic_k: Optional[float] = None
+    stochastic_d: Optional[float] = None
+    ichimoku_position: Optional[str] = None  # "Bulut Üzerinde" | "Bulut Altında" | "Bulut İçinde"
+    fibonacci_levels: List[Dict[str, float]] = field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -208,6 +212,76 @@ def _atr(df: pd.DataFrame, period: int = 14) -> float:
     prev_close = close.shift(1)
     tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
     return float(tr.rolling(period).mean().iloc[-1])
+
+
+def _stochastic(df: pd.DataFrame, period: int = 14, smooth_k: int = 3, smooth_d: int = 3) -> Optional[Dict[str, float]]:
+    """Classic Stochastic Oscillator (%K/%D) - compares the close to its
+    recent high/low range. An independent, locally-computed momentum read
+    alongside the TradingView ta_signals-based one already used elsewhere
+    in this engine, not a replacement for it."""
+    if len(df) < period + smooth_k + smooth_d:
+        return None
+    low_min = df["Low"].rolling(period).min()
+    high_max = df["High"].rolling(period).max()
+    denom = (high_max - low_min).replace(0, np.nan)
+    raw_k = 100 * (df["Close"] - low_min) / denom
+    k = raw_k.rolling(smooth_k).mean()
+    d = k.rolling(smooth_d).mean()
+    if k.empty or pd.isna(k.iloc[-1]) or pd.isna(d.iloc[-1]):
+        return None
+    return {"k": round(float(k.iloc[-1]), 2), "d": round(float(d.iloc[-1]), 2)}
+
+
+def _ichimoku(df: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """Ichimoku Kinko Hyo cloud (Tenkan-sen/Kijun-sen/Senkou Span A & B) -
+    used here for its trend-confirmation read (price above/below/inside
+    the cloud), not the full multi-line system with displaced plotting."""
+    if len(df) < 52:
+        return None
+    high9, low9 = df["High"].rolling(9).max(), df["Low"].rolling(9).min()
+    tenkan = (high9 + low9) / 2
+    high26, low26 = df["High"].rolling(26).max(), df["Low"].rolling(26).min()
+    kijun = (high26 + low26) / 2
+    high52, low52 = df["High"].rolling(52).max(), df["Low"].rolling(52).min()
+    senkou_a = ((tenkan + kijun) / 2).iloc[-1]
+    senkou_b = ((high52 + low52) / 2).iloc[-1]
+    if pd.isna(senkou_a) or pd.isna(senkou_b) or pd.isna(tenkan.iloc[-1]) or pd.isna(kijun.iloc[-1]):
+        return None
+    cloud_top, cloud_bottom = max(senkou_a, senkou_b), min(senkou_a, senkou_b)
+    price = float(df["Close"].iloc[-1])
+    if price > cloud_top:
+        position = "Bulut Üzerinde"
+    elif price < cloud_bottom:
+        position = "Bulut Altında"
+    else:
+        position = "Bulut İçinde"
+    return {
+        "tenkan": round(float(tenkan.iloc[-1]), 4),
+        "kijun": round(float(kijun.iloc[-1]), 4),
+        "cloud_top": round(float(cloud_top), 4),
+        "cloud_bottom": round(float(cloud_bottom), 4),
+        "position": position,
+    }
+
+
+_FIB_RATIOS = [0.236, 0.382, 0.5, 0.618, 0.786]
+
+
+def _fibonacci_levels(swings: List[SwingPoint]) -> List[Dict[str, float]]:
+    """Retracement levels between the most recent real swing high and
+    swing low (independently, not just the last two array entries - two
+    consecutive same-kind swings are possible from the fractal detector).
+    Informational reference levels shown to the user; not currently wired
+    into the LONG/SHORT decision logic itself."""
+    highs = [s for s in swings if s.kind == "high"]
+    lows = [s for s in swings if s.kind == "low"]
+    if not highs or not lows:
+        return []
+    hi, lo = highs[-1].price, lows[-1].price
+    if hi <= lo:
+        return []
+    span = hi - lo
+    return [{"ratio": ratio, "price": round(hi - span * ratio, 4)} for ratio in _FIB_RATIOS]
 
 
 def _trend_state(df: pd.DataFrame, period: int = TREND_SMA_PERIOD) -> Optional[str]:
@@ -366,6 +440,8 @@ def _decide_signal(
     momentum_ok_long: bool,
     momentum_ok_short: bool,
     momentum_note: str,
+    stochastic: Optional[Dict[str, float]] = None,
+    ichimoku: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Core direction/entry/stop/target/score decision, shared by the live
     scanner (_build_signal) and the backtest (_backtest_symbol) so the two
@@ -403,6 +479,29 @@ def _decide_signal(
         triggered.append(momentum_note)
     else:
         reasons.append(f"Momentum uyumsuz ({momentum_note})")
+
+    # Stochastic and Ichimoku are additional, independently-computed
+    # confirmations layered on top of the entry logic above - deliberately
+    # small, direction-agnostic bonuses (not required-for-entry gates like
+    # structure/trend/momentum/breakout) so they enrich the signal without
+    # disturbing the already-backtested score weights those carry.
+    if stochastic:
+        k, d = stochastic["k"], stochastic["d"]
+        if k < 20 and k > d:
+            score += 5
+            triggered.append(f"Stochastic aşırı satımdan dönüş (%K={k:.1f}, %D={d:.1f})")
+        elif k > 80 and k < d:
+            score += 5
+            triggered.append(f"Stochastic aşırı alımdan dönüş (%K={k:.1f}, %D={d:.1f})")
+        else:
+            reasons.append(f"Stochastic nötr bölgede (%K={k:.1f}, %D={d:.1f})")
+
+    if ichimoku:
+        if ichimoku["position"] in ("Bulut Üzerinde", "Bulut Altında"):
+            score += 5
+            triggered.append(f"Ichimoku: Fiyat {ichimoku['position'].lower()}")
+        else:
+            reasons.append("Ichimoku: Fiyat bulut içinde (belirsiz)")
 
     breakout = _detect_breakout(df, levels, atr)
     if breakout:
@@ -544,6 +643,9 @@ def _build_signal(ticker: str, name: str) -> Signal:
         levels = _cluster_levels(swings, price)
         atr = _atr(df)
         pattern = _candle_pattern(df)
+        stochastic = _stochastic(df)
+        ichimoku = _ichimoku(df)
+        fib_levels = _fibonacci_levels(swings)
 
         try:
             ta = t.ta_signals(interval="1d")
@@ -564,6 +666,7 @@ def _build_signal(ticker: str, name: str) -> Signal:
         decision = _decide_signal(
             df, price, swings, structure, structure_tags, levels, atr, pattern,
             momentum_ok_long, momentum_ok_short, momentum_note,
+            stochastic=stochastic, ichimoku=ichimoku,
         )
 
         return Signal(
@@ -577,6 +680,10 @@ def _build_signal(ticker: str, name: str) -> Signal:
             support_levels=[round(l.price, 4) for l in levels if l.kind == "support"][:3],
             resistance_levels=[round(l.price, 4) for l in levels if l.kind == "resistance"][:3],
             last_update=now_iso,
+            stochastic_k=stochastic["k"] if stochastic else None,
+            stochastic_d=stochastic["d"] if stochastic else None,
+            ichimoku_position=ichimoku["position"] if ichimoku else None,
+            fibonacci_levels=fib_levels,
         )
     except Exception as e:
         logger.error(f"Strategy engine failed for {ticker}: {e}")

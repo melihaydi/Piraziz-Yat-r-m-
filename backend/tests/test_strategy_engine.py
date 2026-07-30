@@ -10,6 +10,9 @@ from app.services.strategy_engine import (
     _atr,
     _candle_pattern,
     _decide_signal,
+    _stochastic,
+    _ichimoku,
+    _fibonacci_levels,
 )
 
 
@@ -170,3 +173,59 @@ def test_decide_signal_short_gets_confidence_penalty_when_it_fires():
         # just structure+trend+pattern alone (25ish points) the way an
         # equivalent LONG setup could.
         assert decision["score"] <= 88
+
+
+def test_stochastic_stays_within_bounds():
+    closes = [100 + (i % 7) - 3 for i in range(40)]
+    highs = [c + 1.5 for c in closes]
+    lows = [c - 1.5 for c in closes]
+    df = _make_df(highs, lows, closes=closes)
+    result = _stochastic(df)
+    assert result is not None
+    assert 0 <= result["k"] <= 100
+    assert 0 <= result["d"] <= 100
+
+
+def test_stochastic_none_on_insufficient_history():
+    df = _make_df([101.0] * 5, [99.0] * 5)
+    assert _stochastic(df) is None
+
+
+def test_ichimoku_detects_price_above_cloud():
+    n = 60
+    closes = [100 + i * 1.0 for i in range(n)]  # strong steady uptrend
+    highs = [c + 1 for c in closes]
+    lows = [c - 1 for c in closes]
+    df = _make_df(highs, lows, closes=closes)
+    result = _ichimoku(df)
+    assert result is not None
+    assert result["position"] == "Bulut Üzerinde"
+    assert result["cloud_top"] >= result["cloud_bottom"]
+
+
+def test_ichimoku_none_on_insufficient_history():
+    df = _make_df([101.0] * 10, [99.0] * 10)
+    assert _ichimoku(df) is None
+
+
+def test_fibonacci_levels_between_last_swing_high_and_low():
+    swings = [
+        SwingPoint(index=0, date="2026-01-01", price=90, kind="low"),
+        SwingPoint(index=2, date="2026-01-03", price=100, kind="high"),
+        SwingPoint(index=4, date="2026-01-05", price=95, kind="low"),
+        SwingPoint(index=6, date="2026-01-07", price=120, kind="high"),
+    ]
+    levels = _fibonacci_levels(swings)
+    assert len(levels) == 5
+    # Between the most recent swing high (120) and most recent swing low (95).
+    prices = {round(l["ratio"], 3): l["price"] for l in levels}
+    assert prices[0.5] == round(120 - (120 - 95) * 0.5, 4)
+    # Levels are monotonically increasing as the ratio grows (deeper
+    # retracement = closer to the swing low).
+    ordered = [l["price"] for l in levels]
+    assert ordered == sorted(ordered, reverse=True)
+
+
+def test_fibonacci_levels_empty_without_both_swing_kinds():
+    only_highs = [SwingPoint(index=0, date="2026-01-01", price=100, kind="high")]
+    assert _fibonacci_levels(only_highs) == []
