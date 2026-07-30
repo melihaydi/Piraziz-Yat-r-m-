@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck } from "lucide-react"
@@ -156,6 +156,60 @@ export default function Header({ onMenuClick }: HeaderProps) {
     // data. 60s still catches new alarm triggers promptly.
     const interval = setInterval(checkSignalsAndAlarms, 60000)
     return () => clearInterval(interval)
+  }, [])
+
+  // Frantic Strateji signal history notifications - previously the only
+  // way to know a new LONG/SHORT call fired during the day was to have
+  // the Strategy page open and manually check the "Sinyal Geçmişi" tab.
+  // Runs globally (here in Header, not the Strategy page) so it fires
+  // regardless of which page is open. `seenKeysRef` is null until the
+  // first poll completes - that first poll only records what's already
+  // there without notifying, so opening the app doesn't re-notify for
+  // every signal that already fired earlier today.
+  const seenSignalHistoryKeysRef = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const checkStrategyHistory = async () => {
+      const token = localStorage.getItem("token")
+      if (!token) return
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/strategy/history`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        const history: any[] = Array.isArray(data.history) ? data.history : []
+        const currentKeys = new Set(history.map(h => `${h.ticker}-${h.timestamp}`))
+
+        if (seenSignalHistoryKeysRef.current === null) {
+          seenSignalHistoryKeysRef.current = currentKeys
+          return
+        }
+
+        const seen = seenSignalHistoryKeysRef.current
+        const newEntries = history.filter(h => !seen.has(`${h.ticker}-${h.timestamp}`))
+        if (newEntries.length > 0) {
+          playBeep()
+          newEntries.forEach(h => {
+            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+              new Notification(`Frantic Strateji: ${h.ticker} ${h.direction === "LONG" ? "AL" : "SAT"}`, {
+                body: `${h.name} - Güven: ${h.confidence}, Fiyat: ₺${h.price}`,
+                icon: "/favicon.ico"
+              })
+            }
+          })
+        }
+        seenSignalHistoryKeysRef.current = currentKeys
+      } catch (e) {
+        console.error("Strategy history check failed:", e)
+      }
+    }
+
+    checkStrategyHistory()
+    // Matches StrategyEngine's own 180s scan cycle closely enough (60s)
+    // that a new signal is announced within a minute of firing, without
+    // polling meaningfully faster than the data actually changes.
+    const strategyInterval = setInterval(checkStrategyHistory, 60000)
+    return () => clearInterval(strategyInterval)
   }, [])
 
   // Load profile from localStorage and handle updates
