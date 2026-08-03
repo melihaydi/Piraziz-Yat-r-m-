@@ -33,20 +33,22 @@ export default function OrderBookPanel() {
             <tr className="text-slate-300 font-bold border-b border-slate-800 h-8">
               <th className="px-4">Hisse</th>
               <th className="px-4">Yön</th>
+              <th className="px-4">Tip</th>
               <th className="px-4 text-right">Lot</th>
-              <th className="px-4 text-right">Limit Fiyatı</th>
+              <th className="px-4 text-right">Stop</th>
+              <th className="px-4 text-right">Limit</th>
               <th className="px-4 text-center">İşlem</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-10">
+                <td colSpan={7} className="py-10">
                   <div className="flex flex-col items-center gap-2 text-slate-400">
                     <Info className="h-5 w-5" />
-                    <span className="font-bold text-slate-300 text-[11px]">Bekleyen limit emrin bulunmuyor</span>
+                    <span className="font-bold text-slate-300 text-[11px]">Bekleyen emrin bulunmuyor</span>
                     <span className="text-[10px] text-slate-500">
-                      Limit emir girdiğinde fiyat seviyenize ulaşana kadar burada bekler.
+                      Limit/Stop emir girdiğinde fiyat seviyenize ulaşana kadar burada bekler.
                     </span>
                   </div>
                 </td>
@@ -62,8 +64,18 @@ export default function OrderBookPanel() {
                       {order.side}
                     </span>
                   </td>
+                  <td className="px-4">
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {order.order_type === "STOP" ? "Stop" : order.order_type === "STOP_LIMIT" ? "Stop Limit" : "Limit"}
+                    </span>
+                  </td>
                   <td className="px-4 text-right font-semibold text-white">{order.lot}</td>
-                  <td className="px-4 text-right font-semibold text-white">{order.limit_price.toFixed(2)}</td>
+                  <td className="px-4 text-right font-semibold text-white">
+                    {order.stop_price != null ? order.stop_price.toFixed(2) : "—"}
+                  </td>
+                  <td className="px-4 text-right font-semibold text-white">
+                    {order.limit_price != null ? order.limit_price.toFixed(2) : "—"}
+                  </td>
                   <td className="px-4 text-center">
                     <button
                       onClick={() => handleCancel(order.id)}

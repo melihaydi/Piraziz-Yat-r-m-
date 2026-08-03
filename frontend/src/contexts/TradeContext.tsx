@@ -72,7 +72,7 @@ export interface TradeHistoryItem {
   executed_at: string
 }
 
-export type OrderType = "MARKET" | "LIMIT"
+export type OrderType = "MARKET" | "LIMIT" | "STOP" | "STOP_LIMIT"
 
 export interface PendingOrder {
   id: number
@@ -80,7 +80,9 @@ export interface PendingOrder {
   symbol: string
   side: "AL" | "SAT"
   lot: number
-  limit_price: number
+  order_type: OrderType
+  limit_price: number | null
+  stop_price: number | null
   created_at: string
 }
 
@@ -110,7 +112,8 @@ interface TradeContextValue {
     side: "AL" | "SAT",
     lot: number,
     orderType?: OrderType,
-    limitPrice?: number
+    limitPrice?: number,
+    stopPrice?: number
   ) => Promise<OrderResult>
   cancelPendingOrder: (orderId: number) => Promise<OrderResult>
   refreshAccount: () => Promise<TradeAccountData | null>
@@ -370,7 +373,8 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
       side: "AL" | "SAT",
       lot: number,
       orderType: OrderType = "MARKET",
-      limitPrice?: number
+      limitPrice?: number,
+      stopPrice?: number
     ): Promise<OrderResult> => {
       try {
         const res = await authFetch("/trade/order", {
@@ -378,7 +382,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             instrument_type: instrumentType, symbol, side, lot,
-            order_type: orderType, limit_price: limitPrice,
+            order_type: orderType, limit_price: limitPrice, stop_price: stopPrice,
           }),
         })
         if (!res.ok) {

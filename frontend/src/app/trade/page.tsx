@@ -54,7 +54,15 @@ export default function TradePage() {
   // simplification), so plotting it on the underlying chart is correct.
   const chartPendingOrders = pendingOrders
     .filter(o => o.instrument_type === activeTab && o.symbol === selectedSymbol)
-    .map(o => ({ id: o.id, side: o.side, limitPrice: o.limit_price }))
+    .map(o => ({
+      id: o.id,
+      side: o.side,
+      // STOP orders have no limit_price (they fill at the live market
+      // price once triggered) - their trigger level is stop_price instead.
+      limitPrice: o.order_type === "STOP" ? o.stop_price : o.limit_price,
+      label: o.order_type === "STOP" ? "STOP" : o.order_type === "STOP_LIMIT" ? "STOP LİMİT" : "LİMİT",
+    }))
+    .filter((o): o is { id: number; side: "AL" | "SAT"; limitPrice: number; label: string } => o.limitPrice != null)
 
   // Fullscreen here is a CSS-only overlay (fixed inset-0) rather than the
   // browser Fullscreen API - instant and permission-free inside the Electron

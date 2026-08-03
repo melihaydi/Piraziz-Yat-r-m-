@@ -265,3 +265,80 @@ def test_get_performance_on_fresh_account_has_no_trades(db, account, fixed_price
     assert perf["win_rate_pct"] == 0.0
     assert perf["avg_win"] == 0.0
     assert perf["avg_loss"] == 0.0
+
+
+# --- STOP / STOP_LIMIT orders --------------------------------------------
+
+def test_stop_order_requires_positive_stop_price(db, account, fixed_price):
+    with pytest.raises(TradeError):
+        trade_service.place_order(db, account, "stock", "AKBNK", "SAT", 10, order_type="STOP", stop_price=0)
+
+
+def test_stop_limit_order_requires_both_prices(db, account, fixed_price):
+    with pytest.raises(TradeError):
+        trade_service.place_order(
+            db, account, "stock", "AKBNK", "SAT", 10, order_type="STOP_LIMIT", stop_price=90.0, limit_price=None
+        )
+
+
+def test_stop_loss_sell_does_not_trigger_before_price_falls_to_stop(db, account, fixed_price):
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="MARKET")
+    trade_service.place_order(db, account, "stock", "AKBNK", "SAT", 10, order_type="STOP", stop_price=90.0)
+    fixed_price["value"] = 95.0  # still above the stop
+    trade_service.serialize_account(db, account)
+    assert len(trade_service.get_pending_orders(db, account)) == 1
+
+
+def test_stop_loss_sell_fills_at_live_price_once_triggered(db, account, fixed_price):
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="MARKET")
+    trade_service.place_order(db, account, "stock", "AKBNK", "SAT", 10, order_type="STOP", stop_price=90.0)
+    fixed_price["value"] = 88.0  # gaps below the stop
+    result = trade_service.serialize_account(db, account)
+    assert trade_service.get_pending_orders(db, account) == []
+    assert result["positions"] == []
+    history = trade_service.get_history(db, account)
+    fill = next(o for o in history if o["side"] == "SAT")
+    # A STOP fills at the live price (88.0), not the stop trigger (90.0).
+    assert fill["price"] == 88.0
+
+
+def test_stop_buy_triggers_on_breakout_above_stop_price(db, account, fixed_price):
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="STOP", stop_price=110.0)
+    fixed_price["value"] = 115.0  # breaks out above the stop
+    trade_service.serialize_account(db, account)
+    assert trade_service.get_pending_orders(db, account) == []
+    positions = trade_service.get_positions(db, account)
+    assert len(positions) == 1
+    assert positions[0]["avg_cost"] == 115.0
+
+
+def test_stop_limit_converts_to_resting_limit_once_triggered(db, account, fixed_price):
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="MARKET")
+    trade_service.place_order(
+        db, account, "stock", "AKBNK", "SAT", 10, order_type="STOP_LIMIT", stop_price=90.0, limit_price=89.0
+    )
+    fixed_price["value"] = 89.5  # crosses the stop but not (yet) the limit
+    trade_service.serialize_account(db, account)
+    pending = trade_service.get_pending_orders(db, account)
+    assert len(pending) == 1
+    assert pending[0]["order_type"] == "LIMIT"  # converted, still resting
+
+    fixed_price["value"] = 89.0  # now also satisfies the limit
+    trade_service.serialize_account(db, account)
+    assert trade_service.get_pending_orders(db, account) == []
+    history = trade_service.get_history(db, account)
+    fill = next(o for o in history if o["side"] == "SAT")
+    assert fill["price"] == 89.0
+
+
+def test_stop_order_reserves_cash_based_on_stop_price(db, account, fixed_price):
+    result = trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="STOP", stop_price=120.0)
+    expected_reserved = round(120.0 * 10 + round(120.0 * 10 * trade_service.COMMISSION_RATE, 2), 2)
+    assert result["locked_cash"] == expected_reserved
+
+
+def test_cancel_stop_order_releases_locked_cash(db, account, fixed_price):
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="STOP", stop_price=120.0)
+    pending = trade_service.get_pending_orders(db, account)
+    result = trade_service.cancel_pending_order(db, account, pending[0]["id"])
+    assert result["locked_cash"] == 0.0

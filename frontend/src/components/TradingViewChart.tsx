@@ -34,12 +34,14 @@ interface ChartDataPoint {
   bb_lower?: number
 }
 
-/** A resting LIMIT order to draw as a horizontal price line on the chart
- * (see Trade module's order book - OrderBookPanel.tsx). */
+/** A resting LIMIT/STOP/STOP_LIMIT order to draw as a horizontal price line
+ * on the chart (see Trade module's order book - OrderBookPanel.tsx). */
 export interface PendingOrderLine {
   id: number
   side: "AL" | "SAT"
   limitPrice: number
+  /** "LİMİT" or "STOP" - which trigger this line represents. */
+  label: string
 }
 
 interface TradingViewChartProps {
@@ -202,7 +204,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
         lineWidth: 2,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: order.side === "AL" ? "AL LİMİT" : "SAT LİMİT",
+        title: `${order.side === "AL" ? "AL" : "SAT"} ${order.label}`,
       })
     )
     return () => {

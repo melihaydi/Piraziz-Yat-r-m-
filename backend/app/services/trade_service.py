@@ -460,11 +460,19 @@ def _execute_trade(
 
 
 def _create_pending_order(
-    db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float, limit_price: float
+    db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float,
+    order_type: str, limit_price: Optional[float], stop_price: Optional[float],
 ) -> Dict[str, Any]:
+    # The best available estimate of execution price before the order
+    # actually fills, used only to size the cash reservation: the limit
+    # price constrains LIMIT/STOP_LIMIT exactly, while a plain STOP has no
+    # such constraint (it fills at whatever the live price is once
+    # triggered) so its own trigger price is the closest estimate on hand.
+    reservation_price = limit_price if order_type in ("LIMIT", "STOP_LIMIT") else stop_price
+
     reserved = 0.0
     if side == "AL":
-        notional = limit_price * lot
+        notional = reservation_price * lot
         commission_est = round(notional * COMMISSION_RATE, 2)
         reserved = round(notional + commission_est, 2)
         available = account.cash_balance - account.locked_cash
@@ -478,7 +486,7 @@ def _create_pending_order(
             TradePosition.symbol == symbol,
         ).first()
         has_long = bool(position and position.lot > 0)
-        # Stocks are long-only, so a limit SAT needs an existing covering
+        # Stocks are long-only, so a resting SAT needs an existing covering
         # position up front (re-checked again at fill time in case it
         # changes in the meantime). VİOP can open/add to a short with no
         # reservation, mirroring place_order's market-order behavior.
@@ -489,7 +497,8 @@ def _create_pending_order(
 
     pending = TradePendingOrder(
         account_id=account.id, instrument_type=instrument_type, symbol=symbol,
-        side=side, lot=lot, limit_price=limit_price, reserved_cash=reserved, status="PENDING",
+        side=side, lot=lot, order_type=order_type, limit_price=limit_price, stop_price=stop_price,
+        reserved_cash=reserved, status="PENDING",
     )
     db.add(pending)
     db.commit()
@@ -497,24 +506,26 @@ def _create_pending_order(
     return serialize_account(db, account)
 
 
-def _fill_pending_order(db: Session, account: TradeAccount, order: TradePendingOrder) -> None:
+def _fill_pending_order(db: Session, account: TradeAccount, order: TradePendingOrder, fill_price: float) -> None:
     if order.side == "AL":
         account.locked_cash = max(0.0, account.locked_cash - order.reserved_cash)
     try:
         realized_pnl, total, commission = _execute_trade(
-            db, account, order.instrument_type, order.symbol, order.side, order.lot, order.limit_price
+            db, account, order.instrument_type, order.symbol, order.side, order.lot, fill_price
         )
     except TradeError:
         # Underlying state no longer supports this fill (balance/position
-        # changed via another order since this one was placed) - cancel
-        # rather than retry forever or raise from a background poll.
+        # changed via another order since this one was placed, or - for a
+        # STOP that gapped past its trigger - the live price moved further
+        # than the cash reserved for it) - cancel rather than retry forever
+        # or raise from a background poll.
         order.status = "CANCELLED"
         db.commit()
         return
 
     order_row = TradeOrder(
         account_id=account.id, instrument_type=order.instrument_type, symbol=order.symbol,
-        side=order.side, lot=order.lot, price=order.limit_price, commission=commission,
+        side=order.side, lot=order.lot, price=fill_price, commission=commission,
         total=round(total, 2), realized_pnl=realized_pnl,
     )
     db.add(order_row)
@@ -525,8 +536,17 @@ def _fill_pending_order(db: Session, account: TradeAccount, order: TradePendingO
 
 def _check_pending_orders(db: Session, account: TradeAccount) -> None:
     """Checked opportunistically every time the account is polled (see
-    serialize_account) - a buy limit fills once the live price drops to or
-    below limit_price, a sell limit fills once it rises to or above it."""
+    serialize_account).
+
+    - LIMIT: fills at limit_price once the live price reaches it or better
+      (AL: price <= limit_price, SAT: price >= limit_price).
+    - STOP: fills at the live price once it crosses stop_price in the
+      breakout/adverse direction (AL: price >= stop_price, SAT: price <=
+      stop_price) - a stop-loss or breakout-entry trigger.
+    - STOP_LIMIT: on the same stop_price trigger as STOP, converts in place
+      into a resting LIMIT order at limit_price instead of filling
+      immediately - checked again (as a LIMIT) on the next poll.
+    """
     pending = db.query(TradePendingOrder).filter(
         TradePendingOrder.account_id == account.id,
         TradePendingOrder.status == "PENDING",
@@ -535,12 +555,26 @@ def _check_pending_orders(db: Session, account: TradeAccount) -> None:
         price = get_live_price(order.instrument_type, order.symbol)
         if price <= 0:
             continue
-        should_fill = (
-            (order.side == "AL" and price <= order.limit_price) or
-            (order.side == "SAT" and price >= order.limit_price)
-        )
-        if should_fill:
-            _fill_pending_order(db, account, order)
+
+        if order.order_type == "LIMIT":
+            should_fill = (
+                (order.side == "AL" and price <= order.limit_price) or
+                (order.side == "SAT" and price >= order.limit_price)
+            )
+            if should_fill:
+                _fill_pending_order(db, account, order, order.limit_price)
+        else:  # STOP or STOP_LIMIT
+            triggered = (
+                (order.side == "AL" and price >= order.stop_price) or
+                (order.side == "SAT" and price <= order.stop_price)
+            )
+            if not triggered:
+                continue
+            if order.order_type == "STOP":
+                _fill_pending_order(db, account, order, price)
+            else:  # STOP_LIMIT - becomes a resting LIMIT order from here on
+                order.order_type = "LIMIT"
+                db.commit()
 
 
 def _pending_order_dict(o: TradePendingOrder) -> Dict[str, Any]:
@@ -550,7 +584,9 @@ def _pending_order_dict(o: TradePendingOrder) -> Dict[str, Any]:
         "symbol": o.symbol,
         "side": o.side,
         "lot": o.lot,
-        "limit_price": round(o.limit_price, 4),
+        "order_type": o.order_type,
+        "limit_price": round(o.limit_price, 4) if o.limit_price is not None else None,
+        "stop_price": round(o.stop_price, 4) if o.stop_price is not None else None,
         "created_at": o.created_at.isoformat() if o.created_at else None,
     }
 
@@ -586,7 +622,7 @@ def cancel_pending_order(db: Session, account: TradeAccount, order_id: int) -> D
 
 def place_order(
     db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float,
-    order_type: str = "MARKET", limit_price: Optional[float] = None,
+    order_type: str = "MARKET", limit_price: Optional[float] = None, stop_price: Optional[float] = None,
 ) -> Dict[str, Any]:
     symbol = symbol.upper()
 
@@ -597,10 +633,12 @@ def place_order(
     if lot is None or lot <= 0:
         raise TradeError("Lot miktarı sıfırdan büyük olmalı.")
 
-    if order_type == "LIMIT":
-        if limit_price is None or limit_price <= 0:
+    if order_type in ("LIMIT", "STOP", "STOP_LIMIT"):
+        if order_type in ("LIMIT", "STOP_LIMIT") and (limit_price is None or limit_price <= 0):
             raise TradeError("Limit fiyatı sıfırdan büyük olmalı.")
-        return _create_pending_order(db, account, instrument_type, symbol, side, lot, limit_price)
+        if order_type in ("STOP", "STOP_LIMIT") and (stop_price is None or stop_price <= 0):
+            raise TradeError("Stop fiyatı sıfırdan büyük olmalı.")
+        return _create_pending_order(db, account, instrument_type, symbol, side, lot, order_type, limit_price, stop_price)
 
     price = get_live_price(instrument_type, symbol)
     if price <= 0:

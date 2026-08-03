@@ -64,20 +64,35 @@ class TradeOrder(Base):
 
 
 class TradePendingOrder(Base):
-    """A resting LIMIT order. Unlike TradeOrder (always an instant fill at
-    the live quote), this sits at status=PENDING until the live price
-    crosses limit_price. There's no dedicated matching engine or cron job -
-    the frontend already polls /trade/account every ~3s for positions/P&L,
-    so pending-order fills are checked opportunistically on that same poll
-    (see trade_service._check_pending_orders), which is precise enough for a
-    paper-trading simulation.
+    """A resting LIMIT, STOP, or STOP_LIMIT order. Unlike TradeOrder (always
+    an instant fill at the live quote), this sits at status=PENDING until
+    its trigger condition is met. There's no dedicated matching engine or
+    cron job - the frontend already polls /trade/account every ~3s for
+    positions/P&L, so pending-order fills are checked opportunistically on
+    that same poll (see trade_service._check_pending_orders), which is
+    precise enough for a paper-trading simulation.
+
+    order_type semantics (see trade_service._check_pending_orders for the
+    exact trigger logic):
+      - LIMIT: fills at limit_price once the live price reaches it or
+        better (AL: price <= limit_price, SAT: price >= limit_price).
+      - STOP: fills at the *live* price (like a market order) once the
+        live price crosses stop_price in the adverse/breakout direction
+        (AL: price >= stop_price, SAT: price <= stop_price) - a stop-loss
+        or breakout-entry trigger, not a price guarantee.
+      - STOP_LIMIT: waits for the same stop_price trigger as STOP, then
+        converts in place into a resting LIMIT order at limit_price
+        instead of filling immediately.
 
     reserved_cash is only meaningful for AL (buy) orders: the notional +
-    estimated commission at limit_price is locked out of TradeAccount.cash_balance
-    at placement time (via locked_cash) so several pending buys can't
-    collectively overdraw the account, then released on fill/cancel. SAT
-    orders reserve nothing - a stock SAT is only accepted if the position
-    already covers the lot, re-validated again at fill time.
+    estimated commission at the order's *worst reasonable execution price*
+    (limit_price for LIMIT/STOP_LIMIT, stop_price for a plain STOP, since
+    that's the best estimate available before it actually fills at the
+    market) is locked out of TradeAccount.cash_balance at placement time
+    (via locked_cash) so several pending buys can't collectively overdraw
+    the account, then released on fill/cancel. SAT orders reserve nothing -
+    a stock SAT is only accepted if the position already covers the lot,
+    re-validated again at fill time.
     """
     id = Column(Integer, primary_key=True, index=True)
     account_id = Column(Integer, ForeignKey("trade_account.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -85,7 +100,12 @@ class TradePendingOrder(Base):
     symbol = Column(String(30), nullable=False)
     side = Column(String(4), nullable=False)  # "AL" | "SAT"
     lot = Column(Float, nullable=False)
-    limit_price = Column(Float, nullable=False)
+    order_type = Column(String(12), nullable=False, default="LIMIT")  # LIMIT | STOP | STOP_LIMIT
+    # Nullable because a plain STOP order has no limit constraint - it fills
+    # at the live market price once triggered.
+    limit_price = Column(Float, nullable=True)
+    # Only set for STOP/STOP_LIMIT - the trigger price.
+    stop_price = Column(Float, nullable=True)
     reserved_cash = Column(Float, nullable=False, default=0.0)
     status = Column(String(10), nullable=False, default="PENDING")  # PENDING | FILLED | CANCELLED
     created_at = Column(DateTime(timezone=True), server_default=func.now())

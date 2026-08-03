@@ -29,8 +29,9 @@ class OrderCreate(BaseModel):
     symbol: str
     side: Literal["AL", "SAT"]
     lot: float
-    order_type: Literal["MARKET", "LIMIT"] = "MARKET"
+    order_type: Literal["MARKET", "LIMIT", "STOP", "STOP_LIMIT"] = "MARKET"
     limit_price: Optional[float] = None
+    stop_price: Optional[float] = None
 
 
 def _require_account(db: Session, current_user: User):
@@ -147,7 +148,7 @@ def place_order(
     try:
         return trade_service.place_order(
             db, account, payload.instrument_type, payload.symbol, payload.side, payload.lot,
-            payload.order_type, payload.limit_price,
+            payload.order_type, payload.limit_price, payload.stop_price,
         )
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
