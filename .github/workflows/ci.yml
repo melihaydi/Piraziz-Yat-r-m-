@@ -83,11 +83,15 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          # @capacitor/android's own build.gradle pins sourceCompatibility/
+          # targetCompatibility to VERSION_21 (confirmed live: JDK 17 failed
+          # compileDebugJavaWithJavac with "error: invalid source release: 21") -
+          # this must match regardless of what AGP itself would tolerate.
+          java-version: '21'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
