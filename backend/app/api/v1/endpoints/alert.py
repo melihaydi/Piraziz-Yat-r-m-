@@ -79,7 +79,7 @@ def check_and_trigger_alerts(
     from app.services.market_data import market_data_service
     from app.services.technical_analysis import TechnicalAnalysisService
     from app.services.scoring import ScoringService
-    
+
     active_alerts = db.query(Alert).filter(
         Alert.user_id == current_user.id,
         Alert.is_active == True,
@@ -90,8 +90,16 @@ def check_and_trigger_alerts(
     # of once per alert sequentially - a user with several alerts on the
     # same or different tickers previously paid for N sequential network
     # round-trips every 15s (Header.tsx polls this endpoint), one per alert.
-    needs_candles_types = {"rsi", "macd", "ema", "sma", "ai_score"}
+    needs_candles_types = {"rsi", "macd", "ema", "sma", "ai_score", "volume_spike"}
     tickers = sorted({alert.ticker for alert in active_alerts if alert.ticker})
+
+    # strategy_signal alerts don't need a per-ticker quote/candle fetch -
+    # they compare against the Frantic Strateji engine's already-computed
+    # signals, fetched once regardless of how many such alerts exist.
+    signal_by_ticker = {}
+    if any(alert.alert_type == "strategy_signal" for alert in active_alerts):
+        from app.services.strategy_engine import strategy_engine
+        signal_by_ticker = {s.ticker: s for s in strategy_engine.get_signals()}
 
     def _fetch_ticker_data(ticker: str):
         quote = market_data_service.get_quote(ticker)
@@ -205,7 +213,36 @@ def check_and_trigger_alerts(
             if abs(change) > 3.0:
                 is_triggered = True
             current_val_desc = "Yeni Bildirim/Haber Akışı"
-            
+
+        # 9. Volume spike - today's volume vs. the trailing 20-day average.
+        # `value` is the multiplier (e.g. 2.0 = "2x the average"); defaults
+        # to 2.0 if unset/zero since a spike alert with no threshold set is
+        # meaningless.
+        elif alert.alert_type == "volume_spike" and candles:
+            volumes = [c["volume"] for c in candles if c.get("volume")]
+            if len(volumes) >= 6:
+                today_volume = volumes[-1]
+                baseline = volumes[-21:-1] if len(volumes) >= 21 else volumes[:-1]
+                avg_volume = sum(baseline) / len(baseline) if baseline else 0.0
+                multiplier = val if val > 0 else 2.0
+                if avg_volume > 0 and today_volume > avg_volume * multiplier:
+                    is_triggered = True
+                current_val_desc = (
+                    f"Hacim: {today_volume:,.0f} (20g ort.: {avg_volume:,.0f}, "
+                    f"{today_volume / avg_volume:.1f}x)" if avg_volume > 0 else "Hacim verisi yetersiz"
+                )
+
+        # 10. Frantic Strateji sinyali - triggers when the engine's current
+        # direction for this ticker matches the alert's requested direction
+        # ("LONG", "SHORT", or "ANY" for either non-NONE direction).
+        elif alert.alert_type == "strategy_signal":
+            signal = signal_by_ticker.get(ticker)
+            if signal and signal.direction != "NONE":
+                wanted = str(alert.trigger_condition.get("direction", "ANY")).upper()
+                if wanted == "ANY" or wanted == signal.direction:
+                    is_triggered = True
+                current_val_desc = f"Frantic Strateji: {signal.direction} ({signal.confidence})"
+
         if is_triggered:
             alert.is_triggered = True
             alert.triggered_at = datetime.now()

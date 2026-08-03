@@ -35,6 +35,7 @@ export default function StockDetailPage() {
   const [alertType, setAlertType] = useState("price")
   const [alertOperator, setAlertOperator] = useState(">")
   const [alertValue, setAlertValue] = useState("")
+  const [alertDirection, setAlertDirection] = useState("ANY")
   const [alertSuccess, setAlertSuccess] = useState(false)
 
   // Pre-fill alert value with live stock price when price is selected
@@ -45,6 +46,8 @@ export default function StockDetailPage() {
       setAlertValue("70")
     } else if (alertType === "ai_score") {
       setAlertValue("80")
+    } else if (alertType === "volume_spike") {
+      setAlertValue("2") // ortalamanın 2 katı hacim
     } else {
       setAlertValue("1") // fallback
     }
@@ -67,10 +70,9 @@ export default function StockDetailPage() {
         body: JSON.stringify({
           ticker: ticker.toUpperCase(),
           alert_type: alertType,
-          trigger_condition: { 
-            operator: alertOperator, 
-            value: parseFloat(alertValue) || 1.0 
-          }
+          trigger_condition: alertType === "strategy_signal"
+            ? { direction: alertDirection }
+            : { operator: alertOperator, value: parseFloat(alertValue) || 1.0 }
         })
       })
       if (res.ok) {
@@ -303,32 +305,53 @@ export default function StockDetailPage() {
                       <option value="kap">KAP Açıklaması</option>
                       <option value="news">Haber Akışı</option>
                       <option value="daily_change">Günlük Değişim (%)</option>
+                      <option value="volume_spike">Hacim Patlaması</option>
+                      <option value="strategy_signal">Frantic Strateji Sinyali</option>
                     </select>
                   </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-sm font-semibold text-muted-foreground text-right">Koşul</label>
-                    <select 
-                      value={alertOperator}
-                      onChange={(e) => setAlertOperator(e.target.value)}
-                      className="col-span-2 h-9 rounded-md border border-input bg-secondary px-3 text-sm focus-visible:outline-none"
-                    >
-                      <option value=">">Büyüktür (&gt;)</option>
-                      <option value="<">Küçüktür (&lt;)</option>
-                      <option value="=">Eşittir (=)</option>
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-3 items-center gap-4">
-                    <label className="text-sm font-semibold text-muted-foreground text-right">Hedef Değer</label>
-                    <Input 
-                      type="number"
-                      step="any"
-                      value={alertValue}
-                      onChange={(e) => setAlertValue(e.target.value)}
-                      placeholder="Ör: 320" 
-                      className="col-span-2 bg-secondary/50" 
-                      required
-                    />
-                  </div>
+                  {alertType === "strategy_signal" ? (
+                    <div className="grid grid-cols-3 items-center gap-4">
+                      <label className="text-sm font-semibold text-muted-foreground text-right">Yön</label>
+                      <select
+                        value={alertDirection}
+                        onChange={(e) => setAlertDirection(e.target.value)}
+                        className="col-span-2 h-9 rounded-md border border-input bg-secondary px-3 text-sm focus-visible:outline-none"
+                      >
+                        <option value="ANY">LONG veya SHORT</option>
+                        <option value="LONG">Sadece LONG</option>
+                        <option value="SHORT">Sadece SHORT</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 items-center gap-4">
+                        <label className="text-sm font-semibold text-muted-foreground text-right">Koşul</label>
+                        <select
+                          value={alertOperator}
+                          onChange={(e) => setAlertOperator(e.target.value)}
+                          className="col-span-2 h-9 rounded-md border border-input bg-secondary px-3 text-sm focus-visible:outline-none"
+                        >
+                          <option value=">">Büyüktür (&gt;)</option>
+                          <option value="<">Küçüktür (&lt;)</option>
+                          <option value="=">Eşittir (=)</option>
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-3 items-center gap-4">
+                        <label className="text-sm font-semibold text-muted-foreground text-right">
+                          {alertType === "volume_spike" ? "Ortalamanın Katı" : "Hedef Değer"}
+                        </label>
+                        <Input
+                          type="number"
+                          step="any"
+                          value={alertValue}
+                          onChange={(e) => setAlertValue(e.target.value)}
+                          placeholder={alertType === "volume_spike" ? "Ör: 2" : "Ör: 320"}
+                          className="col-span-2 bg-secondary/50"
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
                   <DialogFooter className="pt-4 border-t border-border/50">
                     <Button type="submit" className="w-full cursor-pointer bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black border-0 font-black">
                       Alarmı Kaydet

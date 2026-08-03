@@ -1037,7 +1037,9 @@ export default function PortfolioPage() {
                         <span className="font-semibold text-muted-foreground">({alert.alert_type === "price" ? "Fiyat" : alert.alert_type.toUpperCase()})</span>
                       </div>
                       <p className="font-mono font-bold text-foreground/90">
-                        {alert.trigger_condition.operator} {alert.trigger_condition.value}
+                        {alert.alert_type === "strategy_signal"
+                          ? `Yön: ${alert.trigger_condition.direction || "ANY"}`
+                          : `${alert.trigger_condition.operator ?? ""} ${alert.trigger_condition.value ?? ""}`}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2">
