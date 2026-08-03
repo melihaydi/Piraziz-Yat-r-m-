@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X } from "lucide-react"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -64,6 +64,32 @@ export default function FundsPage() {
   })
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(false)
+
+  // "Popüler Fonlar - Anlık Getiri": TEFAS only publishes one NAV per fund
+  // per day, so this is an ESTIMATE built from each fund's last known
+  // holdings x their live BIST prices (see backend get_live_estimated_return).
+  const [popularFunds, setPopularFunds] = useState<any[]>([])
+  const [popularLoading, setPopularLoading] = useState(true)
+  const [expandedPopularCode, setExpandedPopularCode] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    const fetchPopular = () => {
+      fetch(`${API_BASE_URL}/api/v1/funds/popular/live-estimate`)
+        .then(res => res.json())
+        .then(data => {
+          if (active && Array.isArray(data.funds)) setPopularFunds(data.funds)
+        })
+        .catch(err => console.error("Failed to load popular funds live estimate:", err))
+        .finally(() => { if (active) setPopularLoading(false) })
+    }
+    fetchPopular()
+    const interval = setInterval(fetchPopular, 15000)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
+  }, [])
 
   // Fund comparison state (2-5 funds, matches the backend's GET /funds/compare cap)
   const [compareCodes, setCompareCodes] = useState<string[]>([])
@@ -291,6 +317,85 @@ export default function FundsPage() {
           Yapay zekâ ve canlı BİST entegrasyonuyla TEFAS yatırım fonlarını süzün, grafiklerini ve getirilerini izleyin.
         </p>
       </div>
+
+      {/* Popüler Fonlar - Anlık Getiri */}
+      <Card glass={true} className="border-amber-500/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center">
+            <Zap className="h-4 w-4 mr-2 text-amber-400" />
+            Popüler Fonlar - Anlık Getiri
+          </CardTitle>
+          <CardDescription className="text-[10px]">
+            TEFAS fonların NAV&apos;ını günde bir kez yayınlar - bu bölüm, her fonun son bilinen varlık dağılımını o
+            varlıkların canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri
+            hesaplar. Gerçek bir NAV yeniden hesaplaması değildir.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {popularLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+            </div>
+          ) : popularFunds.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">Veri alınamadı.</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {popularFunds.map(f => {
+                const isUp = f.estimated_change_pct >= 0
+                const isExpanded = expandedPopularCode === f.code
+                return (
+                  <div key={f.code} className="border border-border/40 rounded-xl bg-secondary/10 overflow-hidden">
+                    <button
+                      onClick={() => setExpandedPopularCode(isExpanded ? null : f.code)}
+                      className="w-full p-3 text-left cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="bg-amber-500 text-amber-950 font-black px-2 py-0.5 rounded text-xs">
+                          {f.code}
+                        </span>
+                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-1.5 truncate">{f.name}</div>
+                      <div className="flex items-baseline justify-between mt-2">
+                        <span className={`text-xl font-black font-mono ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+                          {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
+                        </span>
+                        <span className="text-[9px] text-muted-foreground">
+                          kapsam %{f.resolved_weight_pct.toFixed(0)}
+                        </span>
+                      </div>
+                      {f.fund_size && (
+                        <div className="text-[9px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
+                      )}
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-border/30 px-3 py-2 space-y-1 max-h-48 overflow-y-auto">
+                        {f.holdings
+                          .slice()
+                          .sort((a: any, b: any) => b.weight - a.weight)
+                          .map((h: any) => (
+                            <div key={h.ticker} className="flex items-center justify-between text-[10px]">
+                              <span className="text-muted-foreground truncate">
+                                {h.ticker} <span className="opacity-60">%{h.weight.toFixed(2)}</span>
+                              </span>
+                              {h.change_pct != null ? (
+                                <span className={h.change_pct >= 0 ? "text-emerald-400 font-semibold" : "text-rose-500 font-semibold"}>
+                                  {h.change_pct >= 0 ? "+" : ""}{h.change_pct.toFixed(2)}%
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground/60">—</span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

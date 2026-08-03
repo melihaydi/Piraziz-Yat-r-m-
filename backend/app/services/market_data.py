@@ -123,7 +123,13 @@ class MarketDataService:
             "AKBNK", "ALARK", "ASELS", "ASTOR", "BIMAS", "EKGYO", "ENKAI", "EREGL", "FROTO", "GARAN",
             "HEKTS", "ISCTR", "KCHOL", "KONTR", "KOZAL", "MGROS", "ODAS", "OYAKC", "PETKM", "PGSUS",
             "SAHOL", "SASA", "SISE", "TAVHL", "TCELL", "THYAO", "TOASO", "TUPRS", "YKBNK", "TTKOM",
-            "KTLEV", "ODINE", "GUNDG", "PASEU", "HEDEF", "BALSU", "IEYHO"
+            "KTLEV", "ODINE", "GUNDG", "PASEU", "HEDEF", "BALSU", "IEYHO",
+            # Added for real TEFAS fund holdings (PBR/DFI/TMV assets_distribution
+            # in tefas.py) so each holding resolves to a real live quote instead
+            # of a name-only placeholder - see get_fund()'s details_map.
+            "OZATD", "TEHOL", "TRHOL", "ANELE", "SELEC", "PEKGY", "DSTKF", "ALKLC", "EUPWR", "TERA",
+            "GESAN", "TURSG", "TRALT", "TATEN", "SKBNK", "DAPGM", "BRSAN", "MPARK", "DCTTR", "IZFAS",
+            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS"
         ]
         
         self.tickers = []
@@ -140,7 +146,22 @@ class MarketDataService:
             "TUPRS": "Tüpraş Türkiye Petrol Rafinerileri", "YKBNK": "Yapı ve Kredi Bankası", "TTKOM": "Türk Telekomünikasyon",
             "KTLEV": "Katılımevim Tasarruf Finansman", "ODINE": "Odine Solutions Teknoloji", "GUNDG": "Gündoğdu Gıda Süt Ürünleri",
             "PASEU": "Pasifik Eurasia Lojistik", "HEDEF": "Hedef Holding A.Ş.", "BALSU": "Balsu Gıda Sanayi",
-            "IEYHO": "Işıklar Enerji ve Yapı Holding"
+            "IEYHO": "Işıklar Enerji ve Yapı Holding",
+            "OZATD": "Özata Denizcilik Sanayi ve Ticaret A.Ş.", "TEHOL": "Tera Yatırım Teknoloji Holding A.Ş.",
+            "TRHOL": "Tera Finansal Yatırımlar Holding A.Ş.", "ANELE": "Anel Elektrik Proje ve Taahhüt A.Ş.",
+            "SELEC": "Selçuk Ecza Deposu Ticaret ve Sanayi A.Ş.", "PEKGY": "Peker Gayrimenkul Yatırım Ortaklığı A.Ş.",
+            "DSTKF": "Destek Finans Faktoring A.Ş.", "ALKLC": "Altınkılıç Gıda ve Süt Sanayi Ticaret A.Ş.",
+            "EUPWR": "Europower Enerji ve Otomasyon Teknolojileri Sanayi Ticaret A.Ş.",
+            "TERA": "Tera Yatırım Menkul Değerler A.Ş.", "GESAN": "Girişim Elektrik Sanayi ve Ticaret A.Ş.",
+            "TURSG": "Türkiye Sigorta A.Ş.", "TRALT": "Türk Altın İşletmeleri A.Ş.",
+            "TATEN": "Tatlıpınar Enerji Üretim A.Ş.", "SKBNK": "Şekerbank T.A.Ş.",
+            "DAPGM": "DAP Gayrimenkul Geliştirme A.Ş.", "BRSAN": "Borusan Mannesmann Boru Sanayi ve Ticaret A.Ş.",
+            "MPARK": "MLP Sağlık Hizmetleri A.Ş.", "DCTTR": "DCT Trading Dış Ticaret A.Ş.",
+            "IZFAS": "İzmir Fırça Sanayi ve Ticaret A.Ş.", "ANSGR": "Anadolu Anonim Türk Sigorta Şirketi",
+            "BETAE": "Beta Enerji ve Teknoloji A.Ş.", "MOPAS": "Mopaş Marketçilik Gıda Sanayi ve Ticaret A.Ş.",
+            "ISKPL": "Işık Plastik Sanayi ve Dış Ticaret Pazarlama A.Ş.", "AKSEN": "Aksa Enerji Üretim A.Ş.",
+            "KORDS": "Kordsa Teknik Tekstil A.Ş.", "SVGYO": "Savur Gayrimenkul Yatırım Ortaklığı A.Ş.",
+            "MANAS": "Manas Enerji Yönetimi Sanayi ve Ticaret A.Ş."
         }
         
         for t in allowed_list:

@@ -46,6 +46,41 @@ def _fund_comparison_stats(candles: List[dict]) -> dict:
     }
 
 
+# Funds shown in the "Popüler Fonlar - Anlık Getiri" section - deliberately
+# a fixed short list (not every tracked fund) since building this estimate
+# is itself a real cost (recursing through several live quote lookups per
+# fund) and this section only ever asked for these three.
+POPULAR_LIVE_FUNDS = ["TMV", "PBR", "DFI"]
+
+
+@router.get("/popular/live-estimate")
+def get_popular_funds_live_estimate():
+    """Estimated INTRADAY % change for the "Popüler Fonlar" funds, computed
+    from their last known holdings' live prices - see
+    TefasService.get_live_estimated_return's docstring for exactly what this
+    is and isn't (an estimate from disclosed composition x live prices, not
+    a real intraday NAV recalculation; TEFAS itself only publishes one NAV
+    per fund per day)."""
+    chg = _get_live_index_change()
+    results = []
+    for code in POPULAR_LIVE_FUNDS:
+        fund = tefas_service.get_fund(code, chg)
+        estimate = tefas_service.get_live_estimated_return(code)
+        if not fund or not estimate:
+            continue
+        results.append({
+            "code": code,
+            "name": fund.get("name"),
+            "price": fund.get("price"),
+            "daily_return": fund.get("daily_return"),
+            "fund_size": fund.get("fund_size"),
+            "estimated_change_pct": estimate["estimated_change_pct"],
+            "resolved_weight_pct": estimate["resolved_weight_pct"],
+            "holdings": estimate["holdings"],
+        })
+    return {"funds": results}
+
+
 @router.get("/compare")
 def compare_funds(codes: str):
     """Side-by-side comparison of 2-5 TEFAS funds: latest price, 1mo/3mo/1yr

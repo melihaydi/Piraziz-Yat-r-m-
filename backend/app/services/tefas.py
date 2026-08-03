@@ -7,8 +7,15 @@ from typing import Dict, List, Any, Optional
 from datetime import timedelta
 
 from app.core.redis import cache_service
+from app.services.market_data import market_data_service
 
 logger = logging.getLogger(__name__)
+
+# Used by get_live_estimated_return() to tell a real stock ticker apart from
+# a fund-composition category label ("Ters Repo", "Nakit", "Hisse Senedi
+# (BIST)", etc.) before ever calling get_quote() - see that method for why
+# checking the quote's truthiness alone isn't enough.
+_KNOWN_STOCK_TICKERS = {t["ticker"] for t in market_data_service.tickers}
 
 # TEFAS's own API (via pytefas) partitions ALL funds into 5 separate "kind"
 # buckets: YAT (yatırım fonları), EMK (emeklilik), BYF (borsa yatırım/ETF),
@@ -33,7 +40,12 @@ BASE_FUNDS = {
     "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"},
     "PKZ": {"name": "Pusula Portföy İkinci Serbest (Hisse Senedi Yoğun) Fon", "category": "Serbest Yoğun", "price": 13.4416, "category_tr": "Serbest Fon"},
     "PCS": {"name": "Pusula Portföy Para Piyasası Fonu", "category": "Para Piyasası", "price": 8.2528, "category_tr": "Para Piyasası Fonu"},
-    "ABG": {"name": "Pusula Portföy ABG Değişken Fon", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"}
+    "ABG": {"name": "Pusula Portföy ABG Değişken Fon", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"},
+    # Name/price are placeholders only - _fetch_prices_sync() overwrites both
+    # from TEFAS's own real per-fund data the moment the first real crawl
+    # succeeds (see its `name = series[0][2] or meta.get("name", ...)`), so
+    # this doesn't need to be exact, just present so the code starts tracking it.
+    "PRY": {"name": "PRY Fonu", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"},
 }
 
 # Baseline fallback values (exact prices & returns from July 20, 2026)
@@ -47,7 +59,161 @@ FALLBACKS = {
     "PUK": {"price": 1.1661, "daily": -0.64, "weekly": 1.05, "monthly": 3.88},
     "PKZ": {"price": 13.4416, "daily": -4.6673, "weekly": -2.15, "monthly": 5.85},
     "PCS": {"price": 8.2528, "daily": -3.7028, "weekly": -1.82, "monthly": 3.12},
-    "ABG": {"price": 10.0000, "daily": 0.15, "weekly": 0.55, "monthly": 2.45}
+    "ABG": {"price": 10.0000, "daily": 0.15, "weekly": 0.55, "monthly": 2.45},
+    "PRY": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
+}
+
+# Module-level (not just get_fund()-local) so get_live_estimated_return()
+# below can also walk it - a fund's assets_distribution entry can itself be
+# another tracked fund's code (e.g. PBR holds PKZ/PCS/PRY, DFI holds ABG),
+# which the live intraday estimator resolves recursively instead of trying
+# to look up a nonexistent stock quote for it.
+FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
+    "PHE": {
+        "fund_size": "₺1,854,200,000",
+        "risk_level": 6,
+        "manager": "Ömer Faruk Kar / Pusula Portföy",
+        "assets_distribution": [
+            {"name": "KTLEV", "value": 9.60},
+            {"name": "ODINE", "value": 9.48},
+            {"name": "GUNDG", "value": 8.91},
+            {"name": "PKZ", "value": 8.13},
+            {"name": "PCS", "value": 8.07},
+            {"name": "PASEU", "value": 6.64},
+            {"name": "HEDEF", "value": 5.11},
+            {"name": "THYAO", "value": 4.75},
+            {"name": "AKBNK", "value": 4.05},
+            {"name": "TRALT", "value": 3.87},
+            {"name": "YKBNK", "value": 3.62},
+            {"name": "BALSU", "value": 2.88},
+            {"name": "DSTKF", "value": 2.77},
+            {"name": "ISCTR", "value": 2.64},
+            {"name": "ANELE", "value": 2.20},
+            {"name": "TATEN", "value": 1.86},
+            {"name": "MGROS", "value": 1.76},
+            {"name": "SAHOL", "value": 1.74},
+            {"name": "BIMAS", "value": 1.59},
+            {"name": "TCELL", "value": 1.51},
+            {"name": "KCHOL", "value": 1.40},
+            {"name": "TTKOM", "value": 1.36}
+        ]
+    },
+    "PBR": {
+        "fund_size": "₺29,530,000,000",
+        "risk_level": 4,
+        "manager": "Ali Rıza / Pusula Portföy",
+        "assets_distribution": [
+            {"name": "ODINE", "value": 9.65},
+            {"name": "PKZ", "value": 7.99},
+            {"name": "PCS", "value": 7.70},
+            {"name": "KTLEV", "value": 9.29},
+            {"name": "GUNDG", "value": 9.24},
+            {"name": "BALSU", "value": 6.09},
+            {"name": "HEDEF", "value": 4.73},
+            {"name": "PASEU", "value": 4.52},
+            {"name": "TRALT", "value": 3.40},
+            {"name": "THYAO", "value": 2.73},
+            {"name": "PRY", "value": 2.50},
+            {"name": "ANELE", "value": 2.30},
+            {"name": "TCELL", "value": 1.67},
+            {"name": "TATEN", "value": 1.58},
+            {"name": "DSTKF", "value": 1.57},
+            {"name": "AKBNK", "value": 1.13},
+            {"name": "YKBNK", "value": 1.03},
+            {"name": "MGROS", "value": 0.98},
+            {"name": "SKBNK", "value": 0.87},
+            {"name": "DAPGM", "value": 0.59},
+            {"name": "EREGL", "value": 0.50},
+            {"name": "BRSAN", "value": 0.48},
+            {"name": "TTKOM", "value": 0.42},
+            {"name": "MPARK", "value": 0.40},
+            {"name": "PGSUS", "value": 0.38},
+            {"name": "TERA", "value": 0.25},
+            {"name": "DCTTR", "value": 0.25},
+            {"name": "IZFAS", "value": 0.24},
+            {"name": "PEKGY", "value": 0.23},
+            {"name": "ANSGR", "value": 0.20},
+            {"name": "BETAE", "value": 0.08},
+            {"name": "MOPAS", "value": 0.01}
+        ]
+    },
+    "DFI": {
+        "fund_size": "₺32,460,000,000",
+        "risk_level": 5,
+        "manager": "Hakan Ateş / Atlas Portföy",
+        "assets_distribution": [
+            {"name": "IEYHO", "value": 64.87},
+            {"name": "ABG", "value": 36.00},
+            {"name": "ISKPL", "value": 4.93}
+        ]
+    },
+    "TLY": {
+        "fund_size": "₺3,125,000,000",
+        "risk_level": 3,
+        "manager": "Gökhan Şen / Tera Portföy",
+        "assets_distribution": [{"name": "Özel Sektör Borçlanma", "value": 75}, {"name": "Ters Repo", "value": 20}, {"name": "Nakit", "value": 5}]
+    },
+    "TMV": {
+        "fund_size": "₺26,000,000,000",
+        "risk_level": 6,
+        "manager": "Yapay Zekâ Algoritması / Tera Portföy",
+        "assets_distribution": [
+            {"name": "OZATD", "value": 17.45},
+            {"name": "TEHOL", "value": 10.54},
+            {"name": "TRHOL", "value": 7.28},
+            {"name": "ANELE", "value": 6.52},
+            {"name": "SELEC", "value": 3.74},
+            {"name": "PEKGY", "value": 2.67},
+            {"name": "DSTKF", "value": 2.08},
+            {"name": "ALKLC", "value": 1.89},
+            {"name": "EUPWR", "value": 1.68},
+            {"name": "TERA", "value": 1.15},
+            {"name": "GESAN", "value": 0.42},
+            {"name": "TURSG", "value": 0.34},
+            {"name": "YKBNK", "value": 0.25},
+            {"name": "AKSEN", "value": 0.21},
+            {"name": "KORDS", "value": 0.21},
+            {"name": "HEDEF", "value": 0.18},
+            {"name": "SVGYO", "value": 0.06},
+            {"name": "MANAS", "value": 0.05}
+        ]
+    },
+    "PUK": {
+        "fund_size": "₺425,800,000",
+        "risk_level": 6,
+        "manager": "Melih Aydın / Pusula Portföy",
+        "assets_distribution": [{"name": "Katılım Hisse Senedi", "value": 95}, {"name": "Kira Sertifikası (Sukuk)", "value": 5}]
+    },
+    "PKZ": {
+        "fund_size": "₺612,400,000",
+        "risk_level": 6,
+        "manager": "Ömer Faruk Kar / Pusula Portföy",
+        "assets_distribution": [
+            {"name": "Hisse Senedi (BIST)", "value": 85.0},
+            {"name": "Ters Repo", "value": 10.0},
+            {"name": "Nakit", "value": 5.0}
+        ]
+    },
+    "PCS": {
+        "fund_size": "₺4,850,200,000",
+        "risk_level": 1,
+        "manager": "Zeynep Yılmaz / Pusula Portföy",
+        "assets_distribution": [
+            {"name": "Ters Repo", "value": 60.0},
+            {"name": "Finansman Bonosu", "value": 35.0},
+            {"name": "Nakit", "value": 5.0}
+        ]
+    },
+    "ABG": {
+        "fund_size": "₺742,000,000",
+        "risk_level": 4,
+        "manager": "Ömer Faruk Kar / Pusula Portföy",
+        "assets_distribution": [
+            {"name": "Özel Sektör Tahvili", "value": 50.0},
+            {"name": "Hisse Senedi", "value": 35.0},
+            {"name": "Nakit ve Repo", "value": 15.0}
+        ]
+    }
 }
 
 class TefasService:
@@ -479,118 +645,8 @@ class TefasService:
         code = code.upper()
         funds = self.get_funds(index_change_pct)
         
-        details_map = {
-            "PHE": {
-                "fund_size": "₺1,854,200,000",
-                "risk_level": 6,
-                "manager": "Ömer Faruk Kar / Pusula Portföy",
-                "assets_distribution": [
-                    {"name": "KTLEV", "value": 9.60},
-                    {"name": "ODINE", "value": 9.48},
-                    {"name": "GUNDG", "value": 8.91},
-                    {"name": "PKZ", "value": 8.13},
-                    {"name": "PCS", "value": 8.07},
-                    {"name": "PASEU", "value": 6.64},
-                    {"name": "HEDEF", "value": 5.11},
-                    {"name": "THYAO", "value": 4.75},
-                    {"name": "AKBNK", "value": 4.05},
-                    {"name": "TRALT", "value": 3.87},
-                    {"name": "YKBNK", "value": 3.62},
-                    {"name": "BALSU", "value": 2.88},
-                    {"name": "DSTKF", "value": 2.77},
-                    {"name": "ISCTR", "value": 2.64},
-                    {"name": "ANELE", "value": 2.20},
-                    {"name": "TATEN", "value": 1.86},
-                    {"name": "MGROS", "value": 1.76},
-                    {"name": "SAHOL", "value": 1.74},
-                    {"name": "BIMAS", "value": 1.59},
-                    {"name": "TCELL", "value": 1.51},
-                    {"name": "KCHOL", "value": 1.40},
-                    {"name": "TTKOM", "value": 1.36}
-                ]
-            },
-            "PBR": {
-                "fund_size": "₺985,500,000",
-                "risk_level": 4,
-                "manager": "Ali Rıza / Pusula Portföy",
-                "assets_distribution": [
-                    {"name": "ODINE", "value": 9.65},
-                    {"name": "KTLEV", "value": 9.29},
-                    {"name": "GUNDG", "value": 9.24},
-                    {"name": "PKZ", "value": 8.13},
-                    {"name": "PCS", "value": 8.07},
-                    {"name": "BALSU", "value": 6.09},
-                    {"name": "HEDEF", "value": 4.73},
-                    {"name": "PASEU", "value": 4.52},
-                    {"name": "TRALT", "value": 3.40},
-                    {"name": "THYAO", "value": 2.73},
-                    {"name": "ANELE", "value": 2.30},
-                    {"name": "TCELL", "value": 1.67},
-                    {"name": "TATEN", "value": 1.58},
-                    {"name": "DSTKF", "value": 1.57},
-                    {"name": "AKBNK", "value": 1.13},
-                    {"name": "YKBNK", "value": 1.03}
-                ]
-            },
-            "DFI": {
-                "fund_size": "₺2,410,200,000",
-                "risk_level": 5,
-                "manager": "Hakan Ateş / Atlas Portföy",
-                "assets_distribution": [
-                    {"name": "IEYHO", "value": 64.87},
-                    {"name": "ABG", "value": 35.13}
-                ]
-            },
-            "TLY": {
-                "fund_size": "₺3,125,000,000",
-                "risk_level": 3,
-                "manager": "Gökhan Şen / Tera Portföy",
-                "assets_distribution": [{"name": "Özel Sektör Borçlanma", "value": 75}, {"name": "Ters Repo", "value": 20}, {"name": "Nakit", "value": 5}]
-            },
-            "TMV": {
-                "fund_size": "₺754,200,000",
-                "risk_level": 6,
-                "manager": "Yapay Zekâ Algoritması / Tera Portföy",
-                "assets_distribution": [{"name": "BIST 30 Hisse", "value": 90}, {"name": "Ters Repo", "value": 8}, {"name": "Nakit", "value": 2}]
-            },
-            "PUK": {
-                "fund_size": "₺425,800,000",
-                "risk_level": 6,
-                "manager": "Melih Aydın / Pusula Portföy",
-                "assets_distribution": [{"name": "Katılım Hisse Senedi", "value": 95}, {"name": "Kira Sertifikası (Sukuk)", "value": 5}]
-            },
-            "PKZ": {
-                "fund_size": "₺612,400,000",
-                "risk_level": 6,
-                "manager": "Ömer Faruk Kar / Pusula Portföy",
-                "assets_distribution": [
-                    {"name": "Hisse Senedi (BIST)", "value": 85.0},
-                    {"name": "Ters Repo", "value": 10.0},
-                    {"name": "Nakit", "value": 5.0}
-                ]
-            },
-            "PCS": {
-                "fund_size": "₺4,850,200,000",
-                "risk_level": 1,
-                "manager": "Zeynep Yılmaz / Pusula Portföy",
-                "assets_distribution": [
-                    {"name": "Ters Repo", "value": 60.0},
-                    {"name": "Finansman Bonosu", "value": 35.0},
-                    {"name": "Nakit", "value": 5.0}
-                ]
-            },
-            "ABG": {
-                "fund_size": "₺742,000,000",
-                "risk_level": 4,
-                "manager": "Ömer Faruk Kar / Pusula Portföy",
-                "assets_distribution": [
-                    {"name": "Özel Sektör Tahvili", "value": 50.0},
-                    {"name": "Hisse Senedi", "value": 35.0},
-                    {"name": "Nakit ve Repo", "value": 15.0}
-                ]
-            }
-        }
-        
+        details_map = FUND_DETAILS_MAP
+
         for f in funds:
             if f["code"] == code:
                 details = details_map.get(code, {
@@ -601,6 +657,113 @@ class TefasService:
                 })
                 return {**f, **details}
         return None
+
+    def get_live_estimated_return(self, code: str, _visited: Optional[set] = None) -> Optional[Dict[str, Any]]:
+        """Estimated INTRADAY % change for a fund, computed from its known
+        holdings' live prices - TEFAS itself only publishes one NAV per day,
+        so this is the only way to show something resembling a live number
+        for "Popüler Fonlar - Anlık Getiri" instead of a stale daily figure.
+
+        Walks FUND_DETAILS_MAP[code]["assets_distribution"]: a plain stock
+        ticker's contribution is its live change_percent (from the same
+        TradingView cache the rest of the app already uses); a holding that
+        is itself another tracked fund is resolved RECURSIVELY the same way
+        (so DFI's ABG holding, PBR's PKZ/PCS/PRY holdings etc. are estimated
+        too, not skipped) - `_visited` guards against a cycle. If a holding
+        can't be resolved to a live quote at all (an unlisted category like
+        "Ters Repo"/"Nakit", or a sub-fund with no known composition of its
+        own), it falls back to that fund's last real TEFAS daily_return, or
+        is simply excluded from the weighted sum for a plain unknown ticker.
+
+        This is explicitly an estimate: weights are the last known/disclosed
+        composition (not live, and not guaranteed to sum to 100 - the
+        remainder is uncounted cash/bonds/other), multiplied by each
+        holding's live change - not a real intraday NAV recalculation.
+        """
+        code = code.upper()
+        details = FUND_DETAILS_MAP.get(code)
+        if not details:
+            return None
+        _visited = (_visited or set()) | {code}
+
+        # BIST equities are limited to roughly +-10% per session; a handful
+        # of thinly-traded tickers (confirmed live: KTLEV showing -73% due to
+        # a bad prev_close in the TradingView feed, pre-existing and unrelated
+        # to fund data) can report implausible swings from feed glitches. A
+        # generous +-20% sanity ceiling catches those without rejecting real
+        # limit-up/down days, so a single bad quote can't corrupt the
+        # weighted estimate the user relies on.
+        MAX_PLAUSIBLE_CHANGE_PCT = 20.0
+
+        holdings_out = []
+        estimated_change = 0.0
+        resolved_weight = 0.0
+
+        for item in details["assets_distribution"]:
+            name = item["name"]
+            weight = float(item["value"])
+            ticker = name.upper()
+
+            # A holding that's itself a tracked fund - resolve its OWN
+            # estimate recursively, but only trust that recursive number if
+            # enough of ITS composition was itself resolvable to live quotes
+            # (e.g. PKZ/PCS/ABG are only known here as generic category
+            # labels like "Ters Repo"/"Nakit" - recursing into those would
+            # resolve almost nothing and silently understate the estimate
+            # near zero). Below that bar, fall back to the fund's own last
+            # real TEFAS daily return instead - a real, if lagging, number
+            # beats a mostly-empty recursive one.
+            MIN_TRUSTED_RESOLVED_PCT = 20.0
+            if ticker in FUND_DETAILS_MAP and ticker not in _visited:
+                sub = self.get_live_estimated_return(ticker, _visited)
+                if sub is not None and sub["resolved_weight_pct"] >= MIN_TRUSTED_RESOLVED_PCT:
+                    change = sub["estimated_change_pct"]
+                    holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "fund"})
+                    estimated_change += weight / 100 * change
+                    resolved_weight += weight
+                    continue
+
+            if ticker in BASE_FUNDS:
+                # A tracked fund whose own composition isn't known (or wasn't
+                # resolvable enough above) - fall back to its last real
+                # TEFAS daily return.
+                cached = self._cached_funds.get(ticker)
+                if cached is not None and abs(cached["daily_return"]) <= MAX_PLAUSIBLE_CHANGE_PCT:
+                    change = cached["daily_return"]
+                    holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "fund_daily"})
+                    estimated_change += weight / 100 * change
+                    resolved_weight += weight
+                    continue
+
+            # market_data_service.get_quote() NEVER returns None - for any
+            # symbol it doesn't recognize (e.g. a category label like "Ters
+            # Repo"/"Nakit") it still returns a synthetic fallback quote
+            # (change_percent 0.0) while it tries to subscribe in the
+            # background. Checking truthiness on that return value would
+            # silently treat every such label as a real "0% today" stock and
+            # inflate resolved_weight_pct - the known-ticker universe must be
+            # checked first instead.
+            is_known_ticker = ticker in _KNOWN_STOCK_TICKERS
+            quote = market_data_service.get_quote(ticker) if is_known_ticker else None
+            change_pct = quote.get("change_percent") if quote else None
+            if change_pct is not None and abs(float(change_pct)) <= MAX_PLAUSIBLE_CHANGE_PCT:
+                change = float(change_pct)
+                holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "stock"})
+                estimated_change += weight / 100 * change
+                resolved_weight += weight
+            else:
+                # Unresolvable (a category label like "Nakit"/"Ters Repo", a
+                # ticker with no live quote yet, or a quote that failed the
+                # plausibility check above) - excluded from the weighted sum
+                # rather than guessed at.
+                holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": None, "type": "unresolved"})
+
+        return {
+            "code": code,
+            "estimated_change_pct": round(estimated_change, 2),
+            "resolved_weight_pct": round(resolved_weight, 2),
+            "holdings": holdings_out,
+        }
 
     def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> tuple[List[Dict[str, Any]], bool]:
         """
@@ -641,7 +804,6 @@ class TefasService:
         candles = []
 
         # Correlate with XU100 index performance as a placeholder only
-        from app.services.market_data import market_data_service
         xu100_candles = market_data_service.get_candles("XU100", "1d", count=count, wait=False, subscribe=False)
         
         if xu100_candles and len(xu100_candles) >= 5:
