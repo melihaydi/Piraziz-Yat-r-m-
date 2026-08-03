@@ -1,0 +1,7 @@
+# Production reverse proxy config, mirrored from the live server
+# (/home/ubuntu/bip/Caddyfile). Used by docker-compose.prod.yml's caddy
+# service. sslip.io gives Caddy a real DNS name for automatic Let's
+# Encrypt HTTPS without owning a domain.
+92-5-160-231.sslip.io {
+	reverse_proxy backend:8000
+}

@@ -360,7 +360,13 @@ class MarketDataService:
             "US100": 19820.00
         }
         default_val = fallbacks.get(symbol, 150.0)
-        
+        logger.warning(
+            f"No live quote cached yet for {symbol} - serving hardcoded fallback "
+            f"price ({default_val}) while the TradingView subscription connects. "
+            f"If this keeps appearing for the same symbol, the live feed for it "
+            f"is stuck and prices/P&L for that symbol are stale."
+        )
+
         return {
             "symbol": symbol,
             "exchange": "BIST",

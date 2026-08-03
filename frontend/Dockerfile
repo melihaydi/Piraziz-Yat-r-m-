@@ -1,20 +1,29 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# --- runtime image: only the standalone server, no dev tooling/source ---
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package dependencies
-COPY package.json package-lock.json ./
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
 
-# Install dependencies
-RUN npm ci
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
+USER appuser
 
-# Copy source code
-COPY . .
-
-# Expose port
 EXPOSE 3000
 
-# Next.js telemetry disable
-ENV NEXT_TELEMETRY_DISABLED 1
-
-CMD ["npm", "run", "dev"]
+CMD ["node", "server.js"]

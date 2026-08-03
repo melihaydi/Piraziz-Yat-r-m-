@@ -1,3 +1,8 @@
+# LOCAL DEV ONLY - hot-reloading, bind-mounted source, ports exposed
+# directly on the host. Production runs docker-compose.prod.yml (no
+# --reload, standalone frontend build, Caddy reverse proxy, no source
+# bind-mounts) - see deployment_guide.md. Never point a `docker compose
+# -f docker-compose.yml` invocation at a production host.
 version: '3.8'
 
 services:
@@ -75,6 +80,10 @@ services:
       dockerfile: Dockerfile
     container_name: bip_frontend
     restart: always
+    # Overrides the Dockerfile's production CMD (node server.js against the
+    # built standalone output) with the dev server against the bind-mounted
+    # source below, matching every other service in this dev-only file.
+    command: npm run dev
     ports:
       - "3000:3000"
     volumes:

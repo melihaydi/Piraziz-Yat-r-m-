@@ -1,0 +1,82 @@
+# PRODUCTION compose file - this is what actually runs on the Oracle Cloud
+# VM (92.5.160.231, /home/ubuntu/bip). It was hand-edited directly on the
+# server over time and had drifted out of version control; this copy was
+# pulled back from the server so infra changes go through git like
+# everything else. If you edit this file, deploy it with:
+#
+#   scp docker-compose.prod.yml ubuntu@92.5.160.231:/home/ubuntu/bip/docker-compose.yml
+#   ssh ubuntu@92.5.160.231 "cd /home/ubuntu/bip && sudo docker compose up -d"
+#
+# Differences from docker-compose.yml (dev): no --reload, no source
+# bind-mounts, per-service memory limits, Caddy terminates TLS instead of
+# exposing backend/db/redis ports directly on the host. There's no frontend
+# or celery_worker container here - the frontend is deployed separately on
+# Netlify (see netlify.toml) and Celery has no active workload in
+# production yet (see backend/app/workers/celery_app.py).
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: bip_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 150m
+
+  redis:
+    image: redis:7-alpine
+    container_name: bip_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 50m
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bip_backend
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 400m
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: bip_caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    mem_limit: 60m
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

@@ -1,9 +1,15 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from app.core.config import settings
 from app.core.limiter import limiter
+from app.core.notify import send_telegram_alert
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="BIST Intelligence Platform (BIP) API",
@@ -13,6 +19,20 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Without this, an unhandled exception in a route just becomes an
+    # opaque 500 with nothing logged anywhere - there's no Sentry (or
+    # equivalent) wired up yet, so this + the Telegram alert below is the
+    # only way a crash gets noticed instead of silently failing requests.
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    send_telegram_alert(
+        f"[BIP backend] Unhandled exception on {request.method} {request.url.path}: {exc}",
+        key=f"{request.url.path}:{type(exc).__name__}",
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 # CORS configuration
 origins = [
@@ -58,7 +78,7 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check():
+async def health_check(response: Response):
     from sqlalchemy import text
     from app.db.session import engine
     from app.core.redis import cache_service
@@ -72,6 +92,13 @@ async def health_check():
         pass
 
     redis_connected = cache_service.is_connected()
+
+    # A degraded dependency (DB down especially) means the API can't
+    # actually serve requests, so this must not return 200 - otherwise
+    # Docker's HEALTHCHECK and any uptime check hitting this endpoint will
+    # report "healthy" right through an outage.
+    if not db_connected:
+        response.status_code = 503
 
     return {
         "status": "healthy" if (db_connected and redis_connected) else "degraded",

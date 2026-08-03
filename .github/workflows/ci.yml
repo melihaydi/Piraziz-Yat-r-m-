@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.14.0-alpha.5'  # Or nearest stable Python Cp314 release used in target runtime
+          python-version: '3.11'  # matches backend/Dockerfile's python:3.11-slim base image
 
       - name: Install dependencies
         run: |

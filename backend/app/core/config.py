@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 
     # Notifications
     TELEGRAM_BOT_TOKEN: Optional[str] = None
+    TELEGRAM_CHAT_ID: Optional[str] = None
     DISCORD_WEBHOOK_URL: Optional[str] = None
 
     # Email
