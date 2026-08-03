@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
-from app.services.tefas import TefasService
+import pytest
+
+from app.services.tefas import TefasService, _deposit_days_for_weekday
 
 
 def _quotes(mapping):
@@ -48,13 +50,16 @@ def test_estimate_excludes_unresolvable_holdings_from_weighted_sum():
     # into _cached_funds from FALLBACKS - clear that here so this test
     # exercises the genuinely-nothing-resolvable case (ISKPL isn't a
     # tracked fund and has no live quote mocked, so it must end up
-    # unresolved rather than contributing a fabricated number).
+    # unresolved rather than contributing a fabricated number). DFI's
+    # MEVDUAT holding always resolves regardless (fixed deposit rate), so
+    # pin the day-count for a deterministic expected total.
     with service._lock:
         service._cached_funds.pop("ABG", None)
-    with patch("app.services.tefas.market_data_service.get_quote", return_value=None):
-        result = service.get_live_estimated_return("DFI")
+    with patch("app.services.tefas._calendar_days_since_last_bist_session", return_value=1):
+        with patch("app.services.tefas.market_data_service.get_quote", return_value=None):
+            result = service.get_live_estimated_return("DFI")
 
-    assert result["estimated_change_pct"] == 0.0
+    assert result["estimated_change_pct"] == pytest.approx(25.7 / 100 * 0.12, abs=0.001)
     unresolved = [h for h in result["holdings"] if h["type"] == "unresolved"]
     assert len(unresolved) >= 1  # ISKPL at minimum, since no quote is mocked
 
@@ -129,3 +134,42 @@ def test_estimate_excludes_implausible_quote_swings():
     ieyho_holding = next(h for h in result["holdings"] if h["ticker"] == "IEYHO")
     assert ieyho_holding["type"] == "stock"
     assert ieyho_holding["change_pct"] == 2.0
+
+
+def test_deposit_holding_uses_flat_daily_rate_on_a_weekday():
+    # DFI's MEVDUAT holding earns a fixed 0.12%/day rate (confirmed by the
+    # user) - on an ordinary weekday-to-weekday estimate that's exactly one
+    # day of interest.
+    service = TefasService()
+    with patch("app.services.tefas._calendar_days_since_last_bist_session", return_value=1):
+        with patch("app.services.tefas.market_data_service.get_quote", return_value=None):
+            result = service.get_live_estimated_return("DFI")
+
+    mevduat = next(h for h in result["holdings"] if h["ticker"] == "MEVDUAT")
+    assert mevduat["type"] == "deposit"
+    assert mevduat["change_pct"] == 0.12
+
+
+def test_deposit_holding_accrues_weekend_interest_across_monday():
+    # A deposit earns interest every calendar day (unlike stocks, which
+    # don't move over the weekend) - so a Monday estimate vs. Friday's close
+    # must count 3 days of interest (Fri->Sat->Sun->Mon), not 1, or it
+    # understates the holding's real contribution.
+    service = TefasService()
+    with patch("app.services.tefas._calendar_days_since_last_bist_session", return_value=3):
+        with patch("app.services.tefas.market_data_service.get_quote", return_value=None):
+            result = service.get_live_estimated_return("DFI")
+
+    mevduat = next(h for h in result["holdings"] if h["ticker"] == "MEVDUAT")
+    assert mevduat["change_pct"] == pytest.approx(0.36)
+
+
+@pytest.mark.parametrize("weekday,expected_days", [
+    (0, 3),  # Monday - counts Fri->Sat->Sun->Mon
+    (1, 1),  # Tuesday
+    (2, 1),  # Wednesday
+    (3, 1),  # Thursday
+    (4, 1),  # Friday
+])
+def test_deposit_days_for_weekday(weekday, expected_days):
+    assert _deposit_days_for_weekday(weekday) == expected_days

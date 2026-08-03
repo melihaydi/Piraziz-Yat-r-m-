@@ -100,6 +100,31 @@ TradingViewStream.subscribe_chart = patched_subscribe_chart
 
 logger = logging.getLogger(__name__)
 
+# Symbols with a recent "bedelsiz sermaye artırımı" (bonus/rights share
+# issue) whose ratio TradingView's LIVE quote feed hasn't applied yet. The
+# chart/candle feed is requested with adjustment="splits" (see
+# _send_chart_subscribe in borsapy's stream.py), but the live quote feed
+# (quote_add_symbols, used by get_quote() below) has no equivalent option -
+# it keeps computing change/change_percent against the PRE-action
+# prev_close, producing an impossible single-day move until TradingView's
+# own backend catches up (observed to take up to a day or two).
+#
+# Confirmed live: KTLEV's %238.16 bedelsiz issue, ex-date 2026-08-03 (100
+# lot -> 338 lot, SPK-approved 2026-07-29) made the raw feed report a fake
+# ~-73% "crash" (real BIST daily limit is ~+-10%).
+# https://www.ekonomim.com/sirketler/katilimevim-yuzde-238-bedelsiz-sermaye-artiracak-haberi-909371
+#
+# ratio = 1 + bonus_pct/100 (e.g. 238.16% bonus -> 3.3816x more shares,
+# so the pre-action prev_close must be divided by that factor).
+_CORPORATE_ACTION_RATIO: Dict[str, float] = {
+    "KTLEV": 3.3816,
+}
+# Only correct while the raw change still looks implausible - this makes the
+# fix self-disable once TradingView's feed catches up, instead of needing to
+# be manually removed later (and risking a double-correction if left in).
+_IMPLAUSIBLE_CHANGE_PCT_THRESHOLD = 20.0
+
+
 class MarketDataService:
     def __init__(self):
         self.stream = TradingViewStream()
@@ -129,7 +154,7 @@ class MarketDataService:
             # of a name-only placeholder - see get_fund()'s details_map.
             "OZATD", "TEHOL", "TRHOL", "ANELE", "SELEC", "PEKGY", "DSTKF", "ALKLC", "EUPWR", "TERA",
             "GESAN", "TURSG", "TRALT", "TATEN", "SKBNK", "DAPGM", "BRSAN", "MPARK", "DCTTR", "IZFAS",
-            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS"
+            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS", "TMPOL"
         ]
         
         self.tickers = []
@@ -161,7 +186,8 @@ class MarketDataService:
             "BETAE": "Beta Enerji ve Teknoloji A.Ş.", "MOPAS": "Mopaş Marketçilik Gıda Sanayi ve Ticaret A.Ş.",
             "ISKPL": "Işık Plastik Sanayi ve Dış Ticaret Pazarlama A.Ş.", "AKSEN": "Aksa Enerji Üretim A.Ş.",
             "KORDS": "Kordsa Teknik Tekstil A.Ş.", "SVGYO": "Savur Gayrimenkul Yatırım Ortaklığı A.Ş.",
-            "MANAS": "Manas Enerji Yönetimi Sanayi ve Ticaret A.Ş."
+            "MANAS": "Manas Enerji Yönetimi Sanayi ve Ticaret A.Ş.",
+            "TMPOL": "Temapol Polimer Plastik ve İnşaat Sanayi Ticaret A.Ş.",
         }
         
         for t in allowed_list:
@@ -325,13 +351,32 @@ class MarketDataService:
             logger.warning(f"Error evaluating trigger condition {condition}: {e}")
         return False
 
+    def _correct_stale_corporate_action(self, symbol: str, item: Dict[str, Any]) -> None:
+        """Mutates `item` in place to correct change/change_percent for a
+        known-stale corporate-action ratio (see _CORPORATE_ACTION_RATIO)."""
+        ratio = _CORPORATE_ACTION_RATIO.get(symbol)
+        if not ratio:
+            return
+        raw_change_pct = item.get("change_percent")
+        prev_close = item.get("prev_close")
+        last = item.get("last")
+        if raw_change_pct is None or not prev_close or last is None:
+            return
+        if abs(raw_change_pct) <= _IMPLAUSIBLE_CHANGE_PCT_THRESHOLD:
+            return  # Feed has already caught up - nothing to correct.
+        corrected_prev_close = prev_close / ratio
+        corrected_change = last - corrected_prev_close
+        item["prev_close"] = corrected_prev_close
+        item["change"] = corrected_change
+        item["change_percent"] = (corrected_change / corrected_prev_close) * 100
+
     def get_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get live quote for a symbol, dynamically subscribing if not cached."""
         symbol = symbol.upper()
-        
+
         # Map US100 to NDX (Request 1!)
         lookup_symbol = "NDX" if symbol == "US100" else symbol
-        
+
         # 1. Try cache
         quote = self.stream.get_quote(lookup_symbol)
         if quote and quote.get("last") is not None:
@@ -342,6 +387,7 @@ class MarketDataService:
             item = dict(quote)
             if symbol == "US100":
                 item["symbol"] = "US100"
+            self._correct_stale_corporate_action(symbol, item)
             return item
             
         # 2. Subscribe dynamically in the background thread if not already triggered (non-blocking)
@@ -408,8 +454,14 @@ class MarketDataService:
         }
 
     def get_all_quotes(self) -> Dict[str, Dict[str, Any]]:
-        """Get all cached quotes from the live stream, as-is (no artificial rescaling)."""
-        return self.stream.get_all_quotes()
+        """Get all cached quotes from the live stream, as-is (no artificial
+        rescaling) other than the same stale-corporate-action correction
+        get_quote() applies - screener/heatmap callers use this bulk method,
+        not get_quote(), so the correction has to be applied here too."""
+        quotes = self.stream.get_all_quotes()
+        for symbol, item in quotes.items():
+            self._correct_stale_corporate_action(symbol, item)
+        return quotes
 
     def get_candles(self, symbol: str, interval: str, count: Optional[int] = None, wait: bool = True, subscribe: bool = True) -> List[Dict[str, Any]]:
         """Fetch historical/real-time candles for chart plotting."""

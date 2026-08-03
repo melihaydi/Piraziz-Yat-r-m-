@@ -17,6 +17,29 @@ logger = logging.getLogger(__name__)
 # checking the quote's truthiness alone isn't enough.
 _KNOWN_STOCK_TICKERS = {t["ticker"] for t in market_data_service.tickers}
 
+# A fund's disclosed composition sometimes includes a plain bank-deposit
+# holding (labeled "Mevduat" or, informally, "Sabit") rather than a stock or
+# another fund - it earns a fixed, user-confirmed daily rate rather than
+# anything we can look up a live quote for.
+_DEPOSIT_HOLDING_NAMES = {"MEVDUAT", "SABIT", "SABİT"}
+_DAILY_DEPOSIT_RETURN_PCT = 0.12
+_TR_TZ = datetime.timezone(timedelta(hours=3))
+
+
+def _deposit_days_for_weekday(weekday: int) -> int:
+    """weekday: Monday=0 ... Sunday=6 (Python's datetime.weekday()
+    convention). A bank deposit accrues interest every calendar day,
+    including weekends, unlike stock prices which only move on trading days
+    - so a Monday estimate (vs. Friday's close) must count 3 days of
+    deposit interest, not 1, or it understates the deposit holding's
+    contribution. Does not account for market holidays (no BIST holiday
+    calendar in this codebase yet) - weekends are the dominant case."""
+    return 3 if weekday == 0 else 1
+
+
+def _calendar_days_since_last_bist_session() -> int:
+    return _deposit_days_for_weekday(datetime.datetime.now(_TR_TZ).weekday())
+
 # TEFAS's own API (via pytefas) partitions ALL funds into 5 separate "kind"
 # buckets: YAT (yatırım fonları), EMK (emeklilik), BYF (borsa yatırım/ETF),
 # GYF (gayrimenkul/real estate) and GSYF (girişim sermayesi/venture capital) -
@@ -46,6 +69,16 @@ BASE_FUNDS = {
     # succeeds (see its `name = series[0][2] or meta.get("name", ...)`), so
     # this doesn't need to be exact, just present so the code starts tracking it.
     "PRY": {"name": "PRY Fonu", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"},
+    # PNU/PGH/PA2 are Pusula Portföy sister funds held inside PBR's own
+    # composition (see FUND_DETAILS_MAP["PBR"]) - tracked here so PBR's live
+    # estimate can recurse into them / fall back to their real daily_return.
+    "PNU": {"name": "Pusula Portföy İkinci Para Piyasası (TL) Fonu", "category": "Para Piyasası", "price": 10.0000, "category_tr": "Para Piyasası Fonu"},
+    "PGH": {"name": "Pusula Portföy Güney Hisse Senedi Serbest (TL) Fon", "category": "Serbest Yoğun", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "PA2": {"name": "Pusula Portföy Altın Katılım Fonu", "category": "Katılım", "price": 10.0000, "category_tr": "Katılım / Hisse Senedi"},
+    # KVR/PFS are Atlas Portföy sister funds held inside DFI's own
+    # composition (see FUND_DETAILS_MAP["DFI"]), same rationale as PNU/PGH/PA2 above.
+    "KVR": {"name": "Atlas Portföy Kısa Vadeli Katılım Serbest Fon", "category": "Katılım", "price": 10.0000, "category_tr": "Katılım / Hisse Senedi"},
+    "PFS": {"name": "Atlas Portföy Fon Sepeti Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
 }
 
 # Baseline fallback values (exact prices & returns from July 20, 2026)
@@ -60,7 +93,12 @@ FALLBACKS = {
     "PKZ": {"price": 13.4416, "daily": -4.6673, "weekly": -2.15, "monthly": 5.85},
     "PCS": {"price": 8.2528, "daily": -3.7028, "weekly": -1.82, "monthly": 3.12},
     "ABG": {"price": 10.0000, "daily": 0.15, "weekly": 0.55, "monthly": 2.45},
-    "PRY": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
+    "PRY": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "PNU": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "PGH": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "PA2": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "KVR": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "PFS": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
 }
 
 # Module-level (not just get_fund()-local) so get_live_estimated_return()
@@ -103,38 +141,44 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 4,
         "manager": "Ali Rıza / Pusula Portföy",
         "assets_distribution": [
-            {"name": "ODINE", "value": 9.65},
-            {"name": "PKZ", "value": 7.99},
-            {"name": "PCS", "value": 7.70},
-            {"name": "KTLEV", "value": 9.29},
-            {"name": "GUNDG", "value": 9.24},
-            {"name": "BALSU", "value": 6.09},
-            {"name": "HEDEF", "value": 4.73},
-            {"name": "PASEU", "value": 4.52},
-            {"name": "TRALT", "value": 3.40},
-            {"name": "THYAO", "value": 2.73},
-            {"name": "PRY", "value": 2.50},
-            {"name": "ANELE", "value": 2.30},
-            {"name": "TCELL", "value": 1.67},
-            {"name": "TATEN", "value": 1.58},
-            {"name": "DSTKF", "value": 1.57},
-            {"name": "AKBNK", "value": 1.13},
-            {"name": "YKBNK", "value": 1.03},
-            {"name": "MGROS", "value": 0.98},
-            {"name": "SKBNK", "value": 0.87},
-            {"name": "DAPGM", "value": 0.59},
-            {"name": "EREGL", "value": 0.50},
-            {"name": "BRSAN", "value": 0.48},
-            {"name": "TTKOM", "value": 0.42},
-            {"name": "MPARK", "value": 0.40},
-            {"name": "PGSUS", "value": 0.38},
-            {"name": "TERA", "value": 0.25},
-            {"name": "DCTTR", "value": 0.25},
-            {"name": "IZFAS", "value": 0.24},
-            {"name": "PEKGY", "value": 0.23},
-            {"name": "ANSGR", "value": 0.20},
-            {"name": "BETAE", "value": 0.08},
-            {"name": "MOPAS", "value": 0.01}
+            {"name": "ODINE", "value": 14.6},
+            {"name": "GUNDG", "value": 9.6},
+            {"name": "BALSU", "value": 9.3},
+            {"name": "PASEU", "value": 8.3},
+            {"name": "KTLEV", "value": 8.2},
+            {"name": "PKZ", "value": 7.0},
+            {"name": "PCS", "value": 6.6},
+            {"name": "HEDEF", "value": 4.6},
+            {"name": "THYAO", "value": 4.0},
+            # "SABİT" (fixed-income) per the user - this is a bank deposit
+            # holding, resolved via the MEVDUAT/SABİT fixed daily-return path
+            # below rather than a stock/fund lookup.
+            {"name": "SABIT", "value": 3.6},
+            {"name": "TRALT", "value": 3.4},
+            {"name": "MGROS", "value": 2.3},
+            {"name": "AKBNK", "value": 2.0},
+            {"name": "YKBNK", "value": 1.9},
+            {"name": "PRY", "value": 1.7},
+            {"name": "PGH", "value": 1.6},
+            {"name": "TATEN", "value": 1.5},
+            {"name": "TCELL", "value": 1.5},
+            {"name": "DSTKF", "value": 1.0},
+            {"name": "ANELE", "value": 1.0},
+            {"name": "TMPOL", "value": 0.9},
+            {"name": "SKBNK", "value": 0.7},
+            {"name": "PNU", "value": 0.6},
+            {"name": "BRSAN", "value": 0.6},
+            {"name": "DAPGM", "value": 0.5},
+            {"name": "MPARK", "value": 0.5},
+            {"name": "EREGL", "value": 0.5},
+            {"name": "PGSUS", "value": 0.4},
+            {"name": "TERA", "value": 0.3},
+            {"name": "TTKOM", "value": 0.3},
+            {"name": "DCTTR", "value": 0.3},
+            {"name": "PEKGY", "value": 0.2},
+            {"name": "ANSGR", "value": 0.2},
+            {"name": "IZFAS", "value": 0.2},
+            {"name": "PA2", "value": 0.1}
         ]
     },
     "DFI": {
@@ -142,9 +186,17 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 5,
         "manager": "Hakan Ateş / Atlas Portföy",
         "assets_distribution": [
-            {"name": "IEYHO", "value": 64.87},
-            {"name": "ABG", "value": 36.00},
-            {"name": "ISKPL", "value": 4.93}
+            {"name": "IEYHO", "value": 40.3},
+            {"name": "ABG", "value": 29.2},
+            # Bank deposit holding - fixed daily-return path below (0.12%/day, per the user).
+            {"name": "MEVDUAT", "value": 25.7},
+            {"name": "ISKPL", "value": 4.3},
+            {"name": "KVR", "value": 0.2},
+            # No verifiable TEFAS/BIST code found for "LİDER" - left as a
+            # plain (unresolved) label rather than guessing one; negligible
+            # weight (0.3%) so it doesn't materially affect the estimate.
+            {"name": "LİDER", "value": 0.3},
+            {"name": "PFS", "value": 0.1}
         ]
     },
     "TLY": {
@@ -703,6 +755,13 @@ class TefasService:
             name = item["name"]
             weight = float(item["value"])
             ticker = name.upper()
+
+            if ticker in _DEPOSIT_HOLDING_NAMES:
+                change = _DAILY_DEPOSIT_RETURN_PCT * _calendar_days_since_last_bist_session()
+                holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "deposit"})
+                estimated_change += weight / 100 * change
+                resolved_weight += weight
+                continue
 
             # A holding that's itself a tracked fund - resolve its OWN
             # estimate recursively, but only trust that recursive number if
