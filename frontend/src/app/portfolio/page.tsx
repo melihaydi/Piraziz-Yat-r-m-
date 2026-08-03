@@ -24,7 +24,9 @@ import {
   PieChart as PieIcon,
   Activity,
   Loader2,
-  Sparkles
+  Sparkles,
+  Zap,
+  ChevronDown
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -91,6 +93,9 @@ export default function PortfolioPage() {
   const [equityHistory, setEquityHistory] = useState<{ date: string; total_value: number }[]>([])
   const [equityHistoryLoading, setEquityHistoryLoading] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [liveEstimate, setLiveEstimate] = useState<any>(null)
+  const [liveEstimateLoading, setLiveEstimateLoading] = useState(false)
+  const [showLiveEstimate, setShowLiveEstimate] = useState(false)
   const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur">("hisse")
   
   // Modal states
@@ -205,6 +210,30 @@ export default function PortfolioPage() {
     loadCore()
     loadAnalytics()
     loadEquityHistory()
+  }
+
+  // On-demand (not auto-loaded, per user request: "basayım" - "let me
+  // press [the button]") since it's a heavier call (recurses into every
+  // held fund's own composition, same cost as the funds page's live
+  // estimate) - fetched fresh each time the panel opens rather than kept
+  // continuously polling in the background.
+  const handleToggleLiveEstimate = async () => {
+    if (showLiveEstimate) {
+      setShowLiveEstimate(false)
+      return
+    }
+    setShowLiveEstimate(true)
+    setLiveEstimateLoading(true)
+    try {
+      const res = await authFetch("/portfolio/live-estimate")
+      if (res.ok) {
+        setLiveEstimate(await res.json())
+      }
+    } catch (err) {
+      console.error("Failed to load portfolio live estimate:", err)
+    } finally {
+      setLiveEstimateLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -634,6 +663,14 @@ export default function PortfolioPage() {
               </span>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">Toplam Maliyet: ₺{totalCost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <button
+              onClick={handleToggleLiveEstimate}
+              className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+            >
+              <Zap className="h-3 w-3" />
+              Tahmini Getiri
+              <ChevronDown className={`h-3 w-3 transition-transform ${showLiveEstimate ? "rotate-180" : ""}`} />
+            </button>
           </CardContent>
         </Card>
 
@@ -704,6 +741,54 @@ export default function PortfolioPage() {
           </CardContent>
         </Card>
       </div>
+
+      {showLiveEstimate && (
+        <Card glass={true} className="border-amber-500/20">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Zap className="h-5 w-5 text-amber-400" />
+              Tahmini Portföy Getirisi
+            </CardTitle>
+            <CardDescription>
+              Elinizdeki fonların son bilinen varlık dağılımı ile hisselerin canlı fiyat değişimi ağırlıklandırılarak
+              hesaplanan tahmini gün-içi getiri. Gerçek bir NAV yeniden hesaplaması değildir.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {liveEstimateLoading ? (
+              <div className="h-24 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+              </div>
+            ) : !liveEstimate || liveEstimate.estimated_change_pct == null ? (
+              <p className="text-sm text-muted-foreground">
+                Şu an için tahmini getiri hesaplanamadı (kapsam yetersiz veya portföy boş).
+              </p>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-3 mb-4">
+                  <span className={`text-3xl font-extrabold font-mono ${liveEstimate.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                    {liveEstimate.estimated_change_pct >= 0 ? "+" : ""}{liveEstimate.estimated_change_pct.toFixed(2)}%
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium">
+                    kapsam %{liveEstimate.resolved_value_pct} · toplam değer ₺{liveEstimate.total_value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {liveEstimate.holdings.map((h: any) => (
+                    <div key={h.ticker} className="flex items-center justify-between text-xs py-1.5 px-2 rounded-md bg-secondary/30">
+                      <span className="font-semibold text-foreground">{h.ticker}</span>
+                      <span className="text-muted-foreground">₺{h.value.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</span>
+                      <span className={h.change_pct == null ? "text-muted-foreground" : h.change_pct >= 0 ? "text-emerald-400 font-semibold" : "text-rose-500 font-semibold"}>
+                        {h.change_pct == null ? "—" : `${h.change_pct >= 0 ? "+" : ""}${h.change_pct.toFixed(2)}%`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Grid Layout: Assets table vs Distribution & Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
