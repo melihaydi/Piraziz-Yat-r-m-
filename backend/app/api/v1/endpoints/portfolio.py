@@ -188,6 +188,96 @@ def get_portfolio_analytics(
     return result
 
 
+# Below this trust bar, a fund's own recursive estimate is mostly-empty
+# (little of its composition resolved to live quotes) and a stale-but-real
+# daily_return beats it - same threshold funds.py's live-estimate endpoint
+# and tefas.py's own recursion use, kept consistent across all three.
+_MIN_TRUSTED_RESOLVED_PCT = 20.0
+
+
+@router.get("/live-estimate")
+def get_portfolio_live_estimate(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """Estimated INTRADAY % change for the user's whole portfolio (combined
+    across every portfolio they own, like /analytics) - the same idea as
+    GET /funds/popular/live-estimate but applied to whatever the user
+    actually holds, weighted by each holding's CURRENT market value share
+    of the total (not by any fund's disclosed internal weights).
+
+    A fund holding uses tefas_service.get_live_estimated_return() when its
+    composition is known well enough to trust (recursing into sub-fund
+    holdings the same way funds.py does), falling back to that fund's last
+    real TEFAS daily_return otherwise. A stock holding uses its live
+    change_percent. This is explicitly an estimate, not a real intraday
+    portfolio NAV recalculation.
+    """
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
+    all_assets = [asset for p in portfolios for asset in p.assets]
+
+    if not all_assets:
+        return {"estimated_change_pct": None, "resolved_value_pct": 0.0, "total_value": 0.0, "holdings": []}
+
+    tickers = sorted({a.ticker.upper() for a in all_assets})
+    with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
+        price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
+
+    holdings_out = []
+    total_value = 0.0
+    weighted_change_sum = 0.0
+    resolved_value = 0.0
+
+    for asset in all_assets:
+        ticker = asset.ticker.upper()
+        price = price_by_ticker.get(ticker) or asset.average_cost
+        value = asset.shares * price
+        total_value += value
+
+        change_pct = None
+        holding_type = "unresolved"
+
+        if len(ticker) == 3:
+            live_est = tefas_service.get_live_estimated_return(ticker)
+            if live_est is not None and live_est["resolved_weight_pct"] >= _MIN_TRUSTED_RESOLVED_PCT:
+                change_pct = live_est["estimated_change_pct"]
+                holding_type = "fund_live"
+            else:
+                fund = tefas_service.get_fund(ticker)
+                if fund is not None:
+                    change_pct = fund.get("daily_return")
+                    holding_type = "fund_daily"
+        else:
+            quote = market_data_service.get_quote(ticker) if market_data_service.is_known_ticker(ticker) else None
+            if quote and quote.get("change_percent") is not None:
+                change_pct = float(quote["change_percent"])
+                holding_type = "stock"
+
+        if change_pct is not None:
+            weighted_change_sum += value * change_pct
+            resolved_value += value
+
+        holdings_out.append({
+            "ticker": ticker,
+            "value": round(value, 2),
+            "change_pct": change_pct,
+            "type": holding_type,
+        })
+
+    # None (not 0.0) when nothing resolved - a portfolio with zero coverage
+    # genuinely has no estimate, and showing "0.0%" would misleadingly read
+    # as "flat today" instead of "unknown".
+    estimated_change_pct = round(weighted_change_sum / total_value, 2) if resolved_value > 0 else None
+    resolved_value_pct = round(resolved_value / total_value * 100, 2) if total_value > 0 else 0.0
+
+    return {
+        "estimated_change_pct": estimated_change_pct,
+        "resolved_value_pct": resolved_value_pct,
+        "total_value": round(total_value, 2),
+        "holdings": sorted(holdings_out, key=lambda h: h["value"], reverse=True),
+    }
+
+
 @router.post("/", response_model=PortfolioResponse, status_code=status.HTTP_201_CREATED)
 def create_portfolio(
     portfolio_in: PortfolioCreate,

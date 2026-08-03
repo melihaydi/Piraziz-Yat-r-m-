@@ -154,7 +154,7 @@ class MarketDataService:
             # of a name-only placeholder - see get_fund()'s details_map.
             "OZATD", "TEHOL", "TRHOL", "ANELE", "SELEC", "PEKGY", "DSTKF", "ALKLC", "EUPWR", "TERA",
             "GESAN", "TURSG", "TRALT", "TATEN", "SKBNK", "DAPGM", "BRSAN", "MPARK", "DCTTR", "IZFAS",
-            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS", "TMPOL"
+            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS", "TMPOL", "LIDER"
         ]
         
         self.tickers = []
@@ -188,6 +188,7 @@ class MarketDataService:
             "KORDS": "Kordsa Teknik Tekstil A.Ş.", "SVGYO": "Savur Gayrimenkul Yatırım Ortaklığı A.Ş.",
             "MANAS": "Manas Enerji Yönetimi Sanayi ve Ticaret A.Ş.",
             "TMPOL": "Temapol Polimer Plastik ve İnşaat Sanayi Ticaret A.Ş.",
+            "LIDER": "LDR Turizm A.Ş.",
         }
         
         for t in allowed_list:
@@ -196,6 +197,15 @@ class MarketDataService:
                 "name": company_names.get(t, f"{t} Ticaret A.Ş.")
             })
         logger.info(f"Loaded {len(self.tickers)} BIST 30 + Extras priority tickers.")
+
+    def is_known_ticker(self, symbol: str) -> bool:
+        """True if `symbol` is in the tracked stock universe. get_quote()
+        NEVER returns None - for any unrecognized symbol it still returns a
+        synthetic fallback quote, so callers that need to tell "a real
+        tracked stock" apart from "an arbitrary label" (e.g. a TEFAS fund
+        category like "Ters Repo", or an unrelated portfolio ticker) must
+        check this BEFORE calling get_quote(), not rely on its truthiness."""
+        return symbol.upper() in {t["ticker"] for t in self.tickers}
 
     def _initialize_stream(self) -> None:
         """Connects stream and starts background subscription manager."""

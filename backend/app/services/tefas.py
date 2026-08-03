@@ -192,10 +192,12 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             {"name": "MEVDUAT", "value": 25.7},
             {"name": "ISKPL", "value": 4.3},
             {"name": "KVR", "value": 0.2},
-            # No verifiable TEFAS/BIST code found for "LİDER" - left as a
-            # plain (unresolved) label rather than guessing one; negligible
-            # weight (0.3%) so it doesn't materially affect the estimate.
-            {"name": "LİDER", "value": 0.3},
+            # LDR Turizm A.Ş. (BIST:LIDER, confirmed real ticker) - note the
+            # PLAIN ASCII "I", not the Turkish dotted "İ" the user typed:
+            # "İ".upper() stays "İ" under Python's default Unicode casing,
+            # so a dotted-İ spelling here would never match the ASCII
+            # "LIDER" ticker registered in market_data.py's universe.
+            {"name": "LIDER", "value": 0.3},
             {"name": "PFS", "value": 0.1}
         ]
     },
