@@ -267,6 +267,20 @@ def test_get_performance_on_fresh_account_has_no_trades(db, account, fixed_price
     assert perf["avg_loss"] == 0.0
 
 
+def test_get_performance_counts_viop_short_covers_not_just_sat_orders(db, account, fixed_price):
+    # realized_pnl for a VİOP short-cover lands on the AL order, not a SAT
+    # one - get_performance previously filtered by side=="SAT" only and
+    # silently dropped every such trade from win-rate/realized P&L.
+    trade_service.place_order(db, account, "viop", "XU030F", "SAT", 5, order_type="MARKET")
+    fixed_price["value"] = 80.0  # price falls - a winning short cover
+    trade_service.place_order(db, account, "viop", "XU030F", "AL", 5, order_type="MARKET")
+
+    perf = trade_service.get_performance(db, account)
+    assert perf["closed_trades"] == 1
+    assert perf["win_rate_pct"] == 100.0
+    assert perf["realized_pnl"] > 0
+
+
 # --- STOP / STOP_LIMIT orders --------------------------------------------
 
 def test_stop_order_requires_positive_stop_price(db, account, fixed_price):
@@ -342,3 +356,80 @@ def test_cancel_stop_order_releases_locked_cash(db, account, fixed_price):
     pending = trade_service.get_pending_orders(db, account)
     result = trade_service.cancel_pending_order(db, account, pending[0]["id"])
     assert result["locked_cash"] == 0.0
+
+
+# --- tax report -----------------------------------------------------
+
+def test_tax_report_empty_account_has_no_years(db, account, fixed_price):
+    report = trade_service.get_tax_report(db, account)
+    assert report["years"] == []
+
+
+def test_tax_report_groups_current_year_stock_gain(db, account, fixed_price):
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="MARKET")
+    fixed_price["value"] = 120.0
+    trade_service.place_order(db, account, "stock", "AKBNK", "SAT", 10, order_type="MARKET")
+
+    from datetime import datetime
+    report = trade_service.get_tax_report(db, account)
+    assert len(report["years"]) == 1
+    year_row = report["years"][0]
+    assert year_row["year"] == datetime.now().year
+    assert year_row["stock_trade_count"] == 1
+    assert year_row["stock_realized_pnl"] > 0
+    # Default stock stopaj is 0% - a gain still produces zero stopaj.
+    assert year_row["stock_stopaj_estimate"] == 0.0
+    assert year_row["net_after_stopaj_estimate"] == year_row["total_realized_pnl"]
+
+
+def test_tax_report_applies_viop_stopaj_only_to_gains(db, account, fixed_price):
+    # A losing VİOP trade: short then cover at a higher price (a loss).
+    trade_service.place_order(db, account, "viop", "XU030F", "SAT", 5, order_type="MARKET")
+    fixed_price["value"] = 120.0  # price rose - a loss for the short
+    trade_service.place_order(db, account, "viop", "XU030F", "AL", 5, order_type="MARKET")
+
+    report = trade_service.get_tax_report(db, account, viop_stopaj_pct=10.0)
+    year_row = report["years"][0]
+    assert year_row["viop_realized_pnl"] < 0
+    # Losses owe no stopaj (not netted/refunded against nothing).
+    assert year_row["viop_stopaj_estimate"] == 0.0
+
+
+def test_tax_report_computes_viop_stopaj_on_a_gain(db, account, fixed_price):
+    trade_service.place_order(db, account, "viop", "XU030F", "SAT", 5, order_type="MARKET")
+    fixed_price["value"] = 80.0  # price fell - a gain for the short
+    trade_service.place_order(db, account, "viop", "XU030F", "AL", 5, order_type="MARKET")
+
+    report = trade_service.get_tax_report(db, account, viop_stopaj_pct=10.0)
+    year_row = report["years"][0]
+    assert year_row["viop_realized_pnl"] > 0
+    expected_stopaj = round(year_row["viop_realized_pnl"] * 0.10, 2)
+    assert year_row["viop_stopaj_estimate"] == expected_stopaj
+    assert year_row["net_after_stopaj_estimate"] == round(
+        year_row["total_realized_pnl"] - expected_stopaj, 2
+    )
+
+
+def test_tax_report_splits_across_years(db, account, fixed_price):
+    from datetime import datetime, timezone
+    from app.models.trade import TradeOrder
+
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="MARKET")
+    fixed_price["value"] = 110.0
+    trade_service.place_order(db, account, "stock", "AKBNK", "SAT", 10, order_type="MARKET")
+
+    # Backdate this sell order to the prior year to exercise year-bucketing -
+    # executed_at is normally a DB server_default, not settable at placement.
+    sell_order = db.query(TradeOrder).filter(TradeOrder.side == "SAT").first()
+    last_year = datetime.now(timezone.utc).year - 1
+    sell_order.executed_at = datetime(last_year, 12, 15, tzinfo=timezone.utc)
+    db.commit()
+
+    trade_service.place_order(db, account, "stock", "AKBNK", "AL", 10, order_type="MARKET")
+    fixed_price["value"] = 130.0
+    trade_service.place_order(db, account, "stock", "AKBNK", "SAT", 10, order_type="MARKET")
+
+    report = trade_service.get_tax_report(db, account)
+    assert len(report["years"]) == 2
+    assert report["years"][0]["year"] == datetime.now().year  # newest first
+    assert report["years"][1]["year"] == last_year

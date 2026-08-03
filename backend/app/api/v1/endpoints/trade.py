@@ -196,3 +196,19 @@ def get_performance(
 ):
     account = _require_account(db, current_user)
     return trade_service.get_performance(db, account)
+
+
+@router.get("/tax-report")
+def get_tax_report(
+    stock_stopaj_pct: float = 0.0,
+    viop_stopaj_pct: float = 10.0,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Realized gain/loss by year and instrument type, for informational
+    review only - not a tax filing, not advice. stock/viop_stopaj_pct are
+    caller-supplied (see trade_service.get_tax_report's docstring for why
+    these aren't hardcoded) and default to commonly-cited rates the
+    frontend should present as editable, not fixed."""
+    account = _require_account(db, current_user)
+    return trade_service.get_tax_report(db, account, stock_stopaj_pct, viop_stopaj_pct)

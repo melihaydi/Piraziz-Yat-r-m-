@@ -19,6 +19,25 @@ interface PerformanceData {
   avg_loss: number
 }
 
+interface TaxYearRow {
+  year: number
+  stock_realized_pnl: number
+  stock_trade_count: number
+  stock_stopaj_estimate: number
+  viop_realized_pnl: number
+  viop_trade_count: number
+  viop_stopaj_estimate: number
+  total_realized_pnl: number
+  total_stopaj_estimate: number
+  net_after_stopaj_estimate: number
+}
+
+interface TaxReportData {
+  stock_stopaj_pct: number
+  viop_stopaj_pct: number
+  years: TaxYearRow[]
+}
+
 function MetricCard({ label, value, colorClass }: { label: string; value: string; colorClass?: string }) {
   return (
     <div className="bg-[#16171E] border border-slate-800 rounded-xl p-4">
@@ -33,6 +52,11 @@ export default function TradePerformancePage() {
   const [data, setData] = useState<PerformanceData | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const [taxData, setTaxData] = useState<TaxReportData | null>(null)
+  const [taxLoading, setTaxLoading] = useState(true)
+  const [stockStopajPct, setStockStopajPct] = useState("0")
+  const [viopStopajPct, setViopStopajPct] = useState("10")
+
   useEffect(() => {
     if (!account) return
     authFetch("/trade/performance")
@@ -41,6 +65,23 @@ export default function TradePerformancePage() {
       .catch(err => console.error("Failed to load trade performance:", err))
       .finally(() => setLoading(false))
   }, [account])
+
+  const loadTaxReport = React.useCallback(() => {
+    if (!account) return
+    setTaxLoading(true)
+    const stockPct = parseFloat(stockStopajPct) || 0
+    const viopPct = parseFloat(viopStopajPct) || 0
+    authFetch(`/trade/tax-report?stock_stopaj_pct=${stockPct}&viop_stopaj_pct=${viopPct}`)
+      .then(res => res.json())
+      .then(d => setTaxData(d))
+      .catch(err => console.error("Failed to load tax report:", err))
+      .finally(() => setTaxLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account])
+
+  useEffect(() => {
+    loadTaxReport()
+  }, [loadTaxReport])
 
   if (accountLoading || loading) {
     return (
@@ -117,6 +158,93 @@ export default function TradePerformancePage() {
         <MetricCard label="Kapanan İşlem" value={`${data.closed_trades}`} />
         <MetricCard label="Ortalama Kâr" value={`₺${data.avg_win.toFixed(2)}`} colorClass="text-emerald-400" />
         <MetricCard label="Ortalama Zarar" value={`₺${data.avg_loss.toFixed(2)}`} colorClass="text-rose-500" />
+      </div>
+
+      <div className="bg-[#16171E] border border-slate-800 rounded-xl p-4 space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vergi / Maliyet Raporu</div>
+            <p className="text-[10px] text-slate-600 mt-1 max-w-md">
+              Gerçekleşen kâr/zararınızın yıl bazında dökümü. Stopaj oranları resmi bir kaynak değildir - kendi
+              tahmininizi girip güncelleyebilirsiniz; kesin oranlar için resmi kaynakları kontrol edin. Bu bir
+              yatırım/vergi tavsiyesi değildir.
+            </p>
+          </div>
+          <div className="flex items-end gap-3">
+            <div>
+              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Hisse Stopaj %</label>
+              <input
+                type="number"
+                step="any"
+                value={stockStopajPct}
+                onChange={e => setStockStopajPct(e.target.value)}
+                className="w-20 h-8 mt-1 px-2 rounded-md bg-[#1c1d26] border border-slate-800 text-xs font-bold text-white focus:outline-none focus:border-white/30"
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">VİOP Stopaj %</label>
+              <input
+                type="number"
+                step="any"
+                value={viopStopajPct}
+                onChange={e => setViopStopajPct(e.target.value)}
+                className="w-20 h-8 mt-1 px-2 rounded-md bg-[#1c1d26] border border-slate-800 text-xs font-bold text-white focus:outline-none focus:border-white/30"
+              />
+            </div>
+            <button
+              onClick={loadTaxReport}
+              disabled={taxLoading}
+              className="h-8 px-3 rounded-md bg-white text-[#101015] text-[11px] font-bold cursor-pointer disabled:opacity-50"
+            >
+              {taxLoading ? "..." : "Hesapla"}
+            </button>
+          </div>
+        </div>
+
+        {taxLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 text-slate-500 animate-spin" />
+          </div>
+        ) : !taxData || taxData.years.length === 0 ? (
+          <p className="text-[11px] text-slate-500 py-4 text-center">
+            Henüz kapanmış bir işleminiz yok - gerçekleşen kâr/zarar burada birikecek.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="text-slate-400 font-bold border-b border-slate-800 h-8">
+                  <th className="px-3">Yıl</th>
+                  <th className="px-3 text-right">Hisse K/Z</th>
+                  <th className="px-3 text-right">VİOP K/Z</th>
+                  <th className="px-3 text-right">Toplam K/Z</th>
+                  <th className="px-3 text-right">Tahmini Stopaj</th>
+                  <th className="px-3 text-right">Stopaj Sonrası Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {taxData.years.map(row => (
+                  <tr key={row.year} className="border-b border-slate-900 h-10">
+                    <td className="px-3 font-bold text-white">{row.year}</td>
+                    <td className={`px-3 text-right font-semibold ${row.stock_realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      ₺{row.stock_realized_pnl.toFixed(2)}
+                      <span className="text-slate-600 font-normal"> ({row.stock_trade_count})</span>
+                    </td>
+                    <td className={`px-3 text-right font-semibold ${row.viop_realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      ₺{row.viop_realized_pnl.toFixed(2)}
+                      <span className="text-slate-600 font-normal"> ({row.viop_trade_count})</span>
+                    </td>
+                    <td className={`px-3 text-right font-bold ${row.total_realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      ₺{row.total_realized_pnl.toFixed(2)}
+                    </td>
+                    <td className="px-3 text-right text-slate-400">₺{row.total_stopaj_estimate.toFixed(2)}</td>
+                    <td className="px-3 text-right font-bold text-white">₺{row.net_after_stopaj_estimate.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )

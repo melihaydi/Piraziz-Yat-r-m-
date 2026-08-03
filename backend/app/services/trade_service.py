@@ -683,19 +683,98 @@ def get_history(db: Session, account: TradeAccount, limit: int = 100) -> List[Di
     ]
 
 
-def get_performance(db: Session, account: TradeAccount) -> Dict[str, Any]:
-    sell_orders = (
+def get_tax_report(
+    db: Session, account: TradeAccount, stock_stopaj_pct: float = 0.0, viop_stopaj_pct: float = 10.0
+) -> Dict[str, Any]:
+    """Realized gain/loss broken down by calendar year and instrument type,
+    for informational year-end review - NOT a tax filing and not advice.
+
+    stock_stopaj_pct/viop_stopaj_pct are caller-supplied percentages, not
+    hardcoded law: BIST stock gains and VİOP gains have long been taxed
+    differently under Turkish withholding rules (stopaj), and the exact
+    rates are set by government decree and do change - baking in a
+    specific number here would silently go stale and mislead. The commonly
+    cited long-standing defaults (0% for BIST-listed shares sold through a
+    licensed intermediary, 10% for VİOP) are used only as pre-filled
+    suggestions; the frontend must let the user override them and must
+    label the result as an estimate to verify against official sources.
+    """
+    # realized_pnl lands on whichever order actually closed/reduced a
+    # position - a SAT for closing a long, but an AL for covering a VİOP
+    # short (see _execute_trade) - so this must not filter by side=="SAT"
+    # alone, or every VİOP short-cover trade's P&L is silently dropped.
+    closing_orders = (
         db.query(TradeOrder)
-        .filter(TradeOrder.account_id == account.id, TradeOrder.side == "SAT")
+        .filter(TradeOrder.account_id == account.id, TradeOrder.realized_pnl.isnot(None))
         .order_by(TradeOrder.executed_at.asc())
         .all()
     )
-    wins = [o.realized_pnl for o in sell_orders if (o.realized_pnl or 0.0) > 0]
-    losses = [o.realized_pnl for o in sell_orders if (o.realized_pnl or 0.0) < 0]
-    total_closed = len(sell_orders)
+
+    by_year: Dict[int, Dict[str, Any]] = {}
+    for o in closing_orders:
+        if not o.executed_at or o.realized_pnl is None:
+            continue
+        year = o.executed_at.year
+        bucket = by_year.setdefault(year, {
+            "year": year,
+            "stock_realized_pnl": 0.0,
+            "stock_trade_count": 0,
+            "viop_realized_pnl": 0.0,
+            "viop_trade_count": 0,
+        })
+        if o.instrument_type == "stock":
+            bucket["stock_realized_pnl"] += o.realized_pnl
+            bucket["stock_trade_count"] += 1
+        else:
+            bucket["viop_realized_pnl"] += o.realized_pnl
+            bucket["viop_trade_count"] += 1
+
+    years = []
+    for year in sorted(by_year.keys(), reverse=True):
+        b = by_year[year]
+        # Stopaj only applies to gains, not losses - a losing year owes
+        # nothing, it isn't refunded either (this mirrors how stopaj is
+        # actually withheld at the source, per trade, not netted first).
+        stock_stopaj_est = max(0.0, b["stock_realized_pnl"]) * stock_stopaj_pct / 100
+        viop_stopaj_est = max(0.0, b["viop_realized_pnl"]) * viop_stopaj_pct / 100
+        total_realized = b["stock_realized_pnl"] + b["viop_realized_pnl"]
+        total_stopaj_est = stock_stopaj_est + viop_stopaj_est
+        years.append({
+            "year": year,
+            "stock_realized_pnl": round(b["stock_realized_pnl"], 2),
+            "stock_trade_count": b["stock_trade_count"],
+            "stock_stopaj_estimate": round(stock_stopaj_est, 2),
+            "viop_realized_pnl": round(b["viop_realized_pnl"], 2),
+            "viop_trade_count": b["viop_trade_count"],
+            "viop_stopaj_estimate": round(viop_stopaj_est, 2),
+            "total_realized_pnl": round(total_realized, 2),
+            "total_stopaj_estimate": round(total_stopaj_est, 2),
+            "net_after_stopaj_estimate": round(total_realized - total_stopaj_est, 2),
+        })
+
+    return {
+        "stock_stopaj_pct": stock_stopaj_pct,
+        "viop_stopaj_pct": viop_stopaj_pct,
+        "years": years,
+    }
+
+
+def get_performance(db: Session, account: TradeAccount) -> Dict[str, Any]:
+    # See get_tax_report's comment: realized_pnl can land on an AL order
+    # (covering a VİOP short), not just SAT - filtering by side=="SAT" alone
+    # silently drops those trades from win-rate/realized P&L.
+    closing_orders = (
+        db.query(TradeOrder)
+        .filter(TradeOrder.account_id == account.id, TradeOrder.realized_pnl.isnot(None))
+        .order_by(TradeOrder.executed_at.asc())
+        .all()
+    )
+    wins = [o.realized_pnl for o in closing_orders if (o.realized_pnl or 0.0) > 0]
+    losses = [o.realized_pnl for o in closing_orders if (o.realized_pnl or 0.0) < 0]
+    total_closed = len(closing_orders)
     win_rate = (len(wins) / total_closed * 100) if total_closed > 0 else 0.0
 
-    realized_total = sum((o.realized_pnl or 0.0) for o in sell_orders)
+    realized_total = sum((o.realized_pnl or 0.0) for o in closing_orders)
     positions = db.query(TradePosition).filter(TradePosition.account_id == account.id).all()
     unrealized_total = sum(_position_dict(p)["pnl"] for p in positions)
 
