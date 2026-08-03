@@ -35,9 +35,50 @@ def test_create_account_rejects_invalid_broker(db):
         trade_service.create_account(db, user_id=1, broker="not_a_broker", starting_balance=100000.0)
 
 
-def test_create_account_rejects_duplicate(db, account):
+def test_create_account_allows_multiple_per_user(db, account):
+    second = trade_service.create_account(db, user_id=1, broker="info_yatirim", starting_balance=50000.0)
+    assert second.id != account.id
+    accounts = trade_service.get_accounts(db, user_id=1)
+    assert len(accounts) == 2
+
+
+def test_create_account_auto_names_sequentially(db):
+    first = trade_service.create_account(db, user_id=5, broker="midas", starting_balance=100000.0)
+    second = trade_service.create_account(db, user_id=5, broker="midas", starting_balance=100000.0)
+    assert first.name == "Portföy 1"
+    assert second.name == "Portföy 2"
+
+
+def test_create_account_accepts_custom_name(db):
+    acc = trade_service.create_account(db, user_id=6, broker="midas", starting_balance=100000.0, name="Agresif Strateji")
+    assert acc.name == "Agresif Strateji"
+
+
+def test_get_account_returns_the_oldest_as_default(db):
+    first = trade_service.create_account(db, user_id=7, broker="midas", starting_balance=100000.0)
+    trade_service.create_account(db, user_id=7, broker="midas", starting_balance=100000.0)
+    assert trade_service.get_account(db, user_id=7).id == first.id
+
+
+def test_get_account_by_id_enforces_ownership(db, account):
+    other_user_account = trade_service.create_account(db, user_id=999, broker="midas", starting_balance=100000.0)
+    assert trade_service.get_account_by_id(db, user_id=1, account_id=other_user_account.id) is None
+    assert trade_service.get_account_by_id(db, user_id=999, account_id=other_user_account.id) is not None
+
+
+def test_rename_account(db, account):
+    renamed = trade_service.rename_account(db, account, "Yeni İsim")
+    assert renamed.name == "Yeni İsim"
+
+
+def test_rename_account_rejects_blank_name(db, account):
     with pytest.raises(TradeError):
-        trade_service.create_account(db, user_id=1, broker="info_yatirim", starting_balance=50000.0)
+        trade_service.rename_account(db, account, "   ")
+
+
+def test_delete_account_removes_it(db, account):
+    trade_service.delete_account(db, account)
+    assert trade_service.get_accounts(db, user_id=1) == []
 
 
 def test_create_account_uses_default_balance_when_nonpositive(db):

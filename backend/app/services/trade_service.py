@@ -114,20 +114,47 @@ def _quote_or_zero(symbol: str) -> Dict[str, Any]:
     return q or {}
 
 
+def get_accounts(db: Session, user_id: int) -> List[TradeAccount]:
+    """All of a user's paper-trading accounts, oldest first - a user can run
+    several in parallel (e.g. one per strategy); see TradeAccount's
+    docstring for the history of this no longer being 1:1 with user_id."""
+    return (
+        db.query(TradeAccount)
+        .filter(TradeAccount.user_id == user_id)
+        .order_by(TradeAccount.id.asc())
+        .all()
+    )
+
+
 def get_account(db: Session, user_id: int) -> Optional[TradeAccount]:
-    return db.query(TradeAccount).filter(TradeAccount.user_id == user_id).first()
+    """The user's default account (their first one, chronologically) - used
+    wherever no specific account_id is given, keeping every pre-multi-account
+    API call and the original onboarding flow working unchanged."""
+    return db.query(TradeAccount).filter(TradeAccount.user_id == user_id).order_by(TradeAccount.id.asc()).first()
 
 
-def create_account(db: Session, user_id: int, broker: str, starting_balance: float) -> TradeAccount:
+def get_account_by_id(db: Session, user_id: int, account_id: int) -> Optional[TradeAccount]:
+    """Ownership-checked lookup for a specific account - callers must never
+    fetch by account_id alone, or one user could act on another's account."""
+    return db.query(TradeAccount).filter(
+        TradeAccount.id == account_id, TradeAccount.user_id == user_id
+    ).first()
+
+
+def create_account(
+    db: Session, user_id: int, broker: str, starting_balance: float, name: Optional[str] = None
+) -> TradeAccount:
     if broker not in VALID_BROKERS:
         raise TradeError("Geçersiz broker seçimi.")
-    if get_account(db, user_id):
-        raise TradeError("Trade hesabı zaten mevcut.")
     if starting_balance <= 0:
         starting_balance = DEFAULT_STARTING_BALANCE
+    if not name:
+        existing_count = db.query(TradeAccount).filter(TradeAccount.user_id == user_id).count()
+        name = f"Portföy {existing_count + 1}"
 
     account = TradeAccount(
         user_id=user_id,
+        name=name,
         broker=broker,
         starting_balance=starting_balance,
         cash_balance=starting_balance,
@@ -136,6 +163,25 @@ def create_account(db: Session, user_id: int, broker: str, starting_balance: flo
     db.commit()
     db.refresh(account)
     return account
+
+
+def rename_account(db: Session, account: TradeAccount, name: str) -> TradeAccount:
+    if not name or not name.strip():
+        raise TradeError("Portföy adı boş olamaz.")
+    account.name = name.strip()
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+def delete_account(db: Session, account: TradeAccount) -> None:
+    """Permanently removes an account and everything under it (positions,
+    orders, pending orders, snapshots - all cascade via the FK). A user must
+    always keep at least one account; the API layer enforces that before
+    calling this, since that check needs to know how many accounts the user
+    has in total, not just this one."""
+    db.delete(account)
+    db.commit()
 
 
 def change_broker(db: Session, account: TradeAccount, broker: str) -> TradeAccount:
@@ -310,6 +356,20 @@ def _ensure_daily_snapshot(db: Session, account: TradeAccount, current_equity: f
     return snap
 
 
+def account_summary_dict(account: TradeAccount) -> Dict[str, Any]:
+    """Lightweight, no-live-price-fetch representation for GET /accounts -
+    listing several accounts shouldn't cost a live price lookup per account
+    per position; callers switch to serialize_account for the full picture
+    once a specific account is selected."""
+    return {
+        "id": account.id,
+        "name": account.name,
+        "broker": account.broker,
+        "starting_balance": round(account.starting_balance, 2),
+        "created_at": account.created_at.isoformat() if account.created_at else None,
+    }
+
+
 def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
     _check_pending_orders(db, account)
 
@@ -326,8 +386,10 @@ def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
 
     total_portfolio_value = account.cash_balance + stock_value + viop_value
     unrealized_pnl = sum(p["pnl"] for p in pos_dicts)
+    # See get_performance/get_tax_report - realized_pnl can land on an AL
+    # order (covering a VİOP short), not just SAT.
     realized_pnl_total = db.query(TradeOrder).filter(
-        TradeOrder.account_id == account.id, TradeOrder.side == "SAT"
+        TradeOrder.account_id == account.id, TradeOrder.realized_pnl.isnot(None)
     ).with_entities(TradeOrder.realized_pnl).all()
     realized_pnl_sum = sum((r[0] or 0.0) for r in realized_pnl_total)
     total_pnl = unrealized_pnl + realized_pnl_sum
@@ -342,6 +404,7 @@ def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
 
     return {
         "id": account.id,
+        "name": account.name,
         "broker": account.broker,
         "starting_balance": round(account.starting_balance, 2),
         "cash_balance": round(account.cash_balance, 2),

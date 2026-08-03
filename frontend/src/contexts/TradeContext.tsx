@@ -13,6 +13,11 @@ export type Broker = "info_yatirim" | "midas"
 // selection step asking the user to choose a starting balance.
 const DEFAULT_STARTING_BALANCE = 325000.0
 
+// Which account the polling/order/history calls below act on, persisted so
+// a reload keeps the user on the same portfolio instead of silently
+// snapping back to their default one.
+const ACTIVE_ACCOUNT_STORAGE_KEY = "bip_trade_active_account_id"
+
 export type PositionSide = "LONG" | "SHORT"
 
 export interface TradePosition {
@@ -30,6 +35,7 @@ export interface TradePosition {
 
 export interface TradeAccountData {
   id: number
+  name: string
   broker: Broker
   starting_balance: number
   cash_balance: number
@@ -45,6 +51,17 @@ export interface TradeAccountData {
   realized_pnl: number
   return_pct: number
   positions: TradePosition[]
+}
+
+/** Lightweight per-account summary used by the account switcher - see
+ * trade_service.account_summary_dict (no live valuation, so listing several
+ * accounts doesn't cost a price fetch per position per account). */
+export interface TradeAccountSummary {
+  id: number
+  name: string
+  broker: Broker
+  starting_balance: number
+  created_at: string
 }
 
 export interface WatchlistItem {
@@ -94,6 +111,12 @@ interface OrderResult {
 interface TradeContextValue {
   loading: boolean
   account: TradeAccountData | null
+  accounts: TradeAccountSummary[]
+  activeAccountId: number | null
+  switchAccount: (accountId: number) => void
+  createAdditionalAccount: (broker: Broker, startingBalance: number, name: string) => Promise<OrderResult>
+  renameAccount: (accountId: number, name: string) => Promise<OrderResult>
+  deleteAccount: (accountId: number) => Promise<OrderResult>
   watchlist: WatchlistItem[]
   viopWatchlist: WatchlistItem[]
   activeTab: InstrumentType
@@ -131,6 +154,8 @@ export function useTrade(): TradeContextValue {
 export function TradeProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [account, setAccount] = useState<TradeAccountData | null>(null)
+  const [accounts, setAccounts] = useState<TradeAccountSummary[]>([])
+  const [activeAccountId, setActiveAccountId] = useState<number | null>(null)
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
   const [viopWatchlist, setViopWatchlist] = useState<WatchlistItem[]>([])
   const [activeTab, setActiveTab] = useState<InstrumentType>("stock")
@@ -138,15 +163,53 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   const [history, setHistory] = useState<TradeHistoryItem[]>([])
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
 
+  // Mirrored into a ref so callbacks that read it (refreshAccount, etc.)
+  // don't need activeAccountId as a dependency - every one of those is
+  // already keyed off account?.id/hasAccount elsewhere for polling
+  // intervals, and adding this as a dep too would tear down and recreate
+  // those intervals on every account switch instead of just re-fetching.
+  const activeAccountIdRef = useRef<number | null>(null)
+  activeAccountIdRef.current = activeAccountId
+
   // Tracks whether the user has manually picked a symbol yet, so the
   // watchlist's first-load doesn't clobber their selection on every poll
   // (same stale-closure pitfall fixed elsewhere in this app - handled here
   // with a ref instead of state so the fetch effect doesn't need it as a dep).
   const hasAutoSelected = useRef(false)
 
+  const withAccountParam = useCallback((path: string): string => {
+    const id = activeAccountIdRef.current
+    if (id == null) return path
+    return path.includes("?") ? `${path}&account_id=${id}` : `${path}?account_id=${id}`
+  }, [])
+
+  const switchAccount = useCallback((accountId: number) => {
+    setActiveAccountId(accountId)
+    try {
+      localStorage.setItem(ACTIVE_ACCOUNT_STORAGE_KEY, String(accountId))
+    } catch (e) {
+      // Private browsing / storage disabled - the switch still works for
+      // this session, it just won't survive a reload.
+    }
+  }, [])
+
+  const refreshAccounts = useCallback(async (): Promise<TradeAccountSummary[]> => {
+    try {
+      const res = await authFetch("/trade/accounts")
+      if (!res.ok) return []
+      const data = await res.json()
+      if (!Array.isArray(data)) return []
+      setAccounts(data)
+      return data
+    } catch (e) {
+      console.error("Failed to load trade accounts:", e)
+      return []
+    }
+  }, [])
+
   const refreshAccount = useCallback(async (): Promise<TradeAccountData | null> => {
     try {
-      const res = await authFetch("/trade/account")
+      const res = await authFetch(withAccountParam("/trade/account"))
       if (res.status === 404) {
         setAccount(null)
         return null
@@ -159,29 +222,29 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed to load trade account:", e)
       return null
     }
-  }, [])
+  }, [withAccountParam])
 
   const refreshHistory = useCallback(async () => {
     try {
-      const res = await authFetch("/trade/history?limit=100")
+      const res = await authFetch(withAccountParam("/trade/history?limit=100"))
       if (!res.ok) return
       const data = await res.json()
       if (Array.isArray(data)) setHistory(data)
     } catch (e) {
       console.error("Failed to load trade history:", e)
     }
-  }, [])
+  }, [withAccountParam])
 
   const refreshPendingOrders = useCallback(async () => {
     try {
-      const res = await authFetch("/trade/pending-orders")
+      const res = await authFetch(withAccountParam("/trade/pending-orders"))
       if (!res.ok) return
       const data = await res.json()
       if (Array.isArray(data)) setPendingOrders(data)
     } catch (e) {
       console.error("Failed to load pending orders:", e)
     }
-  }, [])
+  }, [withAccountParam])
 
   const createAccount = useCallback(async (broker: Broker, startingBalance: number): Promise<OrderResult> => {
     try {
@@ -202,25 +265,113 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const createAdditionalAccount = useCallback(
+    async (broker: Broker, startingBalance: number, name: string): Promise<OrderResult> => {
+      try {
+        const res = await authFetch("/trade/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ broker, starting_balance: startingBalance, name }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          return { ok: false, error: err.detail || "Portföy oluşturulamadı." }
+        }
+        const data = await res.json()
+        await refreshAccounts()
+        switchAccount(data.id)
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: "Sunucuya ulaşılamadı." }
+      }
+    },
+    [refreshAccounts, switchAccount]
+  )
+
+  const renameAccount = useCallback(
+    async (accountId: number, name: string): Promise<OrderResult> => {
+      try {
+        const res = await authFetch(`/trade/accounts/${accountId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          return { ok: false, error: err.detail || "Portföy adı değiştirilemedi." }
+        }
+        await refreshAccounts()
+        if (accountId === activeAccountIdRef.current) await refreshAccount()
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: "Sunucuya ulaşılamadı." }
+      }
+    },
+    [refreshAccounts, refreshAccount]
+  )
+
+  const deleteAccount = useCallback(
+    async (accountId: number): Promise<OrderResult> => {
+      try {
+        const res = await authFetch(`/trade/accounts/${accountId}`, { method: "DELETE" })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          return { ok: false, error: err.detail || "Portföy silinemedi." }
+        }
+        const remaining = await refreshAccounts()
+        if (accountId === activeAccountIdRef.current && remaining.length > 0) {
+          switchAccount(remaining[0].id)
+        }
+        return { ok: true }
+      } catch (e) {
+        return { ok: false, error: "Sunucuya ulaşılamadı." }
+      }
+    },
+    [refreshAccounts, switchAccount]
+  )
+
   // Initial load. There's no broker-selection step anymore - if the user
   // has no trade account yet, one is auto-provisioned silently instead of
   // asking them to pick a broker/balance first (both brokers run the exact
   // same simulation - see change_broker - so there was nothing functional
-  // riding on that choice besides a cosmetic label).
+  // riding on that choice besides a cosmetic label). Also restores whichever
+  // account was last active, falling back to the first one.
   useEffect(() => {
     let active = true
     const bootstrap = async () => {
-      const existing = await refreshAccount()
-      if (active && !existing) {
+      let list = await refreshAccounts()
+      if (active && list.length === 0) {
         await createAccount("midas", DEFAULT_STARTING_BALANCE)
+        list = await refreshAccounts()
       }
-      if (active) setLoading(false)
+      if (!active) return
+      let storedId: number | null = null
+      try {
+        const raw = localStorage.getItem(ACTIVE_ACCOUNT_STORAGE_KEY)
+        storedId = raw ? parseInt(raw, 10) : null
+      } catch (e) {
+        storedId = null
+      }
+      const resolvedId = list.some(a => a.id === storedId) ? storedId : (list[0]?.id ?? null)
+      if (resolvedId != null) setActiveAccountId(resolvedId)
+      setLoading(false)
     }
     bootstrap()
     return () => {
       active = false
     }
-  }, [refreshAccount, createAccount])
+  }, [refreshAccounts, createAccount])
+
+  // Once an account is selected (bootstrap resolved it, or the user
+  // switched), (re)load its data immediately rather than waiting for the
+  // next poll tick.
+  useEffect(() => {
+    if (activeAccountId == null) return
+    refreshAccount()
+    refreshHistory()
+    refreshPendingOrders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAccountId])
 
   // Poll BIST30 watchlist every 2s (matches the rest of the app's live-poll
   // rate) - the backend serves this from the already-connected TradingView
@@ -279,10 +430,6 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval)
   }, [hasAccount, refreshAccount])
 
-  useEffect(() => {
-    if (account) refreshHistory()
-  }, [account?.id, refreshHistory]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Pending (resting LIMIT) orders - polled on the same cadence as the
   // account so the order-book panel and the chart's price lines reflect a
   // fill/cancel within a few seconds. Fills themselves are actually
@@ -291,7 +438,6 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   // just picks up the resulting state.
   useEffect(() => {
     if (!hasAccount) return
-    refreshPendingOrders()
     const interval = setInterval(refreshPendingOrders, 3000)
     return () => clearInterval(interval)
   }, [hasAccount, refreshPendingOrders])
@@ -310,7 +456,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
 
   const changeBroker = useCallback(async (broker: Broker): Promise<OrderResult> => {
     try {
-      const res = await authFetch("/trade/account/broker", {
+      const res = await authFetch(withAccountParam("/trade/account/broker"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ broker }),
@@ -325,11 +471,11 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       return { ok: false, error: "Sunucuya ulaşılamadı." }
     }
-  }, [])
+  }, [withAccountParam])
 
   const resetAccount = useCallback(async (broker: Broker, startingBalance: number): Promise<OrderResult> => {
     try {
-      const res = await authFetch("/trade/account/reset", {
+      const res = await authFetch(withAccountParam("/trade/account/reset"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ broker, starting_balance: startingBalance }),
@@ -345,11 +491,11 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       return { ok: false, error: "Sunucuya ulaşılamadı." }
     }
-  }, [refreshHistory])
+  }, [withAccountParam, refreshHistory])
 
   const depositFunds = useCallback(async (amount: number): Promise<OrderResult> => {
     try {
-      const res = await authFetch("/trade/account/deposit", {
+      const res = await authFetch(withAccountParam("/trade/account/deposit"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount }),
@@ -364,7 +510,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       return { ok: false, error: "Sunucuya ulaşılamadı." }
     }
-  }, [])
+  }, [withAccountParam])
 
   const placeOrder = useCallback(
     async (
@@ -377,7 +523,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
       stopPrice?: number
     ): Promise<OrderResult> => {
       try {
-        const res = await authFetch("/trade/order", {
+        const res = await authFetch(withAccountParam("/trade/order"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -397,13 +543,13 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: "Sunucuya ulaşılamadı." }
       }
     },
-    [refreshHistory, refreshPendingOrders]
+    [withAccountParam, refreshHistory, refreshPendingOrders]
   )
 
   const cancelPendingOrder = useCallback(
     async (orderId: number): Promise<OrderResult> => {
       try {
-        const res = await authFetch(`/trade/pending-orders/${orderId}`, { method: "DELETE" })
+        const res = await authFetch(withAccountParam(`/trade/pending-orders/${orderId}`), { method: "DELETE" })
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
           return { ok: false, error: err.detail || "Emir iptal edilemedi." }
@@ -416,12 +562,18 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: "Sunucuya ulaşılamadı." }
       }
     },
-    [refreshPendingOrders]
+    [withAccountParam, refreshPendingOrders]
   )
 
   const value: TradeContextValue = {
     loading,
     account,
+    accounts,
+    activeAccountId,
+    switchAccount,
+    createAdditionalAccount,
+    renameAccount,
+    deleteAccount,
     watchlist,
     viopWatchlist,
     activeTab,

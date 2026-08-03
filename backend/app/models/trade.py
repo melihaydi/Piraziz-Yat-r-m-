@@ -11,9 +11,20 @@ class TradeAccount(Base):
     user's *real* holdings for informational P&L, while TradeAccount is a
     simulated brokerage account with its own cash balance, positions and
     order history, seeded from a broker-selection onboarding flow.
+
+    A user can have several of these (see `name`) - e.g. one per strategy -
+    to run parallel paper portfolios; user_id is intentionally NOT unique
+    (it was originally, back when only one account per user existed - see
+    the migration that dropped that constraint for the full story on why
+    that's safe and how existing installs self-heal onto the new schema).
     """
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    # User-facing label distinguishing multiple accounts - purely cosmetic,
+    # like broker (see change_broker). Defaults to a sensible name so
+    # existing single-account users (and the SQLite auto-migration path
+    # that backfills this column) don't end up with a blank one.
+    name = Column(String(100), nullable=False, default="Portföy 1")
     broker = Column(String(50), nullable=False)  # "info_yatirim" | "midas"
     starting_balance = Column(Float, nullable=False, default=325000.0)
     cash_balance = Column(Float, nullable=False, default=325000.0)
@@ -24,7 +35,7 @@ class TradeAccount(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    user = relationship("User", backref="trade_account", uselist=False)
+    user = relationship("User", backref="trade_accounts")
     positions = relationship("TradePosition", backref="account", cascade="all, delete-orphan")
     orders = relationship("TradeOrder", backref="account", cascade="all, delete-orphan")
     snapshots = relationship("TradeDailySnapshot", backref="account", cascade="all, delete-orphan")

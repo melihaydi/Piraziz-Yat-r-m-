@@ -34,6 +34,43 @@ if DATABASE_URL.startswith("sqlite"):
         from app.models.portfolio import Portfolio, PortfolioAsset
         from app.models.alert import Alert
         from app.models.trade import TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot
+        from sqlalchemy import inspect, text
+
+        # One-off structural migration: trade_account.user_id used to be
+        # UNIQUE (one paper-trading account per user), which multi-account
+        # support (see get_accounts/create_account) requires dropping. SQLite
+        # renders Column(unique=True) as an inline table constraint (not a
+        # droppable index - confirmed by inspecting the actual generated DDL),
+        # so unlike every other column added so far, this can't be fixed with
+        # a plain ALTER TABLE ADD COLUMN; it needs a real rebuild-the-table
+        # migration: create a correctly-shaped table under a temp name, copy
+        # every row across (preserving `id` so trade_position/trade_order/
+        # trade_pending_order/trade_daily_snapshot's account_id foreign keys -
+        # unenforced in SQLite here, but still meaningful - stay valid),
+        # then swap it in for the old one.
+        _premigration_inspector = inspect(engine)
+        if _premigration_inspector.has_table("trade_account"):
+            has_old_unique_constraint = any(
+                uc["column_names"] == ["user_id"]
+                for uc in _premigration_inspector.get_unique_constraints("trade_account")
+            )
+            if has_old_unique_constraint:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE trade_account RENAME TO trade_account__pre_multiaccount"))
+                    TradeAccount.__table__.create(bind=conn)
+                    conn.execute(text("""
+                        INSERT INTO trade_account
+                            (id, user_id, name, broker, starting_balance, cash_balance, locked_cash, created_at, updated_at)
+                        SELECT id, user_id, 'Portföy 1', broker, starting_balance, cash_balance, locked_cash, created_at, updated_at
+                        FROM trade_account__pre_multiaccount
+                    """))
+                    conn.execute(text("DROP TABLE trade_account__pre_multiaccount"))
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Auto-migrated local SQLite db: rebuilt trade_account without the "
+                    "old one-account-per-user UNIQUE(user_id) constraint."
+                )
+
         Base.metadata.create_all(bind=engine)
 
         # create_all() only creates *missing tables* - it never alters a
@@ -49,7 +86,6 @@ if DATABASE_URL.startswith("sqlite"):
         # models define but the live SQLite file doesn't have yet, so an
         # existing local db self-heals to match the current schema instead
         # of silently drifting out of sync.
-        from sqlalchemy import inspect, text
         inspector = inspect(engine)
         with engine.begin() as conn:
             for table in Base.metadata.sorted_tables:

@@ -92,6 +92,13 @@ export default function TradePage() {
               <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
               Trade
             </h1>
+            <button
+              onClick={() => setShowSettings(true)}
+              title="Portföy değiştir"
+              className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-[#1c1d26] border border-slate-800 rounded-full px-2.5 py-1 cursor-pointer transition-colors"
+            >
+              {account.name}
+            </button>
             <InstrumentTabs />
           </div>
           <div className="flex items-center gap-2">

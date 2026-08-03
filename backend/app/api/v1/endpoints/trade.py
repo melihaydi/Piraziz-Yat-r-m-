@@ -14,6 +14,11 @@ router = APIRouter()
 class AccountCreate(BaseModel):
     broker: Literal["info_yatirim", "midas"]
     starting_balance: float = trade_service.DEFAULT_STARTING_BALANCE
+    name: Optional[str] = None
+
+
+class AccountRename(BaseModel):
+    name: str
 
 
 class BrokerChange(BaseModel):
@@ -34,8 +39,15 @@ class OrderCreate(BaseModel):
     stop_price: Optional[float] = None
 
 
-def _require_account(db: Session, current_user: User):
-    account = trade_service.get_account(db, current_user.id)
+def _require_account(db: Session, current_user: User, account_id: Optional[int] = None):
+    """Without account_id, resolves to the user's default (first-created)
+    account - every endpoint predating multi-account support keeps working
+    exactly as before. With account_id, the lookup is ownership-checked
+    (get_account_by_id), so one user can never act on another's account."""
+    if account_id is not None:
+        account = trade_service.get_account_by_id(db, current_user.id, account_id)
+    else:
+        account = trade_service.get_account(db, current_user.id)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -44,14 +56,81 @@ def _require_account(db: Session, current_user: User):
     return account
 
 
+@router.get("/accounts")
+def list_accounts(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """All of the user's paper-trading accounts (lightweight - no live
+    valuation per account). The frontend's account switcher uses this;
+    GET/POST /account (singular) keep working against the default account
+    for anything not yet updated to pass account_id."""
+    return [trade_service.account_summary_dict(a) for a in trade_service.get_accounts(db, current_user.id)]
+
+
+@router.post("/accounts", status_code=status.HTTP_201_CREATED)
+def create_additional_account(
+    payload: AccountCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Opens another parallel paper-trading account (e.g. one per strategy) -
+    unlike the old single-account model, this always succeeds rather than
+    rejecting a second account."""
+    try:
+        account = trade_service.create_account(
+            db, current_user.id, payload.broker, payload.starting_balance, payload.name
+        )
+    except TradeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return trade_service.serialize_account(db, account)
+
+
+@router.put("/accounts/{account_id}")
+def rename_account(
+    account_id: int,
+    payload: AccountRename,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    account = _require_account(db, current_user, account_id)
+    try:
+        account = trade_service.rename_account(db, account, payload.name)
+    except TradeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return trade_service.account_summary_dict(account)
+
+
+@router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_account(
+    account_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Permanently deletes an account and everything under it. Blocked if
+    it's the user's only remaining account - there must always be one to
+    fall back to (the default-account lookup, the exe's bootstrap flow,
+    etc. all assume at least one exists)."""
+    account = _require_account(db, current_user, account_id)
+    if len(trade_service.get_accounts(db, current_user.id)) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Son kalan portföyünüzü silemezsiniz."
+        )
+    trade_service.delete_account(db, account)
+    return None
+
+
 @router.get("/account")
 def get_account(
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
     """Returns null if the user hasn't been through broker onboarding yet -
     the frontend uses this to decide whether to show the broker picker."""
-    account = trade_service.get_account(db, current_user.id)
+    account = trade_service.get_account_by_id(db, current_user.id, account_id) if account_id is not None \
+        else trade_service.get_account(db, current_user.id)
     if not account:
         return None
     return trade_service.serialize_account(db, account)
@@ -64,7 +143,9 @@ def create_account(
     current_user: User = Depends(deps.get_current_user),
 ):
     try:
-        account = trade_service.create_account(db, current_user.id, payload.broker, payload.starting_balance)
+        account = trade_service.create_account(
+            db, current_user.id, payload.broker, payload.starting_balance, payload.name
+        )
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return trade_service.serialize_account(db, account)
@@ -73,12 +154,13 @@ def create_account(
 @router.put("/account/broker")
 def update_broker(
     payload: BrokerChange,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
     """Change the broker card later without resetting balance/positions -
     both brokers run the identical simulated system, so this is cosmetic."""
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     try:
         account = trade_service.change_broker(db, account, payload.broker)
     except TradeError as e:
@@ -89,12 +171,13 @@ def update_broker(
 @router.post("/account/deposit")
 def deposit(
     payload: DepositCreate,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
     """Adds funds to the simulated cash balance (paper trading - no real
     money moves)."""
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     try:
         account = trade_service.deposit_funds(db, account, payload.amount)
     except TradeError as e:
@@ -105,11 +188,12 @@ def deposit(
 @router.post("/account/reset")
 def reset_account(
     payload: AccountCreate,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
     """Deliberate full restart - wipes positions/history and reseeds cash."""
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     account = trade_service.reset_account(db, account, payload.starting_balance)
     if payload.broker:
         account = trade_service.change_broker(db, account, payload.broker)
@@ -131,20 +215,22 @@ def get_viop_contracts():
 @router.get("/positions")
 def get_positions(
     instrument_type: Optional[Literal["stock", "viop"]] = None,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     return trade_service.get_positions(db, account, instrument_type)
 
 
 @router.post("/order")
 def place_order(
     payload: OrderCreate,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     try:
         return trade_service.place_order(
             db, account, payload.instrument_type, payload.symbol, payload.side, payload.lot,
@@ -157,22 +243,24 @@ def place_order(
 @router.get("/pending-orders")
 def get_pending_orders(
     instrument_type: Optional[Literal["stock", "viop"]] = None,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
     """Resting LIMIT orders (order book) - the frontend polls this to render
     the order-book panel and the price line on the chart."""
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     return trade_service.get_pending_orders(db, account, instrument_type)
 
 
 @router.delete("/pending-orders/{order_id}")
 def cancel_pending_order(
     order_id: int,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     try:
         return trade_service.cancel_pending_order(db, account, order_id)
     except TradeError as e:
@@ -182,19 +270,21 @@ def cancel_pending_order(
 @router.get("/history")
 def get_history(
     limit: int = 100,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     return trade_service.get_history(db, account, limit)
 
 
 @router.get("/performance")
 def get_performance(
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     return trade_service.get_performance(db, account)
 
 
@@ -202,6 +292,7 @@ def get_performance(
 def get_tax_report(
     stock_stopaj_pct: float = 0.0,
     viop_stopaj_pct: float = 10.0,
+    account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -210,5 +301,5 @@ def get_tax_report(
     caller-supplied (see trade_service.get_tax_report's docstring for why
     these aren't hardcoded) and default to commonly-cited rates the
     frontend should present as editable, not fixed."""
-    account = _require_account(db, current_user)
+    account = _require_account(db, current_user, account_id)
     return trade_service.get_tax_report(db, account, stock_stopaj_pct, viop_stopaj_pct)

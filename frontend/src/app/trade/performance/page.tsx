@@ -48,7 +48,7 @@ function MetricCard({ label, value, colorClass }: { label: string; value: string
 }
 
 export default function TradePerformancePage() {
-  const { account, loading: accountLoading } = useTrade()
+  const { account, activeAccountId, loading: accountLoading } = useTrade()
   const [data, setData] = useState<PerformanceData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -59,25 +59,25 @@ export default function TradePerformancePage() {
 
   useEffect(() => {
     if (!account) return
-    authFetch("/trade/performance")
+    authFetch(`/trade/performance?account_id=${activeAccountId}`)
       .then(res => res.json())
       .then(d => setData(d))
       .catch(err => console.error("Failed to load trade performance:", err))
       .finally(() => setLoading(false))
-  }, [account])
+  }, [account, activeAccountId])
 
   const loadTaxReport = React.useCallback(() => {
     if (!account) return
     setTaxLoading(true)
     const stockPct = parseFloat(stockStopajPct) || 0
     const viopPct = parseFloat(viopStopajPct) || 0
-    authFetch(`/trade/tax-report?stock_stopaj_pct=${stockPct}&viop_stopaj_pct=${viopPct}`)
+    authFetch(`/trade/tax-report?stock_stopaj_pct=${stockPct}&viop_stopaj_pct=${viopPct}&account_id=${activeAccountId}`)
       .then(res => res.json())
       .then(d => setTaxData(d))
       .catch(err => console.error("Failed to load tax report:", err))
       .finally(() => setTaxLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account])
+  }, [account, activeAccountId])
 
   useEffect(() => {
     loadTaxReport()
