@@ -54,6 +54,69 @@ jobs:
           cd frontend
           npm run build
 
+  android-build:
+    # Builds the Capacitor Android wrapper (frontend/android) so it can't
+    # silently drift out of sync with the web app - previously this was
+    # only ever built by hand on someone's machine, with no CI signal if a
+    # dependency bump or capacitor.config.ts change broke it. This produces
+    # a debug-signed APK (installable for sideloading/testing) as a build
+    # artifact on every push; there's no release keystore configured yet,
+    # so it doesn't attempt a signed release build - see the comment above
+    # the gradle step for how to add that once one exists.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Sync Capacitor Android project
+        run: |
+          cd frontend
+          npx cap sync android
+
+      # capacitor.config.ts points webDir at the live Netlify deployment
+      # (server.url mode - see that file's comment) rather than a locally
+      # bundled build, so this doesn't need `npm run build` first: the APK
+      # is just a native shell that loads the already-deployed site.
+      #
+      # To add signed release builds later: create a keystore, base64-encode
+      # it into a KEYSTORE_BASE64 repo secret alongside KEYSTORE_PASSWORD/
+      # KEY_ALIAS/KEY_PASSWORD, decode it to a file in a step here, and swap
+      # `assembleDebug` below for `assembleRelease` with those properties
+      # passed via -P flags (or a signingConfig in app/build.gradle reading
+      # them from env vars).
+      - name: Build debug APK
+        run: |
+          cd frontend/android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: piraziz-yatirim-debug-apk
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
   docker-build-verification:
     runs-on: ubuntu-latest
     steps:
