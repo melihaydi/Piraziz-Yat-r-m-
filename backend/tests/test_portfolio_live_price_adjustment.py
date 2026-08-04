@@ -48,7 +48,7 @@ def test_fund_holding_current_price_always_stays_the_real_nav(client, auth_heade
     assert asset["total_value"] == pytest.approx(100.0 * 4.0)
 
 
-def test_fund_holding_exposes_estimate_as_a_separate_field(client, auth_headers):
+def test_fund_holding_exposes_estimate_as_a_separate_daily_field(client, auth_headers):
     portfolio_id = _create_portfolio(client, auth_headers)
     _add_asset(client, auth_headers, portfolio_id, "PHE", 100.0, 3.50)
 
@@ -58,11 +58,12 @@ def test_fund_holding_exposes_estimate_as_a_separate_field(client, auth_headers)
         response = client.get("/api/v1/portfolio/", headers=auth_headers)
 
     asset = response.json()[0]["assets"][0]
-    assert asset["estimated_daily_change_pct"] == 5.0
-    assert asset["estimated_daily_gain_value"] == pytest.approx(100.0 * 4.0 * 0.05)
+    assert asset["daily_change_pct"] == 5.0
+    assert asset["daily_change_is_estimate"] is True
+    assert asset["daily_gain_value"] == pytest.approx(100.0 * 4.0 * 0.05)
 
 
-def test_fund_holding_estimate_is_none_when_untrusted(client, auth_headers):
+def test_fund_holding_daily_change_is_none_when_estimate_untrusted(client, auth_headers):
     portfolio_id = _create_portfolio(client, auth_headers)
     _add_asset(client, auth_headers, portfolio_id, "PHE", 100.0, 3.50)
 
@@ -73,20 +74,39 @@ def test_fund_holding_estimate_is_none_when_untrusted(client, auth_headers):
 
     asset = response.json()[0]["assets"][0]
     assert asset["current_price"] == pytest.approx(4.0)
-    assert asset["estimated_daily_change_pct"] is None
-    assert asset["estimated_daily_gain_value"] is None
+    assert asset["daily_change_pct"] is None
+    assert asset["daily_change_is_estimate"] is False
+    assert asset["daily_gain_value"] is None
 
 
-def test_stock_holding_never_has_an_estimate(client, auth_headers):
+def test_stock_holding_gets_a_real_daily_change_not_an_estimate(client, auth_headers):
+    # Stocks get a REAL daily change (from the live quote), not modeled -
+    # daily_change_is_estimate must be False even though the field is populated.
     portfolio_id = _create_portfolio(client, auth_headers)
     _add_asset(client, auth_headers, portfolio_id, "THYAO", 10.0, 300.0)
 
     with patch("app.api.v1.endpoints.portfolio._fetch_live_price", return_value=320.0), \
+         patch("app.services.market_data.market_data_service.is_known_ticker", return_value=True), \
+         patch("app.services.market_data.market_data_service.get_quote", return_value={"change_percent": 2.5}), \
          patch("app.services.tefas.tefas_service.get_live_estimated_return") as mock_estimate:
         response = client.get("/api/v1/portfolio/", headers=auth_headers)
         mock_estimate.assert_not_called()
 
     asset = response.json()[0]["assets"][0]
     assert asset["current_price"] == pytest.approx(320.0)
-    assert asset["estimated_daily_change_pct"] is None
-    assert asset["estimated_daily_gain_value"] is None
+    assert asset["daily_change_pct"] == 2.5
+    assert asset["daily_change_is_estimate"] is False
+    assert asset["daily_gain_value"] == pytest.approx(10.0 * 320.0 * 0.025)
+
+
+def test_stock_holding_daily_change_is_none_for_unknown_ticker(client, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    _add_asset(client, auth_headers, portfolio_id, "THYAO", 10.0, 300.0)
+
+    with patch("app.api.v1.endpoints.portfolio._fetch_live_price", return_value=320.0), \
+         patch("app.services.market_data.market_data_service.is_known_ticker", return_value=False):
+        response = client.get("/api/v1/portfolio/", headers=auth_headers)
+
+    asset = response.json()[0]["assets"][0]
+    assert asset["daily_change_pct"] is None
+    assert asset["daily_gain_value"] is None

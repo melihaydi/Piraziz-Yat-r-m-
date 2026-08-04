@@ -52,6 +52,25 @@ def _fund_estimated_daily_change_pct(ticker: str) -> Optional[float]:
         return None
     return estimate["estimated_change_pct"]
 
+def _stock_daily_change_pct(ticker: str) -> Optional[float]:
+    """Real daily %change (since yesterday's official close) for a STOCK
+    holding, straight from its live quote - unlike the fund estimate above,
+    this is real data, not modeled. None for funds or unrecognized tickers."""
+    if len(ticker) == 3 or not market_data_service.is_known_ticker(ticker):
+        return None
+    quote = market_data_service.get_quote(ticker)
+    return quote.get("change_percent") if quote else None
+
+def _daily_change(ticker: str) -> tuple:
+    """Unified daily-change lookup for the Portföy Varlıkları table: real
+    for a stock, an estimate for a fund (see the two helpers above -
+    NEVER mixed into current_price/total_value either way). Returns
+    (change_pct, is_estimate)."""
+    if len(ticker) == 3:
+        pct = _fund_estimated_daily_change_pct(ticker)
+        return pct, pct is not None
+    return _stock_daily_change_pct(ticker), False
+
 def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None) -> dict:
     """Helper to compute real-time value and profit metrics for an asset.
     Pass a pre-fetched `live_price` (see _fetch_live_price) to skip the
@@ -99,11 +118,12 @@ def get_user_portfolios(
             for ticker, price in zip(all_tickers, pool.map(_fetch_live_price, all_tickers)):
                 price_by_ticker[ticker] = price
 
-    # Each fund holding's live intraday estimate, kept STRICTLY SEPARATE
-    # from current_price/total_value above (those stay the real, officially
-    # published NAV - see _fund_estimated_daily_change_pct's docstring for
-    # why). Done per distinct ticker, same reasoning as the price batch above.
-    estimated_change_by_ticker = {ticker: _fund_estimated_daily_change_pct(ticker) for ticker in all_tickers}
+    # Each holding's daily %change - real for a stock (live quote), an
+    # estimate for a fund - kept STRICTLY SEPARATE from current_price/
+    # total_value above (those stay the real, officially published NAV -
+    # see _fund_estimated_daily_change_pct's docstring for why). Done per
+    # distinct ticker, same reasoning as the price batch above.
+    daily_change_by_ticker = {ticker: _daily_change(ticker) for ticker in all_tickers}
 
     response_list = []
     for p in portfolios:
@@ -114,11 +134,12 @@ def get_user_portfolios(
         for asset in p.assets:
             ticker = asset.ticker.upper()
             metrics = calculate_asset_metrics(asset, live_price=price_by_ticker.get(ticker))
-            estimated_change_pct = estimated_change_by_ticker.get(ticker)
-            metrics["estimated_daily_change_pct"] = estimated_change_pct
-            metrics["estimated_daily_gain_value"] = (
-                metrics["total_value"] * estimated_change_pct / 100
-                if estimated_change_pct is not None else None
+            daily_change_pct, daily_change_is_estimate = daily_change_by_ticker.get(ticker, (None, False))
+            metrics["daily_change_pct"] = daily_change_pct
+            metrics["daily_change_is_estimate"] = daily_change_is_estimate
+            metrics["daily_gain_value"] = (
+                metrics["total_value"] * daily_change_pct / 100
+                if daily_change_pct is not None else None
             )
             assets_responses.append(PortfolioAssetResponse(**metrics))
 

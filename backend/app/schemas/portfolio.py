@@ -17,13 +17,15 @@ class PortfolioAssetResponse(PortfolioAssetBase):
     total_value: Optional[float] = None
     total_profit: Optional[float] = None
     profit_percentage: Optional[float] = None
-    # For fund holdings only: the live intraday estimate (same idea as the
-    # funds page), kept STRICTLY SEPARATE from current_price/total_value
-    # above, which always stay the real, officially published NAV - see
-    # _fund_estimated_daily_change_pct in the endpoint. None for stocks or
-    # when the estimate isn't trustworthy enough yet.
-    estimated_daily_change_pct: Optional[float] = None
-    estimated_daily_gain_value: Optional[float] = None
+    # Daily %change/gain - real for a stock (live quote), a live intraday
+    # estimate for a fund (same idea as the funds page) - kept STRICTLY
+    # SEPARATE from current_price/total_value above, which always stay the
+    # real, officially published NAV/price - see _daily_change in the
+    # endpoint. daily_change_is_estimate is only True for the fund case;
+    # None/False when nothing could be resolved yet.
+    daily_change_pct: Optional[float] = None
+    daily_gain_value: Optional[float] = None
+    daily_change_is_estimate: Optional[bool] = False
     created_at: datetime
     updated_at: datetime
 

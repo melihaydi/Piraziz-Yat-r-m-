@@ -60,6 +60,39 @@ export const TICKER_LOGO_DOMAINS: Record<string, string> = {
   TUPRS: "tupras.com.tr",
   YKBNK: "yapikredi.com.tr",
   TTKOM: "turktelekom.com.tr",
+  // Added 2026-08-04 for the fund-holding tickers introduced this session -
+  // each domain verified via web search before adding (same "wrong domain
+  // is worse than no logo" bar as above). OZATD and ISKPL deliberately
+  // left out: no confidently-identifiable official domain was found for
+  // OZATD, and ISKPL has two distinct real companies of a near-identical
+  // name with different domains - guessing either risks the wrong logo.
+  TEHOL: "terayatirimteknoloji.com.tr",
+  ANELE: "anelgroup.com",
+  SELEC: "selcukecza.com.tr",
+  PEKGY: "pekergyo.com",
+  DSTKF: "destekfaktoring.com",
+  ALKLC: "altinkilic.com",
+  EUPWR: "europowerenerji.com.tr",
+  TRHOL: "terafinansalyatirimlar.com",
+  GESAN: "girisimelk.com.tr",
+  TURSG: "turkiyesigorta.com.tr",
+  TRALT: "turkaltinisletmeleri.com",
+  TATEN: "tatlipinarenerji.com.tr",
+  SKBNK: "sekerbank.com.tr",
+  DAPGM: "dapgayrimenkulgelistirme.com.tr",
+  BRSAN: "borusanmannesmann.com",
+  MPARK: "medicalpark.com.tr",
+  DCTTR: "dcttrading.com.tr",
+  IZFAS: "izmirfirca.com.tr",
+  ANSGR: "anadolusigorta.com.tr",
+  BETAE: "betaenerji.com",
+  MOPAS: "mopas.com.tr",
+  AKSEN: "aksaenerji.com.tr",
+  KORDS: "kordsa.com",
+  SVGYO: "savurgyo.com.tr",
+  MANAS: "manas.com.tr",
+  TMPOL: "temapol.com.tr",
+  LIDER: "liderfilo.com.tr",
 }
 
 export function logoUrlFor(ticker: string, size: number = 64): string | null {

@@ -14,9 +14,8 @@ import {
   Pie, 
   Cell 
 } from "recharts"
-import { 
-  Sparkles, 
-  TrendingUp, 
+import {
+  TrendingUp,
   TrendingDown, 
   Flame,
   ArrowRight,
@@ -29,7 +28,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   HelpCircle,
-  Coins
+  Coins,
+  Zap
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -70,10 +70,9 @@ export default function Home() {
   const [indexChartData, setIndexChartData] = useState<any[]>([])
   const [selectedIndex, setSelectedIndex] = useState<string>("XU100")
   
-  // AI Signals States
-  const [signals, setSignals] = useState<any[]>([])
-  const [isFallbackSignals, setIsFallbackSignals] = useState(false)
-  const [loadingSignals, setLoadingSignals] = useState(true)
+  // Popüler Fonlar - Anlık Getiri (same live estimate as /funds page)
+  const [popularFunds, setPopularFunds] = useState<any[]>([])
+  const [loadingPopularFunds, setLoadingPopularFunds] = useState(true)
 
   // Favorites States
   const [favoriteStocks, setFavoriteStocks] = useState<any[]>([])
@@ -128,23 +127,16 @@ export default function Home() {
         })
     }
 
-    // 3. Fetch portfolio signals. AuthGate guarantees a valid token exists
-    // by the time this page renders; authFetch (lib/auth.ts) logs the
-    // session out on a 401 rather than silently retrying with no
-    // credentials to retry with.
-    const bootstrapAndLoad = async () => {
-      try {
-        const res = await authFetch("/portfolio/signals")
-        const data = await res.json()
-        if (data && Array.isArray(data.signals)) {
-          setSignals(data.signals)
-          setIsFallbackSignals(data.is_fallback)
-        }
-      } catch (err) {
-        console.error("Failed to fetch signals:", err)
-      } finally {
-        setLoadingSignals(false)
-      }
+    // 3. Fetch the "Popüler Fonlar - Anlık Getiri" live estimate (same
+    // endpoint the funds page uses).
+    const fetchPopularFunds = () => {
+      fetch(`${API_BASE_URL}/api/v1/funds/popular/live-estimate`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data.funds)) setPopularFunds(data.funds)
+        })
+        .catch(err => console.error("Failed to load popular funds live estimate:", err))
+        .finally(() => setLoadingPopularFunds(false))
     }
 
     // 4. Fetch details for favorites (Request 12 & 16!)
@@ -204,7 +196,7 @@ export default function Home() {
 
     // Initial fetch
     fetchMarketSummary()
-    bootstrapAndLoad()
+    fetchPopularFunds()
     loadFavorites()
     loadHeatmapData()
 
@@ -215,11 +207,13 @@ export default function Home() {
     // slower cadence to avoid unnecessary load.
     const favoritesInterval = setInterval(loadFavorites, 10000)
     const heatmapInterval = setInterval(loadHeatmapData, 15000)
+    const popularFundsInterval = setInterval(fetchPopularFunds, 15000)
 
     return () => {
       clearInterval(marketInterval)
       clearInterval(favoritesInterval)
       clearInterval(heatmapInterval)
+      clearInterval(popularFundsInterval)
     }
   }, [])
 
@@ -360,102 +354,60 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Frantic Strateji - Piraziz AI live signal tracker (Request 2!) */}
-          <Card glass={true} className="border-emerald-500/10 bg-gradient-to-br from-card via-card to-emerald-950/5">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg flex items-center">
-                    <Sparkles className="h-5 w-5 mr-2 text-emerald-400 animate-pulse" />
-                    Frantic Strateji
-                  </CardTitle>
-                  <CardDescription>
-                    {isFallbackSignals
-                      ? "Portföyünüzde hisse senedi bulunmadığı için popüler BIST 30 senetleri analiz ediliyor."
-                      : "Portföyünüzdeki hisseler için canlı, çok indikatörlü sinyal takibi."
-                    }
-                  </CardDescription>
-                </div>
-                <span className="text-[10px] uppercase font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full flex items-center shrink-0">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
-                  Canlı Takip
-                </span>
-              </div>
+          {/* Popüler Fonlar - Anlık Getiri (moved here from /funds page, same
+              live-estimate endpoint and disclaimer text). */}
+          <Card glass={true} className="border-amber-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center">
+                <Zap className="h-5 w-5 mr-2 text-amber-400" />
+                Popüler Fonlar - Anlık Getiri
+              </CardTitle>
+              <CardDescription className="text-[10px]">
+                TEFAS fonların NAV&apos;ını günde bir kez yayınlar - bu bölüm, her fonun son bilinen varlık dağılımını o
+                varlıkların canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri
+                hesaplar. Gerçek bir NAV yeniden hesaplaması değildir.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {loadingSignals ? (
+              {loadingPopularFunds ? (
                 <div className="space-y-3 py-1">
                   <Skeleton className="h-16 w-full rounded-xl" />
                   <Skeleton className="h-16 w-full rounded-xl" />
                   <Skeleton className="h-16 w-full rounded-xl" />
                 </div>
-              ) : signals.length > 0 ? (
-                <div className="space-y-4">
-                  {signals.map((sig, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors ${
-                        sig.signal.includes("Güçlü AL") ? "bg-emerald-950/20 border-emerald-400/35 hover:bg-emerald-950/30" :
-                        sig.signal.includes("AL") ? "bg-green-950/10 border-green-500/25 hover:bg-green-950/15" :
-                        sig.signal.includes("Güçlü SAT") ? "bg-rose-950/20 border-rose-400/35 hover:bg-rose-950/30" :
-                        sig.signal.includes("SAT") ? "bg-orange-950/10 border-orange-500/25 hover:bg-orange-950/15" :
-                        "bg-secondary/15 border-border/30 hover:bg-secondary/25"
-                      }`}
-                    >
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <span
-                            onClick={() => router.push(`/stock/${sig.ticker}`)}
-                            className="text-xs font-black bg-secondary hover:bg-secondary/80 px-2.5 py-1 rounded text-foreground cursor-pointer transition-colors"
-                          >
-                            {sig.ticker}
+              ) : popularFunds.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-6">Veri alınamadı.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {popularFunds.map(f => {
+                    const isUp = f.estimated_change_pct >= 0
+                    return (
+                      <div
+                        key={f.code}
+                        onClick={() => router.push(`/funds?code=${f.code}`)}
+                        className="border border-border/40 rounded-xl bg-secondary/10 p-3 cursor-pointer hover:bg-secondary/20 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="bg-amber-500 text-amber-950 font-black px-2 py-0.5 rounded text-xs">
+                            {f.code}
                           </span>
-                          <span className="text-xs font-mono font-bold">₺{sig.price.toFixed(2)}</span>
-                          <span className="text-[10px] text-muted-foreground font-mono">SMA20: ₺{sig.sma20.toFixed(2)}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          {sig.description}
-                        </p>
-                        {/* Live indicator score bar: how many of the 11 tracked
-                            indicators currently lean bullish vs bearish */}
-                        {typeof sig.buy_score === "number" && typeof sig.sell_score === "number" && (
-                          <div className="flex items-center space-x-2 pt-0.5 max-w-xs">
-                            <div className="flex-1 h-1.5 rounded-full bg-secondary/40 overflow-hidden flex">
-                              <div
-                                className="h-full bg-emerald-500"
-                                style={{ width: `${(sig.buy_score / (sig.total_indicators || 11)) * 100}%` }}
-                              />
-                              <div
-                                className="h-full bg-rose-500"
-                                style={{ width: `${(sig.sell_score / (sig.total_indicators || 11)) * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-[9px] font-mono text-muted-foreground shrink-0">
-                              {sig.buy_score} AL / {sig.sell_score} SAT
-                            </span>
-                          </div>
+                        <div className="text-[10px] text-muted-foreground mt-1.5 truncate">{f.name}</div>
+                        <div className="flex items-baseline justify-between mt-2">
+                          <span className={`text-xl font-black font-mono ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+                            {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
+                          </span>
+                          <span className="text-[9px] text-muted-foreground">
+                            kapsam %{f.resolved_weight_pct.toFixed(0)}
+                          </span>
+                        </div>
+                        {f.fund_size && (
+                          <div className="text-[9px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
                         )}
                       </div>
-
-                      <div className="flex items-center space-x-2 shrink-0">
-                        <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase border ${
-                          sig.signal === "Güçlü AL" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                          sig.signal === "AL" ? "bg-green-500/10 text-green-400 border-green-500/20" :
-                          sig.signal === "Güçlü SAT" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
-                          sig.signal === "SAT" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" :
-                          "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
-                        }`}>
-                          {sig.signal}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {sig.timestamp}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
-              ) : (
-                <p className="text-center text-xs text-muted-foreground py-6">Aktif sinyal bulunmamaktadır.</p>
               )}
             </CardContent>
           </Card>

@@ -70,7 +70,9 @@ export default function FundsPage() {
   // holdings x their live BIST prices (see backend get_live_estimated_return).
   const [popularFunds, setPopularFunds] = useState<any[]>([])
   const [popularLoading, setPopularLoading] = useState(true)
-  const [expandedPopularCode, setExpandedPopularCode] = useState<string | null>(null)
+  // A Set (not a single value) so expanding PBR doesn't collapse TMV -
+  // each card toggles independently.
+  const [expandedPopularCodes, setExpandedPopularCodes] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let active = true
@@ -365,11 +367,16 @@ export default function FundsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {popularFunds.map(f => {
                 const isUp = f.estimated_change_pct >= 0
-                const isExpanded = expandedPopularCode === f.code
+                const isExpanded = expandedPopularCodes.has(f.code)
                 return (
                   <div key={f.code} className="border border-border/40 rounded-xl bg-secondary/10 overflow-hidden">
                     <button
-                      onClick={() => setExpandedPopularCode(isExpanded ? null : f.code)}
+                      onClick={() => setExpandedPopularCodes(prev => {
+                        const next = new Set(prev)
+                        if (next.has(f.code)) next.delete(f.code)
+                        else next.add(f.code)
+                        return next
+                      })}
                       className="w-full p-3 text-left cursor-pointer"
                     >
                       <div className="flex items-center justify-between">

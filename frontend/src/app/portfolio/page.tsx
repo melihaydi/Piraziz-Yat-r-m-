@@ -872,7 +872,7 @@ export default function PortfolioPage() {
                       <th className="px-6 text-right">Ort. Maliyet</th>
                       <th className="px-6 text-right">Güncel Fiyat</th>
                       <th className="px-6 text-right">Toplam Değer</th>
-                      <th className="px-6 text-right">Toplam Getiri (K/Z)</th>
+                      <th className="px-6 text-right">Getiri (Toplam / Günlük)</th>
                       <th className="px-6 text-center">İşlem</th>
                     </tr>
                   </thead>
@@ -901,10 +901,10 @@ export default function PortfolioPage() {
                                   mixed into this figure. */}
                               <div className="flex flex-col items-end">
                                 <span>₺{(item.current_price || item.average_cost).toFixed(2)}</span>
-                                {item.estimated_daily_change_pct != null && (
-                                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${item.estimated_daily_change_pct >= 0 ? "text-amber-400" : "text-amber-500"}`}>
+                                {item.daily_change_pct != null && item.daily_change_is_estimate && (
+                                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${item.daily_change_pct >= 0 ? "text-amber-400" : "text-amber-500"}`}>
                                     <Zap className="h-2.5 w-2.5 shrink-0" />
-                                    ~{item.estimated_daily_change_pct >= 0 ? "+" : ""}{item.estimated_daily_change_pct.toFixed(2)}% tahmini
+                                    ~{item.daily_change_pct >= 0 ? "+" : ""}{item.daily_change_pct.toFixed(2)}% tahmini
                                   </span>
                                 )}
                               </div>
@@ -913,13 +913,28 @@ export default function PortfolioPage() {
                               ₺{value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="px-6 text-right font-mono font-bold">
-                              <div className="flex flex-col items-end">
-                                <span className={profit >= 0 ? "text-emerald-400" : "text-rose-500"}>
-                                  {profit >= 0 ? "+" : ""}₺{profit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
-                                </span>
-                                <span className={`text-[10px] ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                                  {profit >= 0 ? "+" : ""}{profitPct.toFixed(1)}%
-                                </span>
+                              <div className="flex flex-col items-end gap-1">
+                                {/* Toplam (cumulative since purchase) */}
+                                <div className="flex flex-col items-end">
+                                  <span className={profit >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                                    {profit >= 0 ? "+" : ""}₺{profit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                                  </span>
+                                  <span className={`text-[10px] ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                    Toplam {profit >= 0 ? "+" : ""}{profitPct.toFixed(1)}%
+                                  </span>
+                                </div>
+                                {/* Günlük (today only) - real for a stock, tahmini for a fund */}
+                                {item.daily_gain_value != null && (
+                                  <div className="flex flex-col items-end border-t border-border/30 pt-1">
+                                    <span className={`text-[10px] font-semibold inline-flex items-center gap-0.5 ${item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"}`}>
+                                      {item.daily_change_is_estimate && <Zap className="h-2.5 w-2.5 shrink-0" />}
+                                      {item.daily_gain_value >= 0 ? "+" : ""}₺{item.daily_gain_value.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                                    </span>
+                                    <span className={`text-[9px] ${item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"}`}>
+                                      Günlük{item.daily_change_is_estimate ? " (tahmini)" : ""} {item.daily_change_pct >= 0 ? "+" : ""}{item.daily_change_pct.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td className="px-6 text-center flex items-center justify-center h-14">
