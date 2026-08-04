@@ -46,14 +46,25 @@ function ImportanceBadge({ importance }: { importance: string }) {
   return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cls}`}>{label}</span>
 }
 
+// Module-level (not component state) so it survives this page unmounting -
+// Next.js tears down the page component every time the user navigates away
+// and back, which used to mean a fresh loading spinner and re-fetch each
+// time. These persist for the lifetime of the SPA session (reset only by an
+// actual page reload), so a revisit renders the last-known list instantly;
+// fetchNews/fetchKap below still run in the background on every mount and
+// interval tick to pick up anything genuinely new, they just no longer
+// force a blank loading state to show it.
+let cachedNews: NewsItem[] | null = null
+let cachedKap: KapItem[] | null = null
+let cachedKapIsSample = false
+
 export default function EconomyNewsPage() {
   const [tab, setTab] = useState<"news" | "kap">("news")
-  const [news, setNews] = useState<NewsItem[]>([])
-  const [newsLoading, setNewsLoading] = useState(true)
-  const [kap, setKap] = useState<KapItem[]>([])
-  const [kapIsSample, setKapIsSample] = useState(false)
-  const [kapLoading, setKapLoading] = useState(true)
-  const [kapLoaded, setKapLoaded] = useState(false)
+  const [news, setNews] = useState<NewsItem[]>(cachedNews ?? [])
+  const [newsLoading, setNewsLoading] = useState(cachedNews === null)
+  const [kap, setKap] = useState<KapItem[]>(cachedKap ?? [])
+  const [kapIsSample, setKapIsSample] = useState(cachedKapIsSample)
+  const [kapLoading, setKapLoading] = useState(cachedKap === null)
   const [dividendOnly, setDividendOnly] = useState(false)
   const [expandedKap, setExpandedKap] = useState<string | null>(null)
   const [favorites, setFavorites] = useState<string[]>([])
@@ -61,7 +72,11 @@ export default function EconomyNewsPage() {
   const fetchNews = useCallback(async () => {
     try {
       const res = await authFetch("/news/")
-      if (res.ok) setNews(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        cachedNews = data
+        setNews(data)
+      }
     } catch (e) {
       console.error("Failed to load news:", e)
     } finally {
@@ -70,19 +85,24 @@ export default function EconomyNewsPage() {
   }, [])
 
   const fetchKap = useCallback(async () => {
-    setKapLoading(true)
+    // Only show the spinner on a genuinely first load (no cache yet) - a
+    // background refresh (cache already populated) updates the list in
+    // place without hiding it first.
+    if (cachedKap === null) setKapLoading(true)
     try {
       const res = await authFetch("/screener/kap?limit=10")
       if (res.ok) {
         const data = await res.json()
-        setKap(data.items || [])
+        const items = data.items || []
+        cachedKap = items
+        cachedKapIsSample = !!data.is_sample
+        setKap(items)
         setKapIsSample(!!data.is_sample)
       }
     } catch (e) {
       console.error("Failed to load KAP disclosures:", e)
     } finally {
       setKapLoading(false)
-      setKapLoaded(true)
     }
   }, [])
 
@@ -100,8 +120,12 @@ export default function EconomyNewsPage() {
   }, [fetchNews])
 
   useEffect(() => {
-    if (tab === "kap" && !kapLoaded) fetchKap()
-  }, [tab, kapLoaded, fetchKap])
+    // Runs every time the tab becomes "kap" (not just the first time) so a
+    // revisit refreshes in the background - fetchKap only shows the
+    // spinner when there's no cache yet, so this doesn't hide the
+    // already-visible cached list while it does.
+    if (tab === "kap") fetchKap()
+  }, [tab, fetchKap])
 
   const favoriteNews = useMemo(() => {
     if (favorites.length === 0) return []
