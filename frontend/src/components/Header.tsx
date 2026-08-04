@@ -366,7 +366,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }, [searchQuery, tickersList, fundsList])
 
   return (
-    <header className="h-16 border-b border-border bg-card/60 backdrop-blur-md flex items-center justify-between px-3 md:px-8 sticky top-0 z-20 gap-2">
+    <header className="border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-20">
+    <div className="h-16 flex items-center justify-between px-3 md:px-8 gap-2">
       {/* Mobile/tablet menu toggle - opens the off-canvas Sidebar drawer */}
       <button
         onClick={onMenuClick}
@@ -578,6 +579,28 @@ export default function Header({ onMenuClick }: HeaderProps) {
             )}
           </div>
         </Link>
+      </div>
+    </div>
+
+      {/* Mobile ticker row - the marquee above is `hidden md:block`, so
+          phones never saw the live index feed at all otherwise. */}
+      <div className="md:hidden relative overflow-hidden border-t border-border/30 bg-zinc-950/40 py-1.5 px-3">
+        <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-zinc-950/60 to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-zinc-950/60 to-transparent z-10 pointer-events-none" />
+        <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
+          <div className="animate-ticker flex space-x-6 items-center pr-6">
+            {[...indexData, ...indexData].map((idx, i) => (
+              <div key={`m-${idx.name}-${i}`} className="flex items-center space-x-1.5 text-[10px] font-bold">
+                <span className="text-muted-foreground/95">{idx.name}</span>
+                <span className="text-foreground font-mono font-medium">{idx.value}</span>
+                <span className={idx.up ? "text-emerald-500 flex items-center" : "text-rose-500 flex items-center"}>
+                  {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
+                  {idx.change}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </header>
   )

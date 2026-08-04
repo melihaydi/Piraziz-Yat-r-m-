@@ -867,13 +867,13 @@ export default function PortfolioPage() {
                 <table className="w-full text-sm text-left">
                   <thead>
                     <tr className="border-b border-border/80 text-muted-foreground text-xs font-semibold bg-secondary/15 h-11">
-                      <th className="px-6">Hisse</th>
-                      <th className="px-6 text-right">Adet (Lot)</th>
-                      <th className="px-6 text-right">Ort. Maliyet</th>
-                      <th className="px-6 text-right">Güncel Fiyat</th>
-                      <th className="px-6 text-right">Toplam Değer</th>
-                      <th className="px-6 text-right">Getiri (Toplam / Günlük)</th>
-                      <th className="px-6 text-center">İşlem</th>
+                      <th className="px-3 md:px-6">Hisse</th>
+                      <th className="px-3 md:px-6 text-right">Adet (Lot)</th>
+                      <th className="px-3 md:px-6 text-right">Ort. Maliyet</th>
+                      <th className="px-3 md:px-6 text-right">Güncel Fiyat</th>
+                      <th className="px-3 md:px-6 text-right">Toplam Değer</th>
+                      <th className="px-3 md:px-6 text-right">Getiri (Toplam / Günlük)</th>
+                      <th className="px-3 md:px-6 text-center">İşlem</th>
                     </tr>
                   </thead>
                   <tbody>
