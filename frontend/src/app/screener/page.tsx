@@ -102,9 +102,27 @@ const StockRow = React.memo(function StockRow({
       <td className="px-4 text-muted-foreground truncate max-w-[120px]">{comp.sector}</td>
       <td className="px-4 text-right font-mono font-bold">₺{comp.price.toFixed(2)}</td>
       <td className="px-4 text-right font-mono font-semibold">
-        <span className={comp.change_percent >= 0 ? "text-emerald-400" : "text-rose-500"}>
-          {comp.change_percent >= 0 ? "+" : ""}{comp.change_percent.toFixed(2)}%
-        </span>
+        <div className="flex flex-col items-end gap-0.5">
+          <span className={comp.change_percent >= 0 ? "text-emerald-400" : "text-rose-500"}>
+            {comp.change_percent >= 0 ? "+" : ""}{comp.change_percent.toFixed(2)}%
+          </span>
+          {/* This stock's contribution to any "Popüler Fonlar" (TMV/PBR/DFI)
+              that hold it: weight% * this stock's own change% - not the
+              fund's own overall estimate, just this one holding's share of it. */}
+          {Array.isArray(comp.fund_impacts) && comp.fund_impacts.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1">
+              {comp.fund_impacts.map((fi: any) => (
+                <span
+                  key={fi.fund_code}
+                  title={`${fi.fund_code} ağırlığı %${fi.weight_pct.toFixed(2)} - bu hissenin fona etkisi`}
+                  className={`text-[9px] font-bold px-1 py-0.5 rounded border ${fi.impact_pct >= 0 ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-amber-500/10 text-amber-500 border-amber-500/20"}`}
+                >
+                  {fi.fund_code} {fi.impact_pct >= 0 ? "+" : ""}{fi.impact_pct.toFixed(2)}p
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </td>
       <td className="px-4 text-center font-mono font-bold">
         <span className="bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded border border-purple-500/15">

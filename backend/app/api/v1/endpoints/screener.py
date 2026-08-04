@@ -5,10 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.services.market_data import market_data_service
 from app.services.scoring import ScoringService
 from app.services.technical_analysis import TechnicalAnalysisService
-from app.schemas.screener import ScreenerStockResponse
+from app.schemas.screener import ScreenerStockResponse, FundImpact
 from app.services.sectors import SECTOR_MAP, get_sector
+from app.services.tefas import tefas_service
 
 router = APIRouter()
+
+# Same 3 funds funds.py's "Popüler Fonlar" tracks - kept as a local constant
+# rather than importing it from that endpoint module, to avoid two API-layer
+# modules depending on each other's internals for what's really just a list.
+_POPULAR_FUND_CODES = ["TMV", "PBR", "DFI"]
 
 def calculate_techs(candles: list) -> dict:
     if not candles or len(candles) < 20:
@@ -122,6 +128,11 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
     scoring_res = ScoringService.calculate_bip_score(metrics)
     ai_score = int(scoring_res["total_score"])
 
+    fund_impacts = [
+        FundImpact(fund_code=m["fund_code"], weight_pct=m["weight_pct"], impact_pct=round(m["weight_pct"] / 100 * change_pct, 3))
+        for m in tefas_service.get_funds_holding_ticker(ticker, _POPULAR_FUND_CODES)
+    ]
+
     return ScreenerStockResponse(
         ticker=ticker,
         name=name,
@@ -135,7 +146,8 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
         eps=eps,
         market_cap=mcap,
         ai_score=ai_score,
-        sentiment=sentiment
+        sentiment=sentiment,
+        fund_impacts=fund_impacts
     )
 
 

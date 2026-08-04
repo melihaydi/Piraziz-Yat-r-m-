@@ -847,6 +847,25 @@ class TefasService:
             "holdings": holdings_out,
         }
 
+    def get_funds_holding_ticker(self, ticker: str, fund_codes: List[str]) -> List[Dict[str, float]]:
+        """For the screener: which of `fund_codes` (e.g. the 3 "Popüler
+        Fonlar") disclose `ticker` as a holding, and at what weight - lets a
+        stock's own live change_percent be turned into "how many points did
+        this move contribute to that fund's estimate" (weight/100 * change),
+        computed by the caller since this only returns the static weight,
+        not a live number. Returns [] if the ticker isn't held by any of them."""
+        ticker = ticker.upper()
+        matches = []
+        for code in fund_codes:
+            details = FUND_DETAILS_MAP.get(code.upper())
+            if not details:
+                continue
+            for item in details["assets_distribution"]:
+                if item["name"].upper() == ticker:
+                    matches.append({"fund_code": code.upper(), "weight_pct": float(item["value"])})
+                    break
+        return matches
+
     def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> tuple[List[Dict[str, Any]], bool]:
         """
         Return (candles, is_simulated) historical NAV data for a mutual fund's chart.
