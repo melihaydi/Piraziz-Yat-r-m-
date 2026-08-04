@@ -40,7 +40,6 @@ import {
   DialogFooter,
   DialogTrigger
 } from "@/components/ui/Dialog"
-import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
@@ -120,13 +119,14 @@ export default function PortfolioPage() {
   const [editCost, setEditCost] = useState("")
   const [sellShares, setSellShares] = useState("")
 
-  // Get Auth headers helper
-  const getHeaders = () => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { "Authorization": `Bearer ${token}` } : {})
-    }
+  // Surfaces a failure from any of the mutation handlers below (add/edit/
+  // sell/delete asset, add/toggle/delete alert) - previously these only
+  // checked `res.ok` with no `else`, so a validation error or an expired
+  // session just silently did nothing and the modal sat there looking stuck.
+  const [actionError, setActionError] = useState<string | null>(null)
+  const flashActionError = (msg: string) => {
+    setActionError(msg)
+    setTimeout(() => setActionError(null), 5000)
   }
 
   // Load portfolios and alerts. AuthGate guarantees a valid session by the
@@ -313,9 +313,9 @@ export default function PortfolioPage() {
     if (!activePortfolio || !assetTicker || !assetShares || !assetCost) return
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/${activePortfolio.id}/assets`, {
+      const res = await authFetch(`/portfolio/${activePortfolio.id}/assets`, {
         method: "POST",
-        headers: getHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: assetTicker.toUpperCase(),
           shares: parseFloat(assetShares),
@@ -328,24 +328,27 @@ export default function PortfolioPage() {
         setAssetCost("")
         setIsOpenAssetModal(false)
         loadData() // Refresh
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Varlık eklenemedi.")
       }
     } catch (err) {
-      console.error("Failed to add asset:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
   // Delete Asset Handler
   const handleDeleteAsset = async (assetId: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/assets/${assetId}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      })
+      const res = await authFetch(`/portfolio/assets/${assetId}`, { method: "DELETE" })
       if (res.ok) {
         loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Varlık silinemedi.")
       }
     } catch (err) {
-      console.error("Failed to delete asset:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
@@ -355,9 +358,9 @@ export default function PortfolioPage() {
     if (!selectedAsset || !editShares || !editCost) return
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/assets/${selectedAsset.id}`, {
+      const res = await authFetch(`/portfolio/assets/${selectedAsset.id}`, {
         method: "PUT",
-        headers: getHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           shares: parseFloat(editShares),
           average_cost: parseFloat(editCost)
@@ -367,9 +370,12 @@ export default function PortfolioPage() {
         setIsOpenEditModal(false)
         setSelectedAsset(null)
         loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Varlık güncellenemedi.")
       }
     } catch (err) {
-      console.error("Failed to edit asset:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
@@ -379,21 +385,24 @@ export default function PortfolioPage() {
     if (!selectedAsset || !sellShares) return
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/portfolio/assets/${selectedAsset.id}/sell`, {
+      const res = await authFetch(`/portfolio/assets/${selectedAsset.id}/sell`, {
         method: "POST",
-        headers: getHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           shares: parseFloat(sellShares)
         })
-      })
+      }, 0) // never silently retry a sell on a network failure - could double-sell
       if (res.ok) {
         setIsOpenSellModal(false)
         setSelectedAsset(null)
         setSellShares("")
         loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Satış gerçekleştirilemedi.")
       }
     } catch (err) {
-      console.error("Failed to sell asset:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
@@ -408,9 +417,9 @@ export default function PortfolioPage() {
     const value = match ? parseFloat(match[2]) : parseFloat(alertCondition) || 0.0
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/alert/`, {
+      const res = await authFetch(`/alert/`, {
         method: "POST",
-        headers: getHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: alertTicker.toUpperCase(),
           alert_type: alertType,
@@ -422,39 +431,42 @@ export default function PortfolioPage() {
         setAlertCondition("")
         setIsOpenAlertModal(false)
         loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Alarm oluşturulamadı.")
       }
     } catch (err) {
-      console.error("Failed to create alert:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
   // Toggle Alert Status Handler
   const handleToggleAlert = async (id: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/alert/${id}/toggle`, {
-        method: "POST",
-        headers: getHeaders()
-      })
+      const res = await authFetch(`/alert/${id}/toggle`, { method: "POST" })
       if (res.ok) {
         loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Alarm güncellenemedi.")
       }
     } catch (err) {
-      console.error("Failed to toggle alert:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
   // Delete Alert Handler
   const handleDeleteAlert = async (id: number) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/alert/${id}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      })
+      const res = await authFetch(`/alert/${id}`, { method: "DELETE" })
       if (res.ok) {
         loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Alarm silinemedi.")
       }
     } catch (err) {
-      console.error("Failed to delete alert:", err)
+      flashActionError("Sunucuya ulaşılamadı.")
     }
   }
 
@@ -469,6 +481,12 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
+      {actionError && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-sm font-semibold text-rose-400 flex items-center justify-between gap-3">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-rose-400/70 hover:text-rose-300 cursor-pointer shrink-0">✕</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

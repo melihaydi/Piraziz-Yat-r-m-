@@ -1,7 +1,11 @@
+import threading
+import time
+
 import pandas as pd
 
 from app.services.strategy_engine import (
     SwingPoint,
+    StrategyEngine,
     _find_swings,
     _classify_structure,
     _trend_state,
@@ -14,6 +18,44 @@ from app.services.strategy_engine import (
     _ichimoku,
     _fibonacci_levels,
 )
+
+
+def test_run_scan_does_not_start_a_second_concurrent_scan():
+    # Regression test for the cold-start thundering-herd bug: scan_now()/
+    # get_signal_history() both call _run_scan() whenever self._signals is
+    # empty, with no coordination - right after a deploy, several
+    # simultaneous requests could each kick off their own full 30-symbol
+    # scan. _run_scan() now guards this with self._running + an Event that
+    # a second concurrent caller waits on instead of running the (mocked
+    # here) scan body again.
+    engine = StrategyEngine()
+    call_count = {"n": 0}
+    body_started = threading.Event()
+    release_body = threading.Event()
+
+    def fake_body(self):
+        call_count["n"] += 1
+        body_started.set()
+        release_body.wait(timeout=5)
+
+    engine._run_scan_body = fake_body.__get__(engine, StrategyEngine)
+
+    t1 = threading.Thread(target=engine._run_scan)
+    t1.start()
+    assert body_started.wait(timeout=2), "first caller never entered the scan body"
+
+    t2 = threading.Thread(target=engine._run_scan)
+    t2.start()
+    # Give a second, unguarded caller a window in which it would (wrongly)
+    # have started its own concurrent scan body if the guard didn't work.
+    time.sleep(0.3)
+
+    release_body.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert call_count["n"] == 1
+    assert not engine._running
 
 
 def _make_df(highs, lows, closes=None, volumes=None):

@@ -614,6 +614,16 @@ def _check_pending_orders(db: Session, account: TradeAccount) -> None:
         TradePendingOrder.account_id == account.id,
         TradePendingOrder.status == "PENDING",
     ).all()
+    if not pending:
+        return
+
+    # Same race as place_order's lock, but only taken when there's actually a
+    # fill to check - this runs on every account poll (every few seconds per
+    # open tab), and most accounts have no resting orders most of the time,
+    # so locking unconditionally here would serialize the hot read path for
+    # no reason.
+    db.query(TradeAccount).filter(TradeAccount.id == account.id).with_for_update().first()
+
     for order in pending:
         price = get_live_price(order.instrument_type, order.symbol)
         if price <= 0:
@@ -695,6 +705,14 @@ def place_order(
         raise TradeError("Geçersiz VİOP kontratı.")
     if lot is None or lot <= 0:
         raise TradeError("Lot miktarı sıfırdan büyük olmalı.")
+
+    # Lock this account's row for the rest of the transaction - without this,
+    # two concurrent orders against the same account (e.g. two open tabs, or
+    # this request racing the pending-order poll in _check_pending_orders)
+    # can both read the same pre-mutation cash_balance/position, both pass
+    # the balance/position check, and both commit - double-filling an order
+    # or letting cash_balance go negative.
+    db.query(TradeAccount).filter(TradeAccount.id == account.id).with_for_update().first()
 
     if order_type in ("LIMIT", "STOP", "STOP_LIMIT"):
         if order_type in ("LIMIT", "STOP_LIMIT") and (limit_price is None or limit_price <= 0):
@@ -839,7 +857,14 @@ def get_performance(db: Session, account: TradeAccount) -> Dict[str, Any]:
 
     realized_total = sum((o.realized_pnl or 0.0) for o in closing_orders)
     positions = db.query(TradePosition).filter(TradePosition.account_id == account.id).all()
-    unrealized_total = sum(_position_dict(p)["pnl"] for p in positions)
+    # Fetch each position's live price exactly once and reuse it for every
+    # figure derived below - previously unrealized_total, stock_value, and
+    # viop_value each called _position_dict() (and so get_live_price())
+    # independently, tripling the work and risking the quote cache updating
+    # mid-request so the three totals didn't reconcile with each other.
+    prices = _fetch_prices_concurrently(positions)
+    pos_dicts = [_position_dict(p, price) for p, price in zip(positions, prices)]
+    unrealized_total = sum(pd["pnl"] for pd in pos_dicts)
 
     total_orders = db.query(TradeOrder).filter(TradeOrder.account_id == account.id).count()
 
@@ -853,8 +878,8 @@ def get_performance(db: Session, account: TradeAccount) -> Dict[str, Any]:
         .order_by(TradeDailySnapshot.snapshot_date.asc())
         .all()
     )
-    stock_value = sum(_position_dict(p)["position_value"] for p in positions if p.instrument_type == "stock")
-    viop_value = sum(_position_dict(p)["position_value"] for p in positions if p.instrument_type == "viop")
+    stock_value = sum(pd["position_value"] for pd, p in zip(pos_dicts, positions) if p.instrument_type == "stock")
+    viop_value = sum(pd["position_value"] for pd, p in zip(pos_dicts, positions) if p.instrument_type == "viop")
     current_equity = account.cash_balance + stock_value + viop_value
 
     equity_curve = [{"date": s.snapshot_date.isoformat(), "equity": round(s.equity_value, 2)} for s in snapshots]

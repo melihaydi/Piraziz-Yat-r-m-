@@ -136,7 +136,16 @@ class MarketDataService:
         
         # Lock for thread safety during dynamic subscription checks
         self._lock = threading.Lock()
-        
+
+        # Which tickers currently have at least one active, untriggered alert
+        # - refreshed on a short TTL rather than per-tick (see
+        # _check_alerts_for_symbol). Most symbols have zero alerts most of
+        # the time, so this turns the hot quote-tick path into an in-memory
+        # set lookup instead of a DB round trip for the common case.
+        self._alert_tickers: set = set()
+        self._alert_tickers_refreshed_at: float = 0.0
+        self._alert_tickers_lock = threading.Lock()
+
         # Start connection in background thread to avoid blocking FastAPI startup
         self._start_thread = threading.Thread(target=self._initialize_stream, daemon=True)
         self._start_thread.start()
@@ -305,12 +314,42 @@ class MarketDataService:
                 
         logger.info(f"Background subscription loop completed. Subscribed to all BIST symbols.")
 
+    _ALERT_TICKERS_TTL_SECONDS = 5.0
+
+    def _get_alert_tickers(self) -> set:
+        """Refreshes self._alert_tickers at most once per TTL window, from a
+        single lightweight DISTINCT query - fired from _check_alerts_for_symbol
+        on every quote tick for every symbol, so this must stay cheap and must
+        not open a new DB session on every single call."""
+        now = time.time()
+        with self._alert_tickers_lock:
+            if now - self._alert_tickers_refreshed_at < self._ALERT_TICKERS_TTL_SECONDS:
+                return self._alert_tickers
+        db = SessionLocal()
+        try:
+            rows = db.query(Alert.ticker).filter(
+                Alert.is_active == True,
+                Alert.is_triggered == False,
+            ).distinct().all()
+            tickers = {r[0] for r in rows}
+        except Exception as e:
+            logger.error(f"Error refreshing active alert ticker set: {e}")
+            tickers = self._alert_tickers  # keep the stale set rather than going blind
+        finally:
+            db.close()
+        with self._alert_tickers_lock:
+            self._alert_tickers = tickers
+            self._alert_tickers_refreshed_at = now
+        return tickers
+
     def _check_alerts_for_symbol(self, symbol: str, quote: dict) -> None:
         """Callback to check and trigger active price alerts in real-time."""
         price = quote.get("last")
         if price is None or price == 0:
             return
-            
+        if symbol not in self._get_alert_tickers():
+            return
+
         db = SessionLocal()
         try:
             alerts = db.query(Alert).filter(

@@ -495,11 +495,14 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
 
   const depositFunds = useCallback(async (amount: number): Promise<OrderResult> => {
     try {
+      // No retry on a network-level failure here - if the drop happens after
+      // the backend already committed the deposit but before the response
+      // arrives, a silent retry would resubmit the same amount a second time.
       const res = await authFetch(withAccountParam("/trade/account/deposit"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount }),
-      })
+      }, 0)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         return { ok: false, error: err.detail || "Bakiye eklenemedi." }
@@ -523,6 +526,8 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
       stopPrice?: number
     ): Promise<OrderResult> => {
       try {
+        // Same reasoning as depositFunds above - never silently resubmit an
+        // order on a network-level failure, that could double-fill it.
         const res = await authFetch(withAccountParam("/trade/order"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -530,7 +535,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
             instrument_type: instrumentType, symbol, side, lot,
             order_type: orderType, limit_price: limitPrice, stop_price: stopPrice,
           }),
-        })
+        }, 0)
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
           return { ok: false, error: err.detail || "Emir gerçekleştirilemedi." }

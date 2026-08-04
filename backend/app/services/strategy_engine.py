@@ -1017,6 +1017,8 @@ class StrategyEngine:
         self._signals: List[Signal] = []
         self._last_run: Optional[str] = None
         self._running = False
+        self._scan_done_event = threading.Event()
+        self._scan_done_event.set()  # not running initially, so nothing waits
         self._scheduler_started = False
         # Intraday LONG/SHORT signal log: a new entry is recorded whenever a
         # symbol's direction *changes into* LONG or SHORT (not on every scan
@@ -1060,6 +1062,35 @@ class StrategyEngine:
         cache_service.set_json(_HISTORY_REDIS_KEY, history_payload, expire_seconds=HISTORY_REDIS_TTL_SECONDS)
 
     def _run_scan(self) -> None:
+        # self._running guards against the thundering-herd case: scan_now()/
+        # get_signal_history() both call _run_scan() synchronously whenever
+        # self._signals is still empty, with no coordination between them -
+        # right after a cold start, several simultaneous requests (e.g. a
+        # user reloading a page right after a deploy) could each kick off
+        # their own full 30-symbol scan concurrently, multiplying load past
+        # the 4-worker/150ms stagger below that exists specifically to avoid
+        # TradingView 429s. If a scan is already in flight (from the
+        # background scheduler or another caller), wait for it instead of
+        # starting a redundant one.
+        with self._lock:
+            if self._running:
+                already_running = True
+            else:
+                self._running = True
+                self._scan_done_event.clear()
+                already_running = False
+        if already_running:
+            self._scan_done_event.wait(timeout=SCAN_TIMEOUT_SECONDS + 5)
+            return
+
+        try:
+            self._run_scan_body()
+        finally:
+            with self._lock:
+                self._running = False
+            self._scan_done_event.set()
+
+    def _run_scan_body(self) -> None:
         names = {t["ticker"]: t["name"] for t in _ticker_names()}
         # A modest worker count plus a small stagger between submissions -
         # 10 concurrent borsapy.Ticker.history()/ta_signals() calls (each

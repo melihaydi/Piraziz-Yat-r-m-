@@ -495,21 +495,38 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <div className="absolute right-0 top-12 w-[min(85vw,340px)] bg-zinc-950/95 backdrop-blur-md border border-border/85 rounded-xl shadow-xl overflow-hidden z-50 text-xs p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-border/30 pb-2">
                 <span className="font-extrabold text-foreground">Sinyaller & Alarmlar</span>
-                {(activeSignals.length + alertsList.length) > 0 && (
-                  <span className="bg-rose-500/10 text-rose-400 font-mono font-bold px-1.5 py-0.5 rounded text-[10px]">
-                    {activeSignals.length + alertsList.length} Aktif
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {(activeSignals.length + alertsList.length) > 0 && (
+                    <span className="bg-rose-500/10 text-rose-400 font-mono font-bold px-1.5 py-0.5 rounded text-[10px]">
+                      {activeSignals.length + alertsList.length} Aktif
+                    </span>
+                  )}
+                  {alertsList.length > 0 && (
+                    <button
+                      onClick={() => setAlertsList([])}
+                      className="text-[9px] font-bold text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      Alarmları Temizle
+                    </button>
+                  )}
+                </div>
               </div>
-              
+
               <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
                 {/* 1. Custom Triggered Alerts */}
                 {alertsList.map((alert, idx) => (
-                  <div 
+                  <div
                     key={`alert-${idx}`}
-                    className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-950/10 text-left"
+                    className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-950/10 text-left relative group"
                   >
-                    <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setAlertsList(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-1.5 right-1.5 text-muted-foreground/60 hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Kapat"
+                    >
+                      ✕
+                    </button>
+                    <div className="flex items-center justify-between pr-3">
                       <span className="font-bold text-foreground">{alert.ticker}</span>
                       <span className="px-1.5 py-0.5 rounded text-[8px] font-black border uppercase bg-purple-500/10 text-purple-400 border-purple-500/20">
                         {alert.alert_type}

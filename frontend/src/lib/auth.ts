@@ -130,7 +130,7 @@ export function logout() {
  * to do that with anymore, and a real auth system re-prompting for
  * credentials once a day (tokens last 24h) is expected behavior, not a bug.
  */
-export async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
+export async function authFetch(path: string, options: RequestInit = {}, retries = 3): Promise<Response> {
   const token = localStorage.getItem("token")
 
   const doFetch = (t: string | null) =>
@@ -140,7 +140,7 @@ export async function authFetch(path: string, options: RequestInit = {}): Promis
         ...(options.headers || {}),
         ...(t ? { Authorization: `Bearer ${t}` } : {}),
       },
-    })
+    }, retries)
 
   const res = await doFetch(token)
   if (res.status === 401) {

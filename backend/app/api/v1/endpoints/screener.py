@@ -151,14 +151,34 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
     )
 
 
+_SCREENER_LIST_CACHE_KEY = "screener:all"
+# Every connected user polls this endpoint every 2s (see screener/page.tsx)
+# and sees the exact same shared BIST list - unlike every other hot endpoint
+# in this app (/portfolio/signals, /screener/kap, etc.) this one previously
+# recomputed the AI score + technicals for every tracked ticker from scratch
+# on every single request, with cost scaling linearly with concurrent
+# viewers. A cache TTL equal to the poll interval collapses concurrent
+# requests within the same window into one computation with no perceptible
+# added staleness.
+_SCREENER_LIST_CACHE_TTL_SECONDS = 2
+
 @router.get("/", response_model=List[ScreenerStockResponse])
 def get_screener_stocks():
     """Retrieve all BIST 500 stocks with live TradingView quote fields and calculated AI scores."""
+    from app.core.redis import cache_service
+
+    cached = cache_service.get_json(_SCREENER_LIST_CACHE_KEY)
+    if cached is not None:
+        return cached
+
     cached_quotes = market_data_service.get_all_quotes()
-    return [
+    result = [
         _build_stock_response(item["ticker"], item["name"], cached_quotes.get(item["ticker"]))
         for item in market_data_service.tickers
     ]
+    result_dicts = [r.model_dump() for r in result]
+    cache_service.set_json(_SCREENER_LIST_CACHE_KEY, result_dicts, expire_seconds=_SCREENER_LIST_CACHE_TTL_SECONDS)
+    return result
 
 
 @router.get("/detail/{ticker}", response_model=ScreenerStockResponse)
