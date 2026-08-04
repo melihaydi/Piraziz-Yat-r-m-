@@ -17,12 +17,17 @@ logger = logging.getLogger(__name__)
 # checking the quote's truthiness alone isn't enough.
 _KNOWN_STOCK_TICKERS = {t["ticker"] for t in market_data_service.tickers}
 
-# A fund's disclosed composition sometimes includes a plain bank-deposit
-# holding (labeled "Mevduat" or, informally, "Sabit") rather than a stock or
-# another fund - it earns a fixed, user-confirmed daily rate rather than
-# anything we can look up a live quote for.
-_DEPOSIT_HOLDING_NAMES = {"MEVDUAT", "SABIT", "SABİT"}
-_DAILY_DEPOSIT_RETURN_PCT = 0.12
+# A fund's disclosed composition sometimes includes plain fixed-income
+# holdings (a bank deposit, labeled "Mevduat" or, informally, "Sabit"; a
+# bond, "Bono") rather than a stock or another fund - each earns a fixed,
+# user-confirmed daily rate rather than anything we can look up a live
+# quote for.
+_FIXED_RATE_HOLDING_DAILY_PCT = {
+    "MEVDUAT": 0.12,
+    "SABIT": 0.12,
+    "SABİT": 0.12,
+    "BONO": 0.11,
+}
 _TR_TZ = datetime.timezone(timedelta(hours=3))
 
 
@@ -141,20 +146,20 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 4,
         "manager": "Ali Rıza / Pusula Portföy",
         "assets_distribution": [
-            {"name": "ODINE", "value": 14.6},
-            {"name": "GUNDG", "value": 9.6},
+            {"name": "ODINE", "value": 15.6},
+            {"name": "PASEU", "value": 11.3},
             {"name": "BALSU", "value": 9.3},
-            {"name": "PASEU", "value": 8.3},
-            {"name": "KTLEV", "value": 8.2},
-            {"name": "PKZ", "value": 7.0},
+            {"name": "KTLEV", "value": 8.9},
+            {"name": "GUNDG", "value": 8.6},
             {"name": "PCS", "value": 6.6},
             {"name": "HEDEF", "value": 4.6},
             {"name": "THYAO", "value": 4.0},
+            {"name": "PKZ", "value": 3.4},
+            {"name": "TRALT", "value": 3.4},
             # "SABİT" (fixed-income) per the user - this is a bank deposit
             # holding, resolved via the MEVDUAT/SABİT fixed daily-return path
             # below rather than a stock/fund lookup.
-            {"name": "SABIT", "value": 3.6},
-            {"name": "TRALT", "value": 3.4},
+            {"name": "SABIT", "value": 2.4},
             {"name": "MGROS", "value": 2.3},
             {"name": "AKBNK", "value": 2.0},
             {"name": "YKBNK", "value": 1.9},
@@ -162,8 +167,9 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             {"name": "PGH", "value": 1.6},
             {"name": "TATEN", "value": 1.5},
             {"name": "TCELL", "value": 1.5},
-            {"name": "DSTKF", "value": 1.0},
+            {"name": "TERA", "value": 1.3},
             {"name": "ANELE", "value": 1.0},
+            {"name": "DSTKF", "value": 1.0},
             {"name": "TMPOL", "value": 0.9},
             {"name": "SKBNK", "value": 0.7},
             {"name": "PNU", "value": 0.6},
@@ -172,7 +178,6 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             {"name": "MPARK", "value": 0.5},
             {"name": "EREGL", "value": 0.5},
             {"name": "PGSUS", "value": 0.4},
-            {"name": "TERA", "value": 0.3},
             {"name": "TTKOM", "value": 0.3},
             {"name": "DCTTR", "value": 0.3},
             {"name": "PEKGY", "value": 0.2},
@@ -186,18 +191,18 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 5,
         "manager": "Hakan Ateş / Atlas Portföy",
         "assets_distribution": [
-            {"name": "IEYHO", "value": 40.3},
-            {"name": "ABG", "value": 29.2},
+            {"name": "IEYHO", "value": 41.5},
+            {"name": "ABG", "value": 31.2},
             # Bank deposit holding - fixed daily-return path below (0.12%/day, per the user).
-            {"name": "MEVDUAT", "value": 25.7},
-            {"name": "ISKPL", "value": 4.3},
-            {"name": "KVR", "value": 0.2},
+            {"name": "MEVDUAT", "value": 23.3},
+            {"name": "ISKPL", "value": 3.4},
             # LDR Turizm A.Ş. (BIST:LIDER, confirmed real ticker) - note the
             # PLAIN ASCII "I", not the Turkish dotted "İ" the user typed:
             # "İ".upper() stays "İ" under Python's default Unicode casing,
             # so a dotted-İ spelling here would never match the ASCII
             # "LIDER" ticker registered in market_data.py's universe.
             {"name": "LIDER", "value": 0.3},
+            {"name": "KVR", "value": 0.2},
             {"name": "PFS", "value": 0.1}
         ]
     },
@@ -212,24 +217,40 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 6,
         "manager": "Yapay Zekâ Algoritması / Tera Portföy",
         "assets_distribution": [
-            {"name": "OZATD", "value": 17.45},
-            {"name": "TEHOL", "value": 10.54},
-            {"name": "TRHOL", "value": 7.28},
-            {"name": "ANELE", "value": 6.52},
-            {"name": "SELEC", "value": 3.74},
-            {"name": "PEKGY", "value": 2.67},
-            {"name": "DSTKF", "value": 2.08},
-            {"name": "ALKLC", "value": 1.89},
-            {"name": "EUPWR", "value": 1.68},
-            {"name": "TERA", "value": 1.15},
-            {"name": "GESAN", "value": 0.42},
-            {"name": "TURSG", "value": 0.34},
-            {"name": "YKBNK", "value": 0.25},
-            {"name": "AKSEN", "value": 0.21},
-            {"name": "KORDS", "value": 0.21},
-            {"name": "HEDEF", "value": 0.18},
-            {"name": "SVGYO", "value": 0.06},
-            {"name": "MANAS", "value": 0.05}
+            # "SABİT" per the user (fixed daily-return deposit path below,
+            # 0.12%/day, weekend-inclusive) - was MISSING from the prior
+            # composition entirely, which is why this fund's estimate only
+            # resolved 56.72% of its value and diverged noticeably from
+            # TEFAS's real published return (confirmed live: our estimate
+            # showed +0.6% on a day TEFAS published +1%).
+            {"name": "SABIT", "value": 41.0},
+            {"name": "OZATD", "value": 17.0},
+            {"name": "TEHOL", "value": 10.3},
+            {"name": "TRHOL", "value": 7.1},
+            {"name": "ANELE", "value": 6.4},
+            {"name": "SELEC", "value": 3.6},
+            {"name": "PEKGY", "value": 2.6},
+            {"name": "DSTKF", "value": 1.9},
+            {"name": "ALKLC", "value": 1.8},
+            # "VİOP" (Vadeli İşlem ve Opsiyon Piyasası) is a MARKET SEGMENT,
+            # not a single tradable ticker - no real BIST quote to resolve
+            # this against, left unresolved rather than guessing one.
+            {"name": "VIOP", "value": 1.7},
+            {"name": "EUPWR", "value": 1.6},
+            # "VDMK" (Varlığa Dayalı Menkul Kıymet / asset-backed security)
+            # is an instrument CATEGORY, not a single ticker - same
+            # reasoning as VİOP above, left unresolved.
+            {"name": "VDMK", "value": 1.1},
+            {"name": "TERA", "value": 1.1},
+            # Bond holding - fixed daily-return path below (0.11%/day, per the user).
+            {"name": "BONO", "value": 0.8},
+            {"name": "GESAN", "value": 0.4},
+            {"name": "TURSG", "value": 0.3},
+            {"name": "YKBNK", "value": 0.3},
+            {"name": "AKSEN", "value": 0.2},
+            {"name": "KORDS", "value": 0.2},
+            {"name": "HEDEF", "value": 0.2},
+            {"name": "SVGYO", "value": 0.1}
         ]
     },
     "PUK": {
@@ -758,8 +779,8 @@ class TefasService:
             weight = float(item["value"])
             ticker = name.upper()
 
-            if ticker in _DEPOSIT_HOLDING_NAMES:
-                change = _DAILY_DEPOSIT_RETURN_PCT * _calendar_days_since_last_bist_session()
+            if ticker in _FIXED_RATE_HOLDING_DAILY_PCT:
+                change = _FIXED_RATE_HOLDING_DAILY_PCT[ticker] * _calendar_days_since_last_bist_session()
                 holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "deposit"})
                 estimated_change += weight / 100 * change
                 resolved_weight += weight

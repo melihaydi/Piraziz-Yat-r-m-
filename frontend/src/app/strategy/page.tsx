@@ -34,6 +34,11 @@ interface Signal {
   ichimoku_position: string | null
   fibonacci_levels: { ratio: number; price: number }[]
   error: string | null
+  // Live price + running %P&L vs entry, enriched at the API layer on every
+  // request (see _enrich_with_live_pnl in strategy.py) - fresher than
+  // `price` above, which only refreshes with the ~3-minute scan cycle.
+  live_price: number | null
+  captured_pnl_pct: number | null
 }
 
 interface BacktestTrade {
@@ -436,6 +441,7 @@ export default function StrategyPage() {
                   <th className="px-4 text-right">Stop</th>
                   <th className="px-4 text-right">Hedef</th>
                   <th className="px-4 text-right">R:R</th>
+                  <th className="px-4 text-right">Yakalanan K/Z</th>
                   <th className="px-4 text-right">Son Güncelleme</th>
                   <th className="px-4"></th>
                 </tr>
@@ -471,6 +477,18 @@ export default function StrategyPage() {
                         <td className="px-4 text-right font-semibold text-rose-400">{s.stop_loss ? fmt(s.stop_loss) : "-"}</td>
                         <td className="px-4 text-right font-semibold text-emerald-400">{s.take_profit ? fmt(s.take_profit) : "-"}</td>
                         <td className="px-4 text-right font-bold text-foreground">{s.risk_reward ? `${fmt(s.risk_reward, 1)}R` : "-"}</td>
+                        <td className="px-4 text-right">
+                          {s.captured_pnl_pct == null ? (
+                            <span className="text-muted-foreground">-</span>
+                          ) : (
+                            <>
+                              <div className={`font-bold ${s.captured_pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                {s.captured_pnl_pct >= 0 ? "+" : ""}{fmt(s.captured_pnl_pct)}%
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">₺{fmt(s.live_price)} anlık</div>
+                            </>
+                          )}
+                        </td>
                         <td className="px-4 text-right text-[10px] text-muted-foreground">
                           {new Date(s.last_update).toLocaleTimeString("tr-TR")}
                         </td>

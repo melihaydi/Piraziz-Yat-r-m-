@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown } from "lucide-react"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -90,6 +90,29 @@ export default function FundsPage() {
       clearInterval(interval)
     }
   }, [])
+
+  // Tahmin doğruluğu (geçmiş): her gün akşam (TEFAS'ın kendi NAV
+  // yenilemesinden sonra), o günün canlı tahmini ile TEFAS'ın yayınladığı
+  // gerçek günlük getiri aynı satıra kaydediliyor - see
+  // FundEstimateSnapshotService (backend). Sadece açıldığında yüklenir.
+  const [estimateHistory, setEstimateHistory] = useState<any[]>([])
+  const [estimateHistoryLoading, setEstimateHistoryLoading] = useState(false)
+  const [showEstimateHistory, setShowEstimateHistory] = useState(false)
+
+  const handleToggleEstimateHistory = () => {
+    setShowEstimateHistory(prev => {
+      const next = !prev
+      if (next) {
+        setEstimateHistoryLoading(true)
+        fetch(`${API_BASE_URL}/api/v1/funds/popular/estimate-history?days=30`)
+          .then(res => res.json())
+          .then(data => setEstimateHistory(Array.isArray(data.snapshots) ? data.snapshots : []))
+          .catch(err => console.error("Failed to load fund estimate history:", err))
+          .finally(() => setEstimateHistoryLoading(false))
+      }
+      return next
+    })
+  }
 
   // Fund comparison state (2-5 funds, matches the backend's GET /funds/compare cap)
   const [compareCodes, setCompareCodes] = useState<string[]>([])
@@ -395,6 +418,69 @@ export default function FundsPage() {
             </div>
           )}
         </CardContent>
+      </Card>
+
+      {/* Tahmin Doğruluğu (Geçmiş) */}
+      <Card glass={true} className="border-border/40">
+        <CardHeader className="pb-3">
+          <button onClick={handleToggleEstimateHistory} className="w-full flex items-center justify-between cursor-pointer">
+            <CardTitle className="text-sm flex items-center">
+              <History className="h-4 w-4 mr-2 text-cyan-400" />
+              Tahmin Doğruluğu (Geçmiş)
+            </CardTitle>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showEstimateHistory ? "rotate-180" : ""}`} />
+          </button>
+          {showEstimateHistory && (
+            <CardDescription className="text-[10px]">
+              Her gün akşam kaydedilen o günün canlı tahmini ile TEFAS&apos;ın yayınladığı gerçek günlük getiri -
+              tahminin ne kadar isabetli olduğunu görmek için.
+            </CardDescription>
+          )}
+        </CardHeader>
+        {showEstimateHistory && (
+          <CardContent>
+            {estimateHistoryLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 text-cyan-400 animate-spin" />
+              </div>
+            ) : estimateHistory.length === 0 ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                Henüz kayıt yok - ilk kayıt bugün akşam (TEFAS güncellemesinden sonra) oluşacak.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-[10px] text-muted-foreground uppercase border-b border-border/40">
+                      <th className="text-left py-2 pr-4">Tarih</th>
+                      <th className="text-left py-2 pr-4">Fon</th>
+                      <th className="text-right py-2 pr-4">Tahmin</th>
+                      <th className="text-right py-2 pr-4">Gerçekleşen</th>
+                      <th className="text-right py-2">Fark</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {estimateHistory.map((row: any) => (
+                      <tr key={`${row.fund_code}-${row.date}`} className="border-b border-border/20">
+                        <td className="py-1.5 pr-4 font-mono text-muted-foreground">{row.date}</td>
+                        <td className="py-1.5 pr-4 font-bold">{row.fund_code}</td>
+                        <td className={`py-1.5 pr-4 text-right font-mono ${row.estimated_change_pct == null ? "text-muted-foreground" : row.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                          {row.estimated_change_pct == null ? "—" : `${row.estimated_change_pct >= 0 ? "+" : ""}${row.estimated_change_pct.toFixed(2)}%`}
+                        </td>
+                        <td className={`py-1.5 pr-4 text-right font-mono ${row.actual_change_pct == null ? "text-muted-foreground" : row.actual_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                          {row.actual_change_pct == null ? "—" : `${row.actual_change_pct >= 0 ? "+" : ""}${row.actual_change_pct.toFixed(2)}%`}
+                        </td>
+                        <td className="py-1.5 text-right font-mono text-muted-foreground">
+                          {row.error_pct == null ? "—" : `${row.error_pct >= 0 ? "+" : ""}${row.error_pct.toFixed(2)}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {/* Main Split Layout */}

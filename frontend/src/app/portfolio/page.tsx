@@ -212,18 +212,10 @@ export default function PortfolioPage() {
     loadEquityHistory()
   }
 
-  // On-demand (not auto-loaded, per user request: "basayım" - "let me
-  // press [the button]") since it's a heavier call (recurses into every
-  // held fund's own composition, same cost as the funds page's live
-  // estimate) - fetched fresh each time the panel opens rather than kept
-  // continuously polling in the background.
-  const handleToggleLiveEstimate = async () => {
-    if (showLiveEstimate) {
-      setShowLiveEstimate(false)
-      return
-    }
-    setShowLiveEstimate(true)
-    setLiveEstimateLoading(true)
+  // Initial fetch shows a spinner; background refreshes (the interval
+  // below, while the panel stays open) update silently without re-showing it.
+  const fetchLiveEstimate = async (showSpinner: boolean) => {
+    if (showSpinner) setLiveEstimateLoading(true)
     try {
       const res = await authFetch("/portfolio/live-estimate")
       if (res.ok) {
@@ -232,13 +224,36 @@ export default function PortfolioPage() {
     } catch (err) {
       console.error("Failed to load portfolio live estimate:", err)
     } finally {
-      setLiveEstimateLoading(false)
+      if (showSpinner) setLiveEstimateLoading(false)
     }
+  }
+
+  // Opening is on-demand (per user request: "basayım" - "let me press [the
+  // button]"), not auto-loaded on page mount - but once open, it keeps
+  // refreshing live during the session (see the interval effect below) since
+  // the whole point is tracking live intraday movement, not a one-time read.
+  const handleToggleLiveEstimate = () => {
+    setShowLiveEstimate(prev => {
+      const next = !prev
+      if (next) fetchLiveEstimate(true)
+      return next
+    })
   }
 
   useEffect(() => {
     loadData()
+    // Keeps the headline PORTFÖY DEĞERİ card (and fund holdings' estimate-
+    // projected price) moving during the live session instead of only
+    // reflecting whatever was true at page load.
+    const interval = setInterval(loadCore, 15000)
+    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (!showLiveEstimate) return
+    const interval = setInterval(() => fetchLiveEstimate(false), 15000)
+    return () => clearInterval(interval)
+  }, [showLiveEstimate])
 
   // Derive active portfolio (default to first one)
   const activePortfolio = portfolios[0] || null
@@ -877,7 +892,20 @@ export default function PortfolioPage() {
                             </td>
                             <td className="px-6 text-right font-mono font-medium">{item.shares}</td>
                             <td className="px-6 text-right font-mono font-medium">₺{item.average_cost.toFixed(2)}</td>
-                            <td className="px-6 text-right font-mono font-medium">₺{(item.current_price || item.average_cost).toFixed(2)}</td>
+                            <td className="px-6 text-right font-mono font-medium">
+                              {/* Always the real, officially published price/NAV - the live fund
+                                  estimate is shown as a separate, clearly distinct line below, never
+                                  mixed into this figure. */}
+                              <div className="flex flex-col items-end">
+                                <span>₺{(item.current_price || item.average_cost).toFixed(2)}</span>
+                                {item.estimated_daily_change_pct != null && (
+                                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${item.estimated_daily_change_pct >= 0 ? "text-amber-400" : "text-amber-500"}`}>
+                                    <Zap className="h-2.5 w-2.5 shrink-0" />
+                                    ~{item.estimated_daily_change_pct >= 0 ? "+" : ""}{item.estimated_daily_change_pct.toFixed(2)}% tahmini
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-6 text-right font-mono font-bold">
                               ₺{value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>

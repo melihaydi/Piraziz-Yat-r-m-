@@ -30,6 +30,28 @@ def _fetch_live_price(ticker: str) -> Optional[float]:
     quote = market_data_service.get_quote(ticker)
     return quote.get("last") if quote else None
 
+# Below this trust bar, a fund's own recursive estimate is mostly-empty
+# (little of its composition resolved to live quotes) and a stale-but-real
+# daily_return beats it - same threshold funds.py's live-estimate endpoint
+# and tefas.py's own recursion use, kept consistent across all three.
+_MIN_TRUSTED_RESOLVED_PCT = 20.0
+
+def _fund_estimated_daily_change_pct(ticker: str) -> Optional[float]:
+    """The live intraday estimate for a fund holding (same idea as the
+    funds page's "Popüler Fonlar"), returned ONLY as a separate figure -
+    NEVER folded into current_price/total_value/total_profit, which must
+    stay the real, officially published NAV. Mixing the two would make a
+    holding's "official" value silently drift from what TEFAS actually
+    publishes, which is misleading for money the user is tracking. Returns
+    None for stocks (len(ticker) != 3) or when the estimate isn't
+    trustworthy enough (same threshold used elsewhere)."""
+    if len(ticker) != 3:
+        return None
+    estimate = tefas_service.get_live_estimated_return(ticker)
+    if estimate is None or estimate["resolved_weight_pct"] < _MIN_TRUSTED_RESOLVED_PCT:
+        return None
+    return estimate["estimated_change_pct"]
+
 def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None) -> dict:
     """Helper to compute real-time value and profit metrics for an asset.
     Pass a pre-fetched `live_price` (see _fetch_live_price) to skip the
@@ -77,6 +99,12 @@ def get_user_portfolios(
             for ticker, price in zip(all_tickers, pool.map(_fetch_live_price, all_tickers)):
                 price_by_ticker[ticker] = price
 
+    # Each fund holding's live intraday estimate, kept STRICTLY SEPARATE
+    # from current_price/total_value above (those stay the real, officially
+    # published NAV - see _fund_estimated_daily_change_pct's docstring for
+    # why). Done per distinct ticker, same reasoning as the price batch above.
+    estimated_change_by_ticker = {ticker: _fund_estimated_daily_change_pct(ticker) for ticker in all_tickers}
+
     response_list = []
     for p in portfolios:
         assets_responses = []
@@ -84,9 +112,16 @@ def get_user_portfolios(
         total_value = 0.0
 
         for asset in p.assets:
-            metrics = calculate_asset_metrics(asset, live_price=price_by_ticker.get(asset.ticker.upper()))
+            ticker = asset.ticker.upper()
+            metrics = calculate_asset_metrics(asset, live_price=price_by_ticker.get(ticker))
+            estimated_change_pct = estimated_change_by_ticker.get(ticker)
+            metrics["estimated_daily_change_pct"] = estimated_change_pct
+            metrics["estimated_daily_gain_value"] = (
+                metrics["total_value"] * estimated_change_pct / 100
+                if estimated_change_pct is not None else None
+            )
             assets_responses.append(PortfolioAssetResponse(**metrics))
-            
+
             total_cost += asset.shares * asset.average_cost
             total_value += metrics["total_value"]
 
@@ -186,13 +221,6 @@ def get_portfolio_analytics(
     result = compute_portfolio_analytics(asset_values)
     cache_service.set_json(cache_key, result, expire_seconds=_ANALYTICS_CACHE_TTL_SECONDS)
     return result
-
-
-# Below this trust bar, a fund's own recursive estimate is mostly-empty
-# (little of its composition resolved to live quotes) and a stale-but-real
-# daily_return beats it - same threshold funds.py's live-estimate endpoint
-# and tefas.py's own recursion use, kept consistent across all three.
-_MIN_TRUSTED_RESOLVED_PCT = 20.0
 
 
 @router.get("/live-estimate")

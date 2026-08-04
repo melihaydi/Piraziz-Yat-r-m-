@@ -164,6 +164,23 @@ def test_deposit_holding_accrues_weekend_interest_across_monday():
     assert mevduat["change_pct"] == pytest.approx(0.36)
 
 
+def test_bono_holding_uses_its_own_flat_daily_rate():
+    # TMV's BONO (bond) holding earns a fixed 0.11%/day rate - distinct from
+    # MEVDUAT/SABİT's 0.12%/day, same weekend-inclusive day counting.
+    service = TefasService()
+    with patch("app.services.tefas._calendar_days_since_last_bist_session", return_value=1):
+        with patch("app.services.tefas.market_data_service.get_quote", return_value=None):
+            result = service.get_live_estimated_return("TMV")
+
+    bono = next(h for h in result["holdings"] if h["ticker"] == "BONO")
+    assert bono["type"] == "deposit"
+    assert bono["change_pct"] == 0.11
+
+    sabit = next(h for h in result["holdings"] if h["ticker"] == "SABIT")
+    assert sabit["type"] == "deposit"
+    assert sabit["change_pct"] == 0.12
+
+
 @pytest.mark.parametrize("weekday,expected_days", [
     (0, 3),  # Monday - counts Fri->Sat->Sun->Mon
     (1, 1),  # Tuesday

@@ -6,6 +6,7 @@ from app.models.financial import FinancialStatement
 from app.models.kap import KapNotification
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.models.alert import Alert
+from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 
 __all__ = [
     "Base",
@@ -16,5 +17,6 @@ __all__ = [
     "Portfolio",
     "PortfolioAsset",
     "PortfolioSnapshot",
-    "Alert"
+    "Alert",
+    "FundEstimateSnapshot"
 ]

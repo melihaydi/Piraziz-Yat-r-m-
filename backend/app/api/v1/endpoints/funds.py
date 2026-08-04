@@ -1,7 +1,10 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.orm import Session
+from app.api import deps
 from app.services.tefas import tefas_service
 from app.services.market_data import market_data_service
+from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 
 router = APIRouter()
 
@@ -79,6 +82,48 @@ def get_popular_funds_live_estimate():
             "holdings": estimate["holdings"],
         })
     return {"funds": results}
+
+
+@router.get("/popular/estimate-history")
+def get_popular_funds_estimate_history(days: int = 30, db: Session = Depends(deps.get_db)):
+    """Historical accuracy of the live estimate for the "Popüler Fonlar"
+    funds: one row per (fund, day) with what get_live_estimated_return
+    predicted (estimated_change_pct) alongside TEFAS's real published
+    daily_return for that same day (actual_change_pct), captured together
+    once daily - see FundEstimateSnapshotService. `days` caps how far back
+    to look (default last 30 calendar days)."""
+    cutoff = None
+    if days > 0:
+        from datetime import date, timedelta
+        cutoff = date.today() - timedelta(days=days)
+
+    query = db.query(FundEstimateSnapshot).filter(
+        FundEstimateSnapshot.fund_code.in_(POPULAR_LIVE_FUNDS)
+    )
+    if cutoff:
+        query = query.filter(FundEstimateSnapshot.snapshot_date >= cutoff)
+
+    rows = query.order_by(
+        FundEstimateSnapshot.snapshot_date.desc(), FundEstimateSnapshot.fund_code
+    ).all()
+
+    return {
+        "snapshots": [
+            {
+                "fund_code": r.fund_code,
+                "date": r.snapshot_date.isoformat(),
+                "estimated_change_pct": r.estimated_change_pct,
+                "resolved_weight_pct": r.resolved_weight_pct,
+                "actual_change_pct": r.actual_change_pct,
+                "error_pct": (
+                    round(r.estimated_change_pct - r.actual_change_pct, 2)
+                    if r.estimated_change_pct is not None and r.actual_change_pct is not None
+                    else None
+                ),
+            }
+            for r in rows
+        ]
+    }
 
 
 @router.get("/compare")
