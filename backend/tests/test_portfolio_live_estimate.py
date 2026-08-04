@@ -34,7 +34,8 @@ def test_empty_portfolio_returns_no_estimate(client, auth_headers):
     response = client.get("/api/v1/portfolio/live-estimate", headers=auth_headers)
     assert response.status_code == 200
     assert response.json() == {
-        "estimated_change_pct": None, "resolved_value_pct": 0.0, "total_value": 0.0, "holdings": []
+        "estimated_change_pct": None, "estimated_daily_gain_value": None,
+        "resolved_value_pct": 0.0, "total_value": 0.0, "holdings": []
     }
 
 
@@ -71,6 +72,24 @@ def test_stock_and_fund_holdings_weighted_by_current_value(client, auth_headers)
     # estimated_change_pct is the VALUE-weighted average, not a simple mean
     expected = (thyao_holding["change_pct"] * thyao_value + 2.0 * phe_value) / total
     assert data["estimated_change_pct"] == pytest.approx(round(expected, 2), abs=0.01)
+
+    # estimated_daily_gain_value is the actual TL amount the estimate
+    # implies today - derived from the raw weighted sum, not a re-multiply
+    # of the already-rounded % above (avoids compounding rounding error).
+    expected_tl = (thyao_holding["change_pct"] * thyao_value + 2.0 * phe_value) / 100
+    assert data["estimated_daily_gain_value"] == pytest.approx(round(expected_tl, 2), abs=0.01)
+
+
+def test_estimated_daily_gain_value_is_none_when_nothing_resolved(client, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    _add_asset(client, auth_headers, portfolio_id, "THYAO", 10.0, 300.0)
+
+    with patch("app.api.v1.endpoints.portfolio._fetch_live_price", return_value=320.0), \
+         patch("app.services.market_data.market_data_service.is_known_ticker", return_value=False):
+        response = client.get("/api/v1/portfolio/live-estimate", headers=auth_headers)
+
+    data = response.json()
+    assert data["estimated_daily_gain_value"] is None
 
 
 def test_fund_without_trusted_recursive_estimate_falls_back_to_daily_return(client, auth_headers):

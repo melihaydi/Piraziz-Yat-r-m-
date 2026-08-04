@@ -245,7 +245,10 @@ def get_portfolio_live_estimate(
     all_assets = [asset for p in portfolios for asset in p.assets]
 
     if not all_assets:
-        return {"estimated_change_pct": None, "resolved_value_pct": 0.0, "total_value": 0.0, "holdings": []}
+        return {
+            "estimated_change_pct": None, "estimated_daily_gain_value": None,
+            "resolved_value_pct": 0.0, "total_value": 0.0, "holdings": [],
+        }
 
     tickers = sorted({a.ticker.upper() for a in all_assets})
     with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
@@ -297,9 +300,15 @@ def get_portfolio_live_estimate(
     # as "flat today" instead of "unknown".
     estimated_change_pct = round(weighted_change_sum / total_value, 2) if resolved_value > 0 else None
     resolved_value_pct = round(resolved_value / total_value * 100, 2) if total_value > 0 else 0.0
+    # weighted_change_sum is already SUM(value * change_pct) over resolved
+    # holdings, i.e. the TL-equivalent of the weighted %-change sum divided
+    # by 100 - so this is the actual ₺ amount the estimate implies for
+    # today, not just a derived re-multiplication of the rounded % above.
+    estimated_daily_gain_value = round(weighted_change_sum / 100, 2) if resolved_value > 0 else None
 
     return {
         "estimated_change_pct": estimated_change_pct,
+        "estimated_daily_gain_value": estimated_daily_gain_value,
         "resolved_value_pct": resolved_value_pct,
         "total_value": round(total_value, 2),
         "holdings": sorted(holdings_out, key=lambda h: h["value"], reverse=True),

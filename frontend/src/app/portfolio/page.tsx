@@ -228,10 +228,10 @@ export default function PortfolioPage() {
     }
   }
 
-  // Opening is on-demand (per user request: "basayım" - "let me press [the
-  // button]"), not auto-loaded on page mount - but once open, it keeps
-  // refreshing live during the session (see the interval effect below) since
-  // the whole point is tracking live intraday movement, not a one-time read.
+  // The PANEL (full holdings breakdown) only opens on-demand (per user
+  // request: "basayım" - "let me press [the button]") - but the summary
+  // number itself (used for the small badge in the TOPLAM KÂR/ZARAR card)
+  // is fetched silently on mount below, so it's visible without clicking.
   const handleToggleLiveEstimate = () => {
     setShowLiveEstimate(prev => {
       const next = !prev
@@ -242,18 +242,13 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     loadData()
+    fetchLiveEstimate(false)
     // Keeps the headline PORTFÖY DEĞERİ card (and fund holdings' estimate-
     // projected price) moving during the live session instead of only
     // reflecting whatever was true at page load.
-    const interval = setInterval(loadCore, 15000)
+    const interval = setInterval(() => { loadCore(); fetchLiveEstimate(false) }, 15000)
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    if (!showLiveEstimate) return
-    const interval = setInterval(() => fetchLiveEstimate(false), 15000)
-    return () => clearInterval(interval)
-  }, [showLiveEstimate])
 
   // Derive active portfolio (default to first one)
   const activePortfolio = portfolios[0] || null
@@ -704,6 +699,14 @@ export default function PortfolioPage() {
               </span>
             </div>
             <p className="text-[10px] text-emerald-500/80 mt-1 font-semibold">Tüm zamanların en yüksek seviyesinde</p>
+            {liveEstimate?.estimated_daily_gain_value != null && (
+              <p className={`inline-flex items-center gap-1 text-[10px] font-semibold mt-1.5 ${liveEstimate.estimated_daily_gain_value >= 0 ? "text-amber-400" : "text-amber-500"}`}>
+                <Zap className="h-2.5 w-2.5 shrink-0" />
+                Bugün (tahmini): {liveEstimate.estimated_daily_gain_value >= 0 ? "+" : ""}
+                ₺{liveEstimate.estimated_daily_gain_value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {" "}({liveEstimate.estimated_change_pct >= 0 ? "+" : ""}{liveEstimate.estimated_change_pct.toFixed(2)}%)
+              </p>
+            )}
           </CardContent>
         </Card>
 
