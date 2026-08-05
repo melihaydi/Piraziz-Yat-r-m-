@@ -14,10 +14,12 @@ import {
   X,
   ChevronsLeft,
   ChevronsRight,
-  Bot
+  Bot,
+  ShieldCheck
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
+import { authFetch } from "@/lib/auth"
 
 interface SidebarProps {
   open?: boolean
@@ -45,6 +47,17 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     return () => mq.removeEventListener("change", handler)
   }, [])
   const isCollapsedNow = collapsed && isDesktop
+
+  // Only superusers see the admin panel link - the backend enforces this
+  // for real (every /admin/* endpoint requires is_superuser), this is just
+  // UX so a regular user never sees a link to a page they'd get a 403 from.
+  const [isSuperuser, setIsSuperuser] = useState(false)
+  useEffect(() => {
+    authFetch("/auth/me")
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (data) setIsSuperuser(!!data.is_superuser) })
+      .catch(() => {})
+  }, [])
 
   const menuItems = [
     {
@@ -118,6 +131,14 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       hoverClass: "text-muted-foreground hover:bg-zinc-800/20 hover:text-zinc-300",
       iconClass: "text-zinc-400"
     },
+    ...(isSuperuser ? [{
+      name: "Yönetim Paneli",
+      href: "/admin",
+      icon: ShieldCheck,
+      activeClass: "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-red-500/5 hover:text-red-400",
+      iconClass: "text-red-400"
+    }] : []),
   ]
 
 
