@@ -4,12 +4,12 @@ import React, { useState, useEffect } from "react"
 import {
   User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon,
   Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle,
-  Smartphone, XCircle
+  Smartphone, XCircle, LogOut
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { authFetch, fetchCurrentUser } from "@/lib/auth"
+import { authFetch, fetchCurrentUser, logout } from "@/lib/auth"
 
 function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
   const [step, setStep] = useState<"idle" | "setup" | "disable">("idle")
@@ -566,6 +566,17 @@ export default function SettingsPage() {
                   {authSubmitting ? "Güncelleniyor..." : "Bilgileri Güncelle"}
                 </Button>
               </form>
+
+              <div className="mt-6 pt-5 border-t border-border/40">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-rose-400 border border-rose-500/25 bg-rose-500/5 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Çıkış Yap
+                </button>
+              </div>
             </CardContent>
           </Card>
 
