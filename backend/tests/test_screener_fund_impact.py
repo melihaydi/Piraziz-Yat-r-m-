@@ -3,8 +3,8 @@ from app.services.tefas import TefasService
 
 def test_ticker_held_by_one_popular_fund():
     service = TefasService()
-    # THYAO is a real holding of PBR (see FUND_DETAILS_MAP) but not TMV/DFI.
-    matches = service.get_funds_holding_ticker("THYAO", ["TMV", "PBR", "DFI"])
+    # TMPOL is a real holding of PBR (see FUND_DETAILS_MAP) but not TMV/DFI.
+    matches = service.get_funds_holding_ticker("TMPOL", ["TMV", "PBR", "DFI"])
     assert len(matches) == 1
     assert matches[0]["fund_code"] == "PBR"
     assert matches[0]["weight_pct"] > 0
@@ -18,8 +18,8 @@ def test_ticker_held_by_no_popular_fund():
 
 def test_ticker_lookup_is_case_insensitive():
     service = TefasService()
-    upper = service.get_funds_holding_ticker("THYAO", ["PBR"])
-    lower = service.get_funds_holding_ticker("thyao", ["pbr"])
+    upper = service.get_funds_holding_ticker("TMPOL", ["PBR"])
+    lower = service.get_funds_holding_ticker("tmpol", ["pbr"])
     assert upper == lower
 
 
