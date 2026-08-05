@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     # TradingView Real-time Data Authentication
     TV_SESSION: Optional[str] = None
     TV_SESSION_SIGN: Optional[str] = None
+    # Path to a file kept fresh by deploy/refresh_tv_auth_token.sh - a real
+    # auth_token fetched via a real (headless) browser session, since
+    # TradingView's server rejects a plain-HTTP-client replay of TV_SESSION/
+    # TV_SESSION_SIGN from this server (confirmed by direct testing) even
+    # though the same cookies work fine through an actual browser engine.
+    # Optional: if unset or the file doesn't exist, falls back to borsapy's
+    # own (currently non-functional against TradingView's current site)
+    # cookie-based auth, same as before this existed.
+    TV_AUTH_TOKEN_FILE: Optional[str] = "/app/tv_auth_token.txt"
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), ".env"),

@@ -216,10 +216,44 @@ class MarketDataService:
         check this BEFORE calling get_quote(), not rely on its truthiness."""
         return symbol.upper() in {t["ticker"] for t in self.tickers}
 
+    def _read_prefetched_auth_token(self) -> Optional[str]:
+        """A real auth_token kept fresh by deploy/refresh_tv_auth_token.sh via
+        a real headless-browser session - see TV_AUTH_TOKEN_FILE's comment in
+        config.py for why this exists instead of just using borsapy's own
+        cookie-based auth. Returns None (not an error) if the file is
+        missing/empty, which is the normal case for local dev."""
+        path = settings.TV_AUTH_TOKEN_FILE
+        if not path:
+            return None
+        try:
+            with open(path, "r") as f:
+                token = f.read().strip()
+            return token or None
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to read pre-fetched TradingView auth_token from {path}: {e}")
+            return None
+
     def _initialize_stream(self) -> None:
         """Connects stream and starts background subscription manager."""
         logger.info("Connecting TradingView Stream WebSocket...")
         try:
+            real_auth_token = self._read_prefetched_auth_token()
+            if real_auth_token:
+                # Takes priority over borsapy's own cookie-based auth below -
+                # this IS a real, working auth_token, whereas borsapy's
+                # set_tradingview_auth() currently can't obtain one at all
+                # (TradingView rejects the plain-HTTP-client cookie replay it
+                # relies on). TradingViewStream reads self._auth_token first,
+                # before falling back to borsapy's global credentials - see
+                # TradingViewStream._get_auth_token() in the borsapy package.
+                self.stream._auth_token = real_auth_token
+                logger.info(
+                    "Using a pre-fetched real-browser TradingView auth_token "
+                    "(real-time feed enabled)."
+                )
+
             # Check for TradingView auth cookies. Read from the app settings (which parse
             # the project .env file) rather than os.getenv() directly - os.getenv() only
             # sees real OS environment variables, which are NOT set when the backend is
@@ -227,7 +261,7 @@ class MarketDataService:
             # directive would export them), silently forcing the ~15min delayed feed.
             tv_session = settings.TV_SESSION or os.getenv("TV_SESSION")
             tv_session_sign = settings.TV_SESSION_SIGN or os.getenv("TV_SESSION_SIGN")
-            if tv_session:
+            if not real_auth_token and tv_session:
                 import borsapy
                 logger.info("Setting TradingView authentication cookies...")
                 try:
@@ -250,7 +284,7 @@ class MarketDataService:
                         f"Failed to authenticate with TradingView session cookies: {auth_err}. "
                         "Falling back to the UNAUTHENTICATED TradingView feed (~15 minute delay)."
                     )
-            else:
+            elif not real_auth_token:
                 logger.warning(
                     "TV_SESSION not configured. Using the UNAUTHENTICATED TradingView feed, "
                     "which is delayed by ~15 minutes for all symbols."
