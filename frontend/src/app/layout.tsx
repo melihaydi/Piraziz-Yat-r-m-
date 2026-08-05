@@ -19,6 +19,14 @@ export const metadata: Metadata = {
     title: "Piraziz Yatırım",
     statusBarStyle: "black-translucent",
   },
+  other: {
+    // This Next.js version's appleWebApp.capable only emits the generic
+    // "mobile-web-app-capable" tag (confirmed by reading metadata.js in
+    // node_modules) - iOS Safari specifically requires the apple- prefixed
+    // one to launch a home-screen shortcut in standalone/full-screen mode
+    // instead of a regular browser tab with Safari's chrome.
+    "apple-mobile-web-app-capable": "yes",
+  },
 }
 
 export const viewport: Viewport = {
