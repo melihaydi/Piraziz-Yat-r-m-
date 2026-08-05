@@ -35,7 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Skeleton } from "@/components/ui/Skeleton"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
-import Heatmap from "@/components/Heatmap"
+import StockHeatmapWidget from "@/components/StockHeatmapWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 
@@ -78,11 +78,6 @@ export default function Home() {
   const [favoriteStocks, setFavoriteStocks] = useState<any[]>([])
   const [favoriteFunds, setFavoriteFunds] = useState<any[]>([])
   const [loadingFavorites, setLoadingFavorites] = useState(true)
-
-  // Sector heatmap - derived client-side from the same full stock list the
-  // favorites widget already fetches (no new backend endpoint needed).
-  const [allStocks, setAllStocks] = useState<any[]>([])
-  const [loadingHeatmap, setLoadingHeatmap] = useState(true)
 
   // Fetch index chart data dynamically when selectedIndex changes (Request 4!)
   useEffect(() => {
@@ -179,26 +174,10 @@ export default function Home() {
       setLoadingFavorites(false)
     }
 
-    // 5. Fetch the full stock list once for the sector heatmap (grouped
-    // client-side by sector - no new backend endpoint needed).
-    const loadHeatmapData = () => {
-      fetch(`${API_BASE_URL}/api/v1/screener/`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) setAllStocks(data)
-          setLoadingHeatmap(false)
-        })
-        .catch(err => {
-          console.error("Failed to load sector heatmap data:", err)
-          setLoadingHeatmap(false)
-        })
-    }
-
     // Initial fetch
     fetchMarketSummary()
     fetchPopularFunds()
     loadFavorites()
-    loadHeatmapData()
 
     // Market summary reads from an in-memory cache on the backend (no extra
     // network cost per call), so it can refresh close to real-time.
@@ -206,32 +185,14 @@ export default function Home() {
     // Favorites involve fetching the full stock/fund lists, so keep that on a
     // slower cadence to avoid unnecessary load.
     const favoritesInterval = setInterval(loadFavorites, 10000)
-    const heatmapInterval = setInterval(loadHeatmapData, 15000)
     const popularFundsInterval = setInterval(fetchPopularFunds, 15000)
 
     return () => {
       clearInterval(marketInterval)
       clearInterval(favoritesInterval)
-      clearInterval(heatmapInterval)
       clearInterval(popularFundsInterval)
     }
   }, [])
-
-  // Per-stock heatmap, grouped by sector (TradingView's own stock heatmap
-  // groups this way too) - each stock's own box size is its market cap,
-  // color is its own daily change%; the sector is just the outer grouping,
-  // not an aggregate box like the old sector-only heatmap.
-  const stockHeatmapData = useMemo(() => {
-    return allStocks
-      .filter(s => s.ticker && s.market_cap > 0)
-      .map(s => ({
-        name: s.ticker,
-        value: s.market_cap,
-        changePercent: s.change_percent || 0,
-        group: s.sector || "Diğer",
-      }))
-      .sort((a, b) => b.value - a.value)
-  }, [allStocks])
 
   // Dynamic index details depending on selection (Request 4!)
   const indexDetails = useMemo(() => {
@@ -594,26 +555,20 @@ export default function Home() {
 
       </div>
 
-      {/* Stock Heatmap - full width for readability. One box per ticker
-          (not aggregated by sector) from the same full stock list the
-          favorites widget already uses; box size = market cap, color =
-          that stock's own daily change. */}
+      {/* Stock Heatmap - TradingView's own official BIST100 widget, full
+          width for readability. Previously a custom-built per-ticker box
+          heatmap; swapped for the real thing per feedback that the custom
+          version looked rough next to TradingView's polished one. */}
       <Card glass={true}>
         <CardHeader>
           <CardTitle className="text-lg flex items-center">
             <Flame className="h-5 w-5 text-orange-400 mr-2" />
             Hisse Isı Haritası
           </CardTitle>
-          <CardDescription>Kutu boyutu piyasa değeri, renk günlük değişim - BIST 30 + takip listesi</CardDescription>
+          <CardDescription>TradingView canlı BIST 100 ısı haritası</CardDescription>
         </CardHeader>
         <CardContent>
-          {loadingHeatmap ? (
-            <Skeleton className="h-72 w-full rounded-xl" />
-          ) : stockHeatmapData.length > 0 ? (
-            <Heatmap data={stockHeatmapData} height={320} />
-          ) : (
-            <p className="text-xs text-muted-foreground text-center py-10">Hisse verisi yüklenemedi.</p>
-          )}
+          <StockHeatmapWidget height={420} />
         </CardContent>
       </Card>
     </div>

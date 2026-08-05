@@ -93,6 +93,7 @@ export const TICKER_LOGO_DOMAINS: Record<string, string> = {
   MANAS: "manas.com.tr",
   TMPOL: "temapol.com.tr",
   LIDER: "liderfilo.com.tr",
+  TERA: "terayatirim.com",
 }
 
 export function logoUrlFor(ticker: string, size: number = 64): string | null {

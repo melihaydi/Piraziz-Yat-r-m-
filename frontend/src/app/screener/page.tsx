@@ -1,8 +1,9 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, ArrowUpDown, Star, Eye, EyeOff, Scale, X } from "lucide-react"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, ArrowUpDown, Star, Eye, EyeOff, Scale, X, FileSearch } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -146,6 +147,7 @@ const StockRow = React.memo(function StockRow({
 })
 
 export default function ScreenerPage() {
+  const router = useRouter()
   const [companies, setCompanies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -631,12 +633,22 @@ export default function ScreenerPage() {
                       <CardDescription className="text-[10px] mt-0.5">{selectedTicker} · {selectedStockDetails.sector}</CardDescription>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => toggleFavorite(selectedTicker)}
-                    className="text-muted-foreground hover:text-amber-400 transition-colors p-1"
-                  >
-                    <Star className={`h-5 w-5 ${favorites.includes(selectedTicker) ? "text-amber-400 fill-amber-400" : ""}`} />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => router.push(`/stock/${selectedTicker}`)}
+                      title="Detaylı Şirket Analizi"
+                      className="flex items-center gap-1 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                    >
+                      <FileSearch className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Detaylı Analiz</span>
+                    </button>
+                    <button
+                      onClick={() => toggleFavorite(selectedTicker)}
+                      className="text-muted-foreground hover:text-amber-400 transition-colors p-1"
+                    >
+                      <Star className={`h-5 w-5 ${favorites.includes(selectedTicker) ? "text-amber-400 fill-amber-400" : ""}`} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Price Display */}
