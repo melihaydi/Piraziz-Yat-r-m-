@@ -217,6 +217,75 @@ def test_decide_signal_short_gets_confidence_penalty_when_it_fires():
         assert decision["score"] <= 88
 
 
+def test_decide_signal_direction_is_ma7_ma21_crossover_not_momentum():
+    # Regression test for the MA7/MA21-crossover rewrite: direction must
+    # follow the moving-average relationship alone, even when the momentum
+    # flags (previously a required gate) say the opposite. A steadily
+    # rising series puts the faster (7) MA above the slower (21) MA - this
+    # must fire LONG regardless of momentum_ok_long/short.
+    n = 40
+    closes = [100 + i * 1.5 for i in range(n)]
+    highs = [c + 0.5 for c in closes]
+    lows = [c - 0.5 for c in closes]
+    df = _make_df(highs, lows, closes=closes)
+    swings = _find_swings(df)
+    structure, tags = _classify_structure(swings)
+    price = float(df["Close"].iloc[-1])
+    levels = _cluster_levels(swings, price)
+    atr = _atr(df)
+    pattern = _candle_pattern(df)
+
+    for momentum_long, momentum_short in [(True, False), (False, True), (False, False)]:
+        decision = _decide_signal(
+            df, price, swings, structure, tags, levels, atr, pattern,
+            momentum_ok_long=momentum_long, momentum_ok_short=momentum_short, momentum_note="test",
+        )
+        assert decision["direction"] == "LONG"
+
+
+def test_decide_signal_short_on_falling_ma_crossover():
+    n = 40
+    closes = [200 - i * 1.5 for i in range(n)]
+    highs = [c + 0.5 for c in closes]
+    lows = [c - 0.5 for c in closes]
+    df = _make_df(highs, lows, closes=closes)
+    swings = _find_swings(df)
+    structure, tags = _classify_structure(swings)
+    price = float(df["Close"].iloc[-1])
+    levels = _cluster_levels(swings, price)
+    atr = _atr(df)
+    pattern = _candle_pattern(df)
+
+    decision = _decide_signal(
+        df, price, swings, structure, tags, levels, atr, pattern,
+        momentum_ok_long=True, momentum_ok_short=False, momentum_note="test",
+    )
+    assert decision["direction"] == "SHORT"
+
+
+def test_decide_signal_poor_risk_reward_flags_but_does_not_cancel_direction():
+    # Previously a poor R:R reset direction back to "NONE" entirely -
+    # per explicit instruction this now stays as a "Yüksek" risk_level flag
+    # instead, since the MA-crossover call should never be silently dropped.
+    n = 40
+    closes = [100 + i * 1.5 for i in range(n)]
+    highs = [c + 0.5 for c in closes]
+    lows = [c - 0.5 for c in closes]
+    df = _make_df(highs, lows, closes=closes)
+    swings = _find_swings(df)
+    structure, tags = _classify_structure(swings)
+    price = float(df["Close"].iloc[-1])
+    levels = _cluster_levels(swings, price)
+    atr = _atr(df)
+    pattern = _candle_pattern(df)
+
+    decision = _decide_signal(
+        df, price, swings, structure, tags, levels, atr, pattern,
+        momentum_ok_long=True, momentum_ok_short=False, momentum_note="test",
+    )
+    assert decision["direction"] == "LONG"
+
+
 def test_stochastic_stays_within_bounds():
     closes = [100 + (i % 7) - 3 for i in range(40)]
     highs = [c + 1.5 for c in closes]

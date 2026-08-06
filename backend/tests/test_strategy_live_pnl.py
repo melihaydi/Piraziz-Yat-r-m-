@@ -65,3 +65,21 @@ def test_missing_entry_has_no_pnl():
         result = _enrich_with_live_pnl(signal)
 
     assert result["captured_pnl_pct"] is None
+
+
+def test_long_signal_captures_pnl_per_share_in_currency():
+    signal = {"ticker": "THYAO", "direction": "LONG", "entry": 300.0}
+    with patch("app.api.v1.endpoints.strategy.market_data_service.is_known_ticker", return_value=True), \
+         patch("app.api.v1.endpoints.strategy.market_data_service.get_quote", return_value={"last": 315.0}):
+        result = _enrich_with_live_pnl(signal)
+
+    assert result["captured_pnl_per_share"] == 15.0
+
+
+def test_short_signal_pnl_per_share_flips_sign_vs_a_long_on_the_same_move():
+    signal = {"ticker": "THYAO", "direction": "SHORT", "entry": 300.0}
+    with patch("app.api.v1.endpoints.strategy.market_data_service.is_known_ticker", return_value=True), \
+         patch("app.api.v1.endpoints.strategy.market_data_service.get_quote", return_value={"last": 315.0}):
+        result = _enrich_with_live_pnl(signal)
+
+    assert result["captured_pnl_per_share"] == -15.0

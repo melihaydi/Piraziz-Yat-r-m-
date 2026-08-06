@@ -12,13 +12,16 @@ router = APIRouter()
 
 
 def _enrich_with_live_pnl(signal_dict: dict) -> dict:
-    """Adds `live_price` and `captured_pnl_pct` to a signal dict WITHOUT
-    touching StrategyEngine's own scan/Signal computation at all - purely
-    additive, fetched fresh from market_data_service on every request, since
-    the scan itself only refreshes every REFRESH_INTERVAL_SECONDS (3 min) so
-    its own `price` field can lag a live quote by that much. captured_pnl_pct
-    is the live price's % move from `entry` in the signal's own favor
-    (positive for a LONG that's risen, or a SHORT that's fallen)."""
+    """Adds `live_price`, `captured_pnl_pct`, and `captured_pnl_per_share` to
+    a signal dict WITHOUT touching StrategyEngine's own scan/Signal
+    computation at all - purely additive, fetched fresh from
+    market_data_service on every request, since the scan itself only
+    refreshes every REFRESH_INTERVAL_SECONDS (3 min) so its own `price`
+    field can lag a live quote by that much. Both P&L figures are the live
+    price's move from `entry` in the signal's own favor (positive for a
+    LONG that's risen, or a SHORT that's fallen) - _per_share is a raw ₺
+    delta (per share/lot, since the scanner has no actual position size to
+    apply this to), _pct is the same move as a percentage."""
     ticker = signal_dict.get("ticker", "")
     quote = market_data_service.get_quote(ticker) if market_data_service.is_known_ticker(ticker) else None
     live_price = quote.get("last") if quote else None
@@ -27,12 +30,16 @@ def _enrich_with_live_pnl(signal_dict: dict) -> dict:
     entry = signal_dict.get("entry")
     direction = signal_dict.get("direction")
     pnl_pct = None
+    pnl_per_share = None
     if live_price is not None and entry:
         if direction == "LONG":
-            pnl_pct = (live_price - entry) / entry * 100
+            pnl_per_share = live_price - entry
+            pnl_pct = pnl_per_share / entry * 100
         elif direction == "SHORT":
-            pnl_pct = (entry - live_price) / entry * 100
+            pnl_per_share = entry - live_price
+            pnl_pct = pnl_per_share / entry * 100
     signal_dict["captured_pnl_pct"] = round(pnl_pct, 2) if pnl_pct is not None else None
+    signal_dict["captured_pnl_per_share"] = round(pnl_per_share, 4) if pnl_per_share is not None else None
     return signal_dict
 
 
@@ -60,11 +67,14 @@ def signal_history(
     entry is recorded once, when a symbol's direction first changes into
     LONG or SHORT (see StrategyEngine._run_scan), not repeated on every
     3-minute rescan while it stays active. Resets at the start of each new
-    day."""
+    day. Each entry is enriched with a live price + running P&L on top of
+    the historical snapshot (same as /scan) - previously only the current
+    signals list had this, so the history tab could only show the price
+    AT the moment the call fired, never how it's done since."""
     history = strategy_engine.get_signal_history()
     return {
         "last_update": strategy_engine.get_last_run(),
-        "history": [asdict(h) for h in history],
+        "history": [_enrich_with_live_pnl(asdict(h)) for h in history],
     }
 
 

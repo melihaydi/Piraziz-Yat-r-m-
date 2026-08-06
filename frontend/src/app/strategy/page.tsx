@@ -76,6 +76,13 @@ interface SignalHistoryEntry {
   stop_loss: number | null
   take_profit: number | null
   timestamp: string
+  // Same live enrichment as the current-signals list (see
+  // _enrich_with_live_pnl in strategy.py) - now also applied to /history so
+  // a past call shows how it's actually done since, not just its price at
+  // the moment it fired.
+  live_price: number | null
+  captured_pnl_pct: number | null
+  captured_pnl_per_share: number | null
 }
 
 type DirectionFilter = "ALL" | "LONG" | "SHORT"
@@ -676,6 +683,7 @@ export default function StrategyPage() {
                   <th className="px-4 text-right">Giriş</th>
                   <th className="px-4 text-right">Stop</th>
                   <th className="px-4 text-right">Hedef</th>
+                  <th className="px-4 text-right">Kâr/Zarar</th>
                 </tr>
               </thead>
               <tbody>
@@ -695,6 +703,18 @@ export default function StrategyPage() {
                     <td className="px-4 text-right font-semibold text-foreground">{h.entry ? fmt(h.entry) : "-"}</td>
                     <td className="px-4 text-right font-semibold text-rose-400">{h.stop_loss ? fmt(h.stop_loss) : "-"}</td>
                     <td className="px-4 text-right font-semibold text-emerald-400">{h.take_profit ? fmt(h.take_profit) : "-"}</td>
+                    <td className="px-4 text-right">
+                      {h.captured_pnl_pct == null ? (
+                        <span className="text-muted-foreground">-</span>
+                      ) : (
+                        <>
+                          <div className={`font-bold ${h.captured_pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                            {h.captured_pnl_pct >= 0 ? "+" : ""}{fmt(h.captured_pnl_per_share)}₺ ({h.captured_pnl_pct >= 0 ? "+" : ""}{fmt(h.captured_pnl_pct)}%)
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">₺{fmt(h.live_price)} anlık</div>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

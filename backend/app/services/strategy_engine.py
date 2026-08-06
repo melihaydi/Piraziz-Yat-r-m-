@@ -58,6 +58,17 @@ MAX_RISK_PCT = 8.0        # signals whose stop distance exceeds this % of entry 
 TREND_SMA_PERIOD = 50     # trend-following filter: price vs a rising/falling SMA(50)
 STOP_ATR_MULT = 1.5       # minimum stop distance in ATRs (widened from 1.2 - see _decide_signal)
 
+# Direction trigger, per explicit instruction: the 7-period moving average
+# crossing above the 21-period moving average is a LONG entry, crossing
+# below is a SHORT entry - replaces the previous multi-factor gate
+# (structure+trend+breakout+momentum all agreeing at once), which the user
+# found produced signals too rarely. Live signals now run on 1h candles
+# (see _fetch_history_with_retry) specifically so this crossover actually
+# fires often enough to matter - the same 7/21 periods on daily bars would
+# still be nearly as infrequent as the old gate.
+MA_FAST_PERIOD = 7
+MA_SLOW_PERIOD = 21
+
 # Hard ceiling on how long a full 30-symbol batch (scan or backtest) is
 # allowed to wait on in-flight network calls before giving up on whatever
 # hasn't finished yet. Without this, a single ticker's borsapy/TradingView
@@ -459,13 +470,17 @@ def _decide_signal(
     """Core direction/entry/stop/target/score decision, shared by the live
     scanner (_build_signal) and the backtest (_backtest_symbol) so the two
     can never silently diverge the way they used to - the backtest
-    previously had its own hand-copied version of this logic, and the
-    engine changes below (confirmed-retest breakouts, SMA trend filter)
-    were only being validated against the backtest's copy until this was
-    unified. The one intentional difference between live and backtest stays
-    external to this function: how momentum_ok_long/short get computed
-    (live: TradingView's ta_signals rating; backtest: local RSI(14), since
-    ta_signals has no historical/point-in-time API - see STRATEGY_NOTES)."""
+    previously had its own hand-copied version of this logic. Direction is
+    a straight MA7/MA21 crossover on `df` (see MA_FAST_PERIOD/MA_SLOW_PERIOD)
+    - everything else computed in this function (structure, SMA trend,
+    momentum, stochastic, ichimoku, breakout, candle pattern) is
+    informational only now, feeding score/confidence/reasons for the UI,
+    not a gate on direction. The one intentional difference between live
+    and backtest stays external to this function: how momentum_ok_long/short
+    get computed (live: TradingView's ta_signals rating; backtest: local
+    RSI(14), since ta_signals has no historical/point-in-time API - see
+    STRATEGY_NOTES), and what timeframe `df` itself is on (live: 1h: see
+    _fetch_history_with_retry; backtest: 1d, unchanged)."""
     reasons: List[str] = list(structure_tags)
     triggered: List[str] = []
     score = 0
@@ -538,23 +553,36 @@ def _decide_signal(
     if liquidity_note:
         reasons.append(liquidity_note)
 
-    # Direction requires structure + confirmed-retest breakout + SMA trend +
-    # momentum to all agree - the request's LONG/SHORT entry rules, now with
-    # a trend-following gate that specifically targets the asymmetry found
-    # in backtesting (SHORTs losing money on average by fighting a still-
-    # rising broader trend - see _trend_state's docstring for the numbers).
-    if breakout and structure_bullish and trend_up and breakout["direction"] == "LONG" and momentum_ok_long:
-        direction = "LONG"
-    elif breakout and structure_bearish and trend_down and breakout["direction"] == "SHORT" and momentum_ok_short:
-        direction = "SHORT"
-    elif structure_bullish and trend_up and momentum_ok_long and pattern and "Boğa" in (pattern or ""):
-        direction = "LONG"
-        score += 5
-        reasons.append("Kırılım yok ama yapı + trend + mum formasyonu uyumlu (erken sinyal)")
-    elif structure_bearish and trend_down and momentum_ok_short and pattern and "Ayı" in (pattern or ""):
-        direction = "SHORT"
-        score += 5
-        reasons.append("Kırılım yok ama yapı + trend + mum formasyonu uyumlu (erken sinyal)")
+    # Direction trigger: MA7/MA21 crossover, per explicit instruction -
+    # replaces the previous multi-factor gate (structure + confirmed-retest
+    # breakout + SMA trend + momentum all required to agree at once), which
+    # produced signals too rarely for what's wanted here. This is a
+    # CONTINUOUS state (LONG whenever MA7 is currently above MA21, not just
+    # on the exact bar it crossed) rather than a one-bar-only event check -
+    # _run_scan's own "only log a new history entry when direction changes"
+    # already turns this into a crossover-EVENT log without needing a
+    # separate one-bar check here, and staying continuous is more robust to
+    # a scan not landing exactly on an hourly candle close.
+    #
+    # Everything above (structure/trend/momentum/stochastic/ichimoku/
+    # breakout/pattern) still runs and still feeds the score/confidence/
+    # reasons shown in the UI - it's informational context now, not a gate,
+    # so a MA-crossover signal is never silently suppressed by it.
+    ma_fast = df["Close"].rolling(MA_FAST_PERIOD).mean()
+    ma_slow = df["Close"].rolling(MA_SLOW_PERIOD).mean()
+    if len(ma_fast) >= 1 and not pd.isna(ma_fast.iloc[-1]) and not pd.isna(ma_slow.iloc[-1]):
+        if ma_fast.iloc[-1] > ma_slow.iloc[-1]:
+            direction = "LONG"
+            score += 30
+            triggered.append(f"MA{MA_FAST_PERIOD}/MA{MA_SLOW_PERIOD} kesişimi: MA{MA_FAST_PERIOD} üzerinde (Long)")
+        elif ma_fast.iloc[-1] < ma_slow.iloc[-1]:
+            direction = "SHORT"
+            score += 30
+            triggered.append(f"MA{MA_FAST_PERIOD}/MA{MA_SLOW_PERIOD} kesişimi: MA{MA_FAST_PERIOD} altında (Short)")
+        else:
+            reasons.append(f"MA{MA_FAST_PERIOD}/MA{MA_SLOW_PERIOD} eşit, yön belirsiz")
+    else:
+        reasons.append(f"MA{MA_SLOW_PERIOD} için yeterli mum verisi yok")
 
     if direction == "SHORT":
         # Backtesting this engine (2026-07-28 revision) across all 30 BIST30
@@ -591,11 +619,15 @@ def _decide_signal(
         risk_amt = abs(entry - stop)
         rr = round(abs(target - entry) / risk_amt, 2) if risk_amt > 0 else None
 
+        # A poor R:R no longer cancels the signal outright (direction stays
+        # whatever the MA crossover said) - it's flagged as a risk warning
+        # instead, since silently dropping the crossover call here would
+        # work directly against wanting the engine to act on every
+        # crossover. entry/stop/target stay populated either way so the UI
+        # still shows real trade parameters to weigh that warning against.
         if risk_pct > MAX_RISK_PCT or (rr is not None and rr < 1.0):
-            direction = "NONE"
-            reasons.append(f"Risk/ödül yetersiz (R:R={rr}, risk %{risk_pct:.1f}) - sinyal iptal edildi")
-            entry = stop = target = rr = None
-            score = max(score - 20, 0)
+            risk_level = "Yüksek"
+            reasons.append(f"Risk/ödül zayıf (R:R={rr}, risk %{risk_pct:.1f}) - dikkatli değerlendirin")
         else:
             risk_level = "Düşük" if risk_pct < 3 else ("Orta" if risk_pct < 6 else "Yüksek")
             if rr and rr >= 2:
@@ -619,11 +651,18 @@ def _fetch_history_with_retry(t: "borsapy.Ticker", ticker: str) -> pd.DataFrame:
     TradingView's per-IP rate limit (429s), even with a modest worker pool
     (see _run_scan's throttling). A short backoff-and-retry absorbs the
     transient 429s that still slip through instead of losing that symbol's
-    signal for the whole 3-minute refresh cycle."""
+    signal for the whole 3-minute refresh cycle.
+
+    interval="1h" (not "1d") per explicit instruction, so the MA7/MA21
+    crossover in _decide_signal actually crosses often enough to fire
+    regularly - "period" is 2mo of 1h bars (BIST trading hours are ~8h/day,
+    so this is still ~350 bars, comfortably enough for a 21-period MA)
+    rather than 6mo, since that many hourly bars would otherwise be a much
+    heavier fetch for no benefit to a 21-bar lookback indicator."""
     last_err: Optional[Exception] = None
     for attempt in range(3):
         try:
-            return t.history(period="6mo", interval="1d")
+            return t.history(period="2mo", interval="1h")
         except Exception as e:
             last_err = e
             if "429" in str(e):
@@ -661,7 +700,7 @@ def _build_signal(ticker: str, name: str) -> Signal:
         fib_levels = _fibonacci_levels(swings)
 
         try:
-            ta = t.ta_signals(interval="1d")
+            ta = t.ta_signals(interval="1h")
         except Exception as e:
             logger.warning(f"ta_signals failed for {ticker}: {e}")
             ta = None
