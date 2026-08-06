@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck } from "lucide-react"
+import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck, User } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
@@ -64,7 +64,6 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   // Profile states
   const [username, setUsername] = useState("Kullanıcı")
-  const [avatarEmoji, setAvatarEmoji] = useState("💼")
   const [profilePic, setProfilePic] = useState("")
   const [role, setRole] = useState("free")
 
@@ -216,10 +215,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   useEffect(() => {
     const loadProfile = () => {
       const savedName = localStorage.getItem("bip_username")
-      const savedEmoji = localStorage.getItem("bip_avatar_emoji")
       const savedPic = localStorage.getItem("bip_profile_pic")
       if (savedName) setUsername(savedName)
-      if (savedEmoji) setAvatarEmoji(savedEmoji)
       if (savedPic) setProfilePic(savedPic)
     }
     loadProfile()
@@ -422,27 +419,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
                 <button
                   key={t.code}
                   onClick={() => {
-                    if (t.isFund) {
-                      if (window.location.pathname === "/funds") {
-                        window.dispatchEvent(new CustomEvent("select-fund", { detail: t.code }))
-                      } else {
-                        // There is no standalone /funds/[code] browsing route wired up
-                        // for this - fund detail lives inside /funds itself, which now
-                        // reads this ?code= param on load (previously it silently
-                        // ignored it, always showing the default fund instead).
-                        router.push(`/funds?code=${t.code}`)
-                      }
-                    } else {
-                      if (window.location.pathname === "/screener") {
-                        window.dispatchEvent(new CustomEvent("select-stock", { detail: t.code }))
-                      } else {
-                        // Previously linked to /stock/${t.code}, a route that doesn't
-                        // exist in this app (stock detail lives inside /screener's
-                        // split view) - that 404'd, which looked like "the price
-                        // doesn't show up". /screener now reads this ?ticker= param.
-                        router.push(`/screener?ticker=${t.code}`)
-                      }
-                    }
+                    // Straight to the real detail page (/stock/[ticker] or
+                    // /funds/[code]) either way - both routes exist and this
+                    // is what "search for a stock/fund" should open, rather
+                    // than the list/split-view pages with a query param.
+                    router.push(t.isFund ? `/funds/${t.code}` : `/stock/${t.code}`)
                     setShowDropdown(false)
                     setSearchQuery("")
                   }}
@@ -592,7 +573,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             {profilePic ? (
               <img src={profilePic} className="h-full w-full object-cover" alt="Profile" />
             ) : (
-              avatarEmoji
+              <User className="h-4.5 w-4.5 text-muted-foreground" />
             )}
           </div>
         </Link>

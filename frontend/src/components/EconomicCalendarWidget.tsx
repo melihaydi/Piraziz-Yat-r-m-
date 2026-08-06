@@ -9,7 +9,7 @@ import { ExternalLink } from "lucide-react"
  * If the external script fails to load for any reason (offline, blocked, etc.)
  * we fall back to a direct link so the section is never just a dead blank box.
  */
-export default function EconomicCalendarWidget() {
+export default function EconomicCalendarWidget({ height = 460 }: { height?: number }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [failed, setFailed] = useState(false)
 
@@ -25,7 +25,7 @@ export default function EconomicCalendarWidget() {
       colorTheme: "dark",
       isTransparent: true,
       width: "100%",
-      height: "460",
+      height: String(height),
       locale: "tr",
       importanceFilter: "1",
       countryFilter: "tr,us"
@@ -42,7 +42,7 @@ export default function EconomicCalendarWidget() {
     containerRef.current.appendChild(script)
 
     return () => clearTimeout(fallbackTimer)
-  }, [])
+  }, [height])
 
   if (failed) {
     return (
@@ -62,5 +62,5 @@ export default function EconomicCalendarWidget() {
     )
   }
 
-  return <div className="tradingview-widget-container" ref={containerRef} style={{ minHeight: 460 }} />
+  return <div className="tradingview-widget-container" ref={containerRef} style={{ minHeight: height }} />
 }

@@ -163,7 +163,11 @@ class MarketDataService:
             # of a name-only placeholder - see get_fund()'s details_map.
             "OZATD", "TEHOL", "TRHOL", "ANELE", "SELEC", "PEKGY", "DSTKF", "ALKLC", "EUPWR", "TERA",
             "GESAN", "TURSG", "TRALT", "TATEN", "SKBNK", "DAPGM", "BRSAN", "MPARK", "DCTTR", "IZFAS",
-            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS", "TMPOL", "LIDER"
+            "ANSGR", "BETAE", "MOPAS", "ISKPL", "AKSEN", "KORDS", "SVGYO", "MANAS", "TMPOL", "LIDER",
+            # Added for TLY's real disclosed composition (tefas.py) so each
+            # holding resolves to a real live quote instead of a name-only
+            # placeholder - same rationale as the OZATD/TEHOL/etc. block above.
+            "BIGEN", "SARAE", "METEN", "EFOR"
         ]
         
         self.tickers = []
@@ -198,6 +202,10 @@ class MarketDataService:
             "MANAS": "Manas Enerji Yönetimi Sanayi ve Ticaret A.Ş.",
             "TMPOL": "Temapol Polimer Plastik ve İnşaat Sanayi Ticaret A.Ş.",
             "LIDER": "LDR Turizm A.Ş.",
+            "BIGEN": "Birleşim Grup Enerji Yatırımları A.Ş.",
+            "SARAE": "Şa-Ra Enerji İnşaat Ticaret ve Sanayi A.Ş.",
+            "METEN": "Metgun Enerji Yatırımları A.Ş.",
+            "EFOR": "Efor Yatırım Sanayi ve Ticaret A.Ş.",
         }
         
         for t in allowed_list:

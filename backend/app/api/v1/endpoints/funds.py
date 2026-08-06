@@ -52,8 +52,21 @@ def _fund_comparison_stats(candles: List[dict]) -> dict:
 # Funds shown in the "Popüler Fonlar - Anlık Getiri" section - deliberately
 # a fixed short list (not every tracked fund) since building this estimate
 # is itself a real cost (recursing through several live quote lookups per
-# fund) and this section only ever asked for these three.
-POPULAR_LIVE_FUNDS = ["TMV", "PBR", "DFI"]
+# fund) and this section only ever asked for these four.
+POPULAR_LIVE_FUNDS = ["TMV", "PBR", "DFI", "TLY"]
+
+
+def _with_impact_pct(holdings: List[dict]) -> List[dict]:
+    """Adds each holding's point contribution to the fund's overall estimate
+    (weight/100 * its own change_pct) - the per-fund equivalent of what the
+    Screener used to show per-stock. None when the holding wasn't resolvable
+    (see get_live_estimated_return) rather than 0, so an unresolved holding
+    never looks like it simply had no effect today."""
+    out = []
+    for h in holdings:
+        impact = round(h["weight"] / 100 * h["change_pct"], 3) if h.get("change_pct") is not None else None
+        out.append({**h, "impact_pct": impact})
+    return out
 
 
 @router.get("/popular/live-estimate")
@@ -79,7 +92,7 @@ def get_popular_funds_live_estimate():
             "fund_size": fund.get("fund_size"),
             "estimated_change_pct": estimate["estimated_change_pct"],
             "resolved_weight_pct": estimate["resolved_weight_pct"],
-            "holdings": estimate["holdings"],
+            "holdings": _with_impact_pct(estimate["holdings"]),
         })
     return {"funds": results}
 

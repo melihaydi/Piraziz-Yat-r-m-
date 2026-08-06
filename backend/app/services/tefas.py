@@ -84,6 +84,13 @@ BASE_FUNDS = {
     # composition (see FUND_DETAILS_MAP["DFI"]), same rationale as PNU/PGH/PA2 above.
     "KVR": {"name": "Atlas Portföy Kısa Vadeli Katılım Serbest Fon", "category": "Katılım", "price": 10.0000, "category_tr": "Katılım / Hisse Senedi"},
     "PFS": {"name": "Atlas Portföy Fon Sepeti Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    # HMV is a real, independent TEFAS fund (Hedef Portföy Yönetimi) that
+    # also happens to be one of TLY's own disclosed holdings (see TLY's
+    # assets_distribution below) - tracked here both so it's browsable on
+    # its own in the fund list/screener, and so TLY's live estimate can
+    # resolve this leg via its real daily_return once the TEFAS crawl
+    # populates it (same placeholder-overwritten-by-real-data pattern as PRY).
+    "HMV": {"name": "Hedef Portföy Mavi Hisse Senedi Serbest (TL) Fon", "category": "Serbest Yoğun", "price": 10.0000, "category_tr": "Serbest Fon"},
 }
 
 # Baseline fallback values (exact prices & returns from July 20, 2026)
@@ -103,7 +110,8 @@ FALLBACKS = {
     "PGH": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PA2": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "KVR": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
-    "PFS": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
+    "PFS": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "HMV": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
 }
 
 # Module-level (not just get_fund()-local) so get_live_estimated_return()
@@ -190,7 +198,37 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "fund_size": "₺3,125,000,000",
         "risk_level": 3,
         "manager": "Gökhan Şen / Tera Portföy",
-        "assets_distribution": [{"name": "Özel Sektör Borçlanma", "value": 75}, {"name": "Ters Repo", "value": 20}, {"name": "Nakit", "value": 5}]
+        "assets_distribution": [
+            {"name": "OZATD", "value": 34.27},
+            {"name": "DSTKF", "value": 12.02},
+            {"name": "TEHOL", "value": 9.22},
+            {"name": "PEKGY", "value": 8.76},
+            # HMV is itself a tracked fund (see BASE_FUNDS/FALLBACKS above),
+            # not a stock - resolved via its own daily_return, not a quote.
+            {"name": "HMV", "value": 5.62},
+            {"name": "TERA", "value": 4.11},
+            {"name": "TRHOL", "value": 4.01},
+            {"name": "ANELE", "value": 2.20},
+            {"name": "ALKLC", "value": 1.92},
+            {"name": "SELEC", "value": 1.70},
+            {"name": "BIGEN", "value": 1.55},
+            {"name": "HEDEF", "value": 0.57},
+            {"name": "SVGYO", "value": 0.52},
+            {"name": "EUPWR", "value": 0.40},
+            {"name": "MANAS", "value": 0.28},
+            {"name": "SARAE", "value": 0.12},
+            {"name": "DAPGM", "value": 0.05},
+            {"name": "GESAN", "value": 0.04},
+            {"name": "TMPOL", "value": 0.03},
+            {"name": "YKBNK", "value": 0.03},
+            {"name": "METEN", "value": 0.02},
+            {"name": "EFOR", "value": 0.01},
+            # "T3B" - no confidently-identifiable BIST ticker or instrument
+            # found for this code (unlike VİOP/VDMK below, this isn't even a
+            # known category label) - left unresolved rather than guessed at,
+            # same "wrong data is worse than none" bar as everywhere else.
+            {"name": "T3B", "value": 0.01},
+        ]
     },
     "TMV": {
         "fund_size": "₺26,000,000,000",
@@ -826,25 +864,6 @@ class TefasService:
             "resolved_weight_pct": round(resolved_weight, 2),
             "holdings": holdings_out,
         }
-
-    def get_funds_holding_ticker(self, ticker: str, fund_codes: List[str]) -> List[Dict[str, float]]:
-        """For the screener: which of `fund_codes` (e.g. the 3 "Popüler
-        Fonlar") disclose `ticker` as a holding, and at what weight - lets a
-        stock's own live change_percent be turned into "how many points did
-        this move contribute to that fund's estimate" (weight/100 * change),
-        computed by the caller since this only returns the static weight,
-        not a live number. Returns [] if the ticker isn't held by any of them."""
-        ticker = ticker.upper()
-        matches = []
-        for code in fund_codes:
-            details = FUND_DETAILS_MAP.get(code.upper())
-            if not details:
-                continue
-            for item in details["assets_distribution"]:
-                if item["name"].upper() == ticker:
-                    matches.append({"fund_code": code.upper(), "weight_pct": float(item["value"])})
-                    break
-        return matches
 
     def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> tuple[List[Dict[str, Any]], bool]:
         """

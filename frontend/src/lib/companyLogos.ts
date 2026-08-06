@@ -94,6 +94,12 @@ export const TICKER_LOGO_DOMAINS: Record<string, string> = {
   TMPOL: "temapol.com.tr",
   LIDER: "liderfilo.com.tr",
   TERA: "terayatirim.com",
+  // Added for TLY's disclosed composition. SARAE/METEN/EFOR deliberately
+  // left out: no single confidently-identifiable official domain found for
+  // any of them (EFOR in particular has 3 similarly-named but distinct
+  // real companies - Efor Yatırım, Efor Çay, Efor Holding - guessing which
+  // one risks the wrong logo).
+  BIGEN: "birlesimgrupenerji.com",
 }
 
 export function logoUrlFor(ticker: string, size: number = 64): string | null {

@@ -267,17 +267,8 @@ const BADGE_STYLES: Record<string, string> = {
   zinc: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
 }
 
-const AVATAR_OPTIONS = [
-  { emoji: "💼", label: "Yatırımcı" },
-  { emoji: "📈", label: "Trader" },
-  { emoji: "🎯", label: "Analist" },
-  { emoji: "🦁", label: "Aslan" },
-  { emoji: "🚀", label: "Boğa" }
-]
-
 export default function SettingsPage() {
   const [username, setUsername] = useState("")
-  const [avatarEmoji, setAvatarEmoji] = useState("💼")
   const [profilePic, setProfilePic] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("••••••••")
@@ -298,10 +289,8 @@ export default function SettingsPage() {
   // it's the real source of truth for the account, not a local cache.
   useEffect(() => {
     const savedName = localStorage.getItem("bip_username")
-    const savedEmoji = localStorage.getItem("bip_avatar_emoji")
     const savedPic = localStorage.getItem("bip_profile_pic")
     if (savedName) setUsername(savedName)
-    if (savedEmoji) setAvatarEmoji(savedEmoji)
     if (savedPic) setProfilePic(savedPic)
 
     refreshProfile()
@@ -322,7 +311,6 @@ export default function SettingsPage() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     localStorage.setItem("bip_username", username)
-    localStorage.setItem("bip_avatar_emoji", avatarEmoji)
     localStorage.setItem("bip_profile_pic", profilePic)
 
     // Display name lives on the real account too (Header etc. read the
@@ -452,21 +440,23 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSaveProfile} className="space-y-5">
-                {/* Profile Picture Upload Section (Avatar image, Request 4!) */}
+                {/* Profile Picture Upload Section (Avatar image, Request 4!) -
+                    optional, a generic icon shows when none is set (no more
+                    emoji picker to choose between instead). */}
                 <div className="flex items-center space-x-4 p-4 bg-secondary/15 rounded-xl border border-border/30">
-                  <div className="relative h-16 w-16 rounded-full border border-border flex items-center justify-center text-3xl bg-secondary/50 overflow-hidden shrink-0">
+                  <div className="relative h-16 w-16 rounded-full border border-border flex items-center justify-center bg-secondary/50 overflow-hidden shrink-0">
                     {profilePic ? (
                       <img src={profilePic} className="h-full w-full object-cover" alt="Profile" />
                     ) : (
-                      <span>{avatarEmoji}</span>
+                      <User className="h-7 w-7 text-muted-foreground" />
                     )}
                   </div>
-                  
+
                   <div className="space-y-1.5 flex-1">
                     <label className="text-xs text-muted-foreground font-semibold block">Profil Fotoğrafı Yükle</label>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
+                    <input
+                      type="file"
+                      accept="image/*"
                       onChange={handleImageUpload}
                       className="text-xs text-muted-foreground file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:opacity-90 file:cursor-pointer"
                     />
@@ -475,34 +465,13 @@ export default function SettingsPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground font-semibold">Görünen Ad</label>
-                  <Input 
+                  <Input
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Ömer Faruk"
                     className="bg-secondary/30"
                     required
                   />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs text-muted-foreground font-semibold">Avatar Seçimi</label>
-                  <div className="grid grid-cols-5 gap-2.5">
-                    {AVATAR_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.emoji}
-                        type="button"
-                        onClick={() => setAvatarEmoji(opt.emoji)}
-                        className={`h-14 rounded-lg border flex flex-col items-center justify-center text-xl transition-all cursor-pointer ${
-                          avatarEmoji === opt.emoji 
-                            ? "bg-primary/10 border-primary text-primary scale-105 shadow-md shadow-primary/5" 
-                            : "bg-secondary/20 border-border hover:bg-secondary/40"
-                        }`}
-                      >
-                        <span>{opt.emoji}</span>
-                        <span className="text-[9px] text-muted-foreground mt-1 font-semibold">{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {saveSuccess && (
@@ -645,14 +614,14 @@ export default function SettingsPage() {
                 </a>
 
                 <a
-                  href="tel:+905530221529"
+                  href="tel:+905550001122"
                   className="group flex flex-col p-4 bg-gradient-to-br from-secondary/25 to-secondary/5 rounded-xl border border-border/40 hover:border-primary/40 transition-all"
                 >
                   <div className="inline-flex p-2.5 rounded-lg bg-primary/10 text-primary w-fit mb-3 group-hover:bg-primary/20 transition-colors">
                     <Phone className="h-4.5 w-4.5" />
                   </div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Telefon Desteği</p>
-                  <p className="text-foreground font-mono text-sm mt-1">0553 022 15 29</p>
+                  <p className="text-foreground font-mono text-sm mt-1">0555 000 11 22</p>
                   <span className="text-[10px] text-primary font-semibold mt-2 flex items-center">
                     Hemen ara <MessageCircle className="h-3 w-3 ml-1" />
                   </span>

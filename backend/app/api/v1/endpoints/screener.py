@@ -5,16 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.services.market_data import market_data_service
 from app.services.scoring import ScoringService
 from app.services.technical_analysis import TechnicalAnalysisService
-from app.schemas.screener import ScreenerStockResponse, FundImpact
+from app.schemas.screener import ScreenerStockResponse
 from app.services.sectors import SECTOR_MAP, get_sector
-from app.services.tefas import tefas_service
 
 router = APIRouter()
-
-# Same 3 funds funds.py's "Popüler Fonlar" tracks - kept as a local constant
-# rather than importing it from that endpoint module, to avoid two API-layer
-# modules depending on each other's internals for what's really just a list.
-_POPULAR_FUND_CODES = ["TMV", "PBR", "DFI"]
 
 def calculate_techs(candles: list) -> dict:
     if not candles or len(candles) < 20:
@@ -128,11 +122,6 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
     scoring_res = ScoringService.calculate_bip_score(metrics)
     ai_score = int(scoring_res["total_score"])
 
-    fund_impacts = [
-        FundImpact(fund_code=m["fund_code"], weight_pct=m["weight_pct"], impact_pct=round(m["weight_pct"] / 100 * change_pct, 3))
-        for m in tefas_service.get_funds_holding_ticker(ticker, _POPULAR_FUND_CODES)
-    ]
-
     return ScreenerStockResponse(
         ticker=ticker,
         name=name,
@@ -147,7 +136,6 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
         market_cap=mcap,
         ai_score=ai_score,
         sentiment=sentiment,
-        fund_impacts=fund_impacts
     )
 
 
@@ -400,6 +388,11 @@ def get_market_summary():
     xu100 = get_market_quote("XU100", 10240.50, 1.42)
     xu030 = get_market_quote("XU030", 11580.20, 1.68)
     xbank = get_market_quote("XBANK", 14250.00, 2.15)
+    # BIST 50 / BIST 500 / BIST All Shares - for the homepage's "Endeks
+    # Performansları" section (replaced the old sector-average leaderboard).
+    xu050 = get_market_quote("XU050", 12109.93, 0.81)
+    xu500 = get_market_quote("XU500", 17526.62, 0.44)
+    xutum = get_market_quote("XUTUM", 17882.42, 0.41)
     usdtry = get_market_quote("USDTRY", 33.245, -0.08)
     eurtry = get_market_quote("EURTRY", 36.180, 0.12)
     xauusd = get_market_quote("XAUUSD", 2410.60, 0.22)
@@ -482,6 +475,9 @@ def get_market_summary():
         "index": xu100,       # XU100 Index details
         "xu030": xu030,       # XU030 Index details
         "xbank": xbank,       # XBANK Index details
+        "xu050": xu050,       # XU050 (BIST 50) Index details
+        "xu500": xu500,       # XU500 (BIST 500) Index details
+        "xutum": xutum,       # XUTUM (BIST All Shares) Index details
         "usdtry": usdtry,     # USD/TRY Exchange rate
         "eurtry": eurtry,     # EUR/TRY Exchange rate
         "xautryg": xautryg,   # Gram Gold TRY

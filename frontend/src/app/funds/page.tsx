@@ -116,6 +116,30 @@ export default function FundsPage() {
     })
   }
 
+  // A single headline number is much easier to read at a glance than a
+  // column of raw "Fark" values the user has to mentally average - mean
+  // absolute error across every row that actually has both an estimate and
+  // a real TEFAS return to compare against.
+  const estimateAccuracySummary = useMemo(() => {
+    const withError = estimateHistory.filter((r: any) => r.error_pct != null)
+    if (withError.length === 0) return null
+    const meanAbsError = withError.reduce((sum: number, r: any) => sum + Math.abs(r.error_pct), 0) / withError.length
+    const withinHalfPoint = withError.filter((r: any) => Math.abs(r.error_pct) <= 0.5).length
+    return {
+      meanAbsError,
+      accuratePct: (withinHalfPoint / withError.length) * 100,
+      sampleCount: withError.length,
+    }
+  }, [estimateHistory])
+
+  // Same 3-tier scale used both for the summary badge and every row's "Fark"
+  // cell, so the two always agree on what counts as accurate.
+  function accuracyTier(absError: number): { label: string; className: string } {
+    if (absError <= 0.5) return { label: "İsabetli", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" }
+    if (absError <= 1.5) return { label: "Orta", className: "text-amber-400 bg-amber-500/10 border-amber-500/20" }
+    return { label: "Sapmalı", className: "text-rose-400 bg-rose-500/10 border-rose-500/20" }
+  }
+
   // Fund comparison state (2-5 funds, matches the backend's GET /funds/compare cap)
   const [compareCodes, setCompareCodes] = useState<string[]>([])
   const [compareOpen, setCompareOpen] = useState(false)
@@ -176,21 +200,6 @@ export default function FundsPage() {
     localStorage.setItem("favorites_funds", JSON.stringify(updated))
   }
 
-  // Listen to select-fund custom events from header search (Request 16!)
-  useEffect(() => {
-    const handleSelectFund = (e: Event) => {
-      const code = (e as CustomEvent).detail
-      if (code) {
-        setSelectedCode(code.toUpperCase())
-        const detailEl = document.getElementById("fund-detail-pane")
-        if (detailEl) {
-          detailEl.scrollIntoView({ behavior: "smooth" })
-        }
-      }
-    }
-    window.addEventListener("select-fund", handleSelectFund)
-    return () => window.removeEventListener("select-fund", handleSelectFund)
-  }, [])
 
   // If we arrived here via a "?code=" URL param (header search, from a page
   // other than /funds), scroll the detail pane into view once on mount.
@@ -364,7 +373,7 @@ export default function FundsPage() {
           ) : popularFunds.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">Veri alınamadı.</div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {popularFunds.map(f => {
                 const isUp = f.estimated_change_pct >= 0
                 const isExpanded = expandedPopularCodes.has(f.code)
@@ -399,24 +408,51 @@ export default function FundsPage() {
                       )}
                     </button>
                     {isExpanded && (
-                      <div className="border-t border-border/30 px-3 py-2 space-y-1 max-h-48 overflow-y-auto">
+                      <div className="border-t border-border/30 px-3 py-2 space-y-1.5 max-h-64 overflow-y-auto">
+                        {/* Two clearly-separate numbers per holding, on purpose:
+                            "Ağırlık" is the static disclosed weight (never
+                            changes intraday), "Fona Etkisi" is how many points
+                            of the fund's LIVE estimate this holding is
+                            currently responsible for (weight/100 * its own
+                            change% today) - conflating these two reads as one
+                            number that means neither thing correctly. */}
                         {f.holdings
                           .slice()
                           .sort((a: any, b: any) => b.weight - a.weight)
                           .map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between text-[10px]">
-                              <span className="text-muted-foreground truncate">
-                                {h.ticker} <span className="opacity-60">%{h.weight.toFixed(2)}</span>
-                              </span>
-                              {h.change_pct != null ? (
-                                <span className={h.change_pct >= 0 ? "text-emerald-400 font-semibold" : "text-rose-500 font-semibold"}>
-                                  {h.change_pct >= 0 ? "+" : ""}{h.change_pct.toFixed(2)}%
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground/60">—</span>
-                              )}
+                            <div key={h.ticker} className="flex items-center justify-between text-[10px] gap-2">
+                              <div className="flex items-baseline gap-1.5 min-w-0">
+                                <span className="font-bold text-foreground truncate">{h.ticker}</span>
+                                <span className="text-muted-foreground/70 shrink-0">Ağırlık %{h.weight.toFixed(2)}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {h.change_pct != null && (
+                                  <span className="text-muted-foreground/70">
+                                    {h.change_pct >= 0 ? "+" : ""}{h.change_pct.toFixed(2)}%
+                                  </span>
+                                )}
+                                {h.impact_pct != null ? (
+                                  <span
+                                    title="Fona Etkisi - bu varlığın fonun bugünkü tahmini getirisine kaç puan katkısı olduğu"
+                                    className={`font-bold px-1.5 py-0.5 rounded border ${
+                                      h.impact_pct >= 0
+                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                        : "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                                    }`}
+                                  >
+                                    {h.impact_pct >= 0 ? "+" : ""}{h.impact_pct.toFixed(2)}p
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground/40">—</span>
+                                )}
+                              </div>
                             </div>
                           ))}
+                        <div className="flex items-center gap-3 pt-1.5 mt-1 border-t border-border/20 text-[8px] text-muted-foreground/60">
+                          <span>Ağırlık: fondaki sabit pay</span>
+                          <span>·</span>
+                          <span>p (puan): fona bugünkü etkisi</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -439,8 +475,8 @@ export default function FundsPage() {
           </button>
           {showEstimateHistory && (
             <CardDescription className="text-[10px]">
-              Her gün akşam kaydedilen o günün canlı tahmini ile TEFAS&apos;ın yayınladığı gerçek günlük getiri -
-              tahminin ne kadar isabetli olduğunu görmek için.
+              Her akşam kaydedilen o günün canlı tahmini, TEFAS&apos;ın ertesi sabah yayınladığı gerçek günlük getiriyle
+              karşılaştırılır - tahminin ne kadar isabetli olduğunu görmek için.
             </CardDescription>
           )}
         </CardHeader>
@@ -455,36 +491,70 @@ export default function FundsPage() {
                 Henüz kayıt yok - ilk kayıt bugün akşam (TEFAS güncellemesinden sonra) oluşacak.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-[10px] text-muted-foreground uppercase border-b border-border/40">
-                      <th className="text-left py-2 pr-4">Tarih</th>
-                      <th className="text-left py-2 pr-4">Fon</th>
-                      <th className="text-right py-2 pr-4">Tahmin</th>
-                      <th className="text-right py-2 pr-4">Gerçekleşen</th>
-                      <th className="text-right py-2">Fark</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {estimateHistory.map((row: any) => (
-                      <tr key={`${row.fund_code}-${row.date}`} className="border-b border-border/20">
-                        <td className="py-1.5 pr-4 font-mono text-muted-foreground">{row.date}</td>
-                        <td className="py-1.5 pr-4 font-bold">{row.fund_code}</td>
-                        <td className={`py-1.5 pr-4 text-right font-mono ${row.estimated_change_pct == null ? "text-muted-foreground" : row.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                          {row.estimated_change_pct == null ? "—" : `${row.estimated_change_pct >= 0 ? "+" : ""}${row.estimated_change_pct.toFixed(2)}%`}
-                        </td>
-                        <td className={`py-1.5 pr-4 text-right font-mono ${row.actual_change_pct == null ? "text-muted-foreground" : row.actual_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                          {row.actual_change_pct == null ? "—" : `${row.actual_change_pct >= 0 ? "+" : ""}${row.actual_change_pct.toFixed(2)}%`}
-                        </td>
-                        <td className="py-1.5 text-right font-mono text-muted-foreground">
-                          {row.error_pct == null ? "—" : `${row.error_pct >= 0 ? "+" : ""}${row.error_pct.toFixed(2)}`}
-                        </td>
+              <>
+                {/* Headline number first - "ortalama sapma X puan" is what
+                    actually answers "bu tahmine ne kadar güvenebilirim",
+                    the row-by-row table below is the detail, not the summary. */}
+                {estimateAccuracySummary && (
+                  <div className="flex items-center gap-4 mb-4 p-3 rounded-lg bg-secondary/15 border border-border/30">
+                    <div>
+                      <div className="text-[9px] text-muted-foreground uppercase font-bold">Ortalama Sapma</div>
+                      <div className="text-lg font-black font-mono text-foreground">
+                        ±{estimateAccuracySummary.meanAbsError.toFixed(2)} <span className="text-xs font-bold text-muted-foreground">puan</span>
+                      </div>
+                    </div>
+                    <div className="h-8 w-px bg-border/40" />
+                    <div>
+                      <div className="text-[9px] text-muted-foreground uppercase font-bold">İsabet Oranı</div>
+                      <div className="text-lg font-black font-mono text-emerald-400">
+                        %{estimateAccuracySummary.accuratePct.toFixed(0)}
+                      </div>
+                    </div>
+                    <div className="text-[9px] text-muted-foreground/70 ml-auto text-right leading-relaxed">
+                      Son {estimateAccuracySummary.sampleCount} ölçümde,<br />±0.5 puan içinde kalan tahmin oranı
+                    </div>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-[10px] text-muted-foreground uppercase border-b border-border/40">
+                        <th className="text-left py-2 pr-4">Tarih</th>
+                        <th className="text-left py-2 pr-4">Fon</th>
+                        <th className="text-right py-2 pr-4">Canlı Tahmin</th>
+                        <th className="text-right py-2 pr-4">TEFAS Gerçek</th>
+                        <th className="text-right py-2">Sapma</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {estimateHistory.map((row: any) => {
+                        const tier = row.error_pct != null ? accuracyTier(Math.abs(row.error_pct)) : null
+                        return (
+                          <tr key={`${row.fund_code}-${row.date}`} className="border-b border-border/20">
+                            <td className="py-1.5 pr-4 font-mono text-muted-foreground">{row.date}</td>
+                            <td className="py-1.5 pr-4 font-bold">{row.fund_code}</td>
+                            <td className={`py-1.5 pr-4 text-right font-mono ${row.estimated_change_pct == null ? "text-muted-foreground" : row.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                              {row.estimated_change_pct == null ? "—" : `${row.estimated_change_pct >= 0 ? "+" : ""}${row.estimated_change_pct.toFixed(2)}%`}
+                            </td>
+                            <td className={`py-1.5 pr-4 text-right font-mono ${row.actual_change_pct == null ? "text-muted-foreground" : row.actual_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                              {row.actual_change_pct == null ? "—" : `${row.actual_change_pct >= 0 ? "+" : ""}${row.actual_change_pct.toFixed(2)}%`}
+                            </td>
+                            <td className="py-1.5 text-right">
+                              {row.error_pct == null || !tier ? (
+                                <span className="font-mono text-muted-foreground">—</span>
+                              ) : (
+                                <span className={`inline-flex items-center gap-1 font-mono font-bold px-1.5 py-0.5 rounded border text-[10px] ${tier.className}`}>
+                                  {row.error_pct >= 0 ? "+" : ""}{row.error_pct.toFixed(2)} · {tier.label}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </CardContent>
         )}
@@ -567,7 +637,7 @@ export default function FundsPage() {
           {/* List Table Card */}
           <Card glass={true}>
             <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[500px]">
+              <div className="overflow-x-auto">
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-20 space-y-3">
                     <Loader2 className="h-8 w-8 text-primary animate-spin" />

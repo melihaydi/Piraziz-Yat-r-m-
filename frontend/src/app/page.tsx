@@ -2,17 +2,14 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell 
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
 } from "recharts"
 import {
   TrendingUp,
@@ -218,12 +215,6 @@ export default function Home() {
   }, [selectedIndex, marketSummary])
 
   // Map sentiment to Recharts structure
-  const pieData = useMemo(() => [
-    { name: "Pozitif", value: marketSummary.sentiment.bullish, color: "#10b981" },
-    { name: "Nötr", value: marketSummary.sentiment.neutral, color: "#6b7280" },
-    { name: "Negatif", value: marketSummary.sentiment.bearish, color: "#f43f5e" }
-  ], [marketSummary.sentiment])
-
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Welcome & AI Summary Header */}
@@ -239,6 +230,24 @@ export default function Home() {
           </span>
         </div>
       </div>
+
+      {/* Stock Heatmap - TradingView's own official BIST100 widget, full
+          width for readability. Moved up near the top of the page (was
+          previously the last thing on the page, easy to miss without
+          scrolling) - it's the kind of at-a-glance overview that's more
+          useful seen first, before the detailed cards below. */}
+      <Card glass={true}>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center">
+            <Flame className="h-5 w-5 text-orange-400 mr-2" />
+            Hisse Isı Haritası
+          </CardTitle>
+          <CardDescription>TradingView canlı BIST 100 ısı haritası</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <StockHeatmapWidget height={420} />
+        </CardContent>
+      </Card>
 
       {/* Grid Layout for Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -339,7 +348,7 @@ export default function Home() {
               ) : popularFunds.length === 0 ? (
                 <p className="text-center text-xs text-muted-foreground py-6">Veri alınamadı.</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   {popularFunds.map(f => {
                     const isUp = f.estimated_change_pct >= 0
                     return (
@@ -443,70 +452,10 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* AI Sentiment Gauge */}
-          <Card glass={true}>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center">
-                <Flame className="h-4 w-4 text-emerald-400 mr-2" />
-                Piyasa Duygu Analizi (Sentiment)
-              </CardTitle>
-              <CardDescription>BIST geneli canlı TradingView veri algısı</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center">
-              {loadingSummary ? (
-                <div className="w-full flex flex-col items-center justify-center space-y-3 h-40">
-                  <Skeleton className="h-28 w-28 rounded-full" />
-                  <Skeleton className="h-4 w-20 rounded" />
-                </div>
-              ) : (
-                <>
-                  <div className="h-40 w-full flex items-center justify-center relative">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={70}
-                          paddingAngle={4}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute flex flex-col items-center">
-                      <span className="text-3xl font-extrabold text-emerald-400">%{marketSummary.sentiment.bullish}</span>
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Boğa Eğilimi</span>
-                    </div>
-                  </div>
-                  
-                  {/* Legend */}
-                  <div className="w-full flex items-center justify-between text-xs font-semibold px-2 mt-2">
-                    <div className="flex items-center text-emerald-500">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 mr-1.5" />
-                      Boğa %{marketSummary.sentiment.bullish}
-                    </div>
-                    <div className="flex items-center text-slate-500">
-                      <span className="h-2 w-2 rounded-full bg-slate-500 mr-1.5" />
-                      Nötr %{marketSummary.sentiment.neutral}
-                    </div>
-                    <div className="flex items-center text-rose-500">
-                      <span className="h-2 w-2 rounded-full bg-rose-500 mr-1.5" />
-                      Ayı %{marketSummary.sentiment.bearish}
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Economy Calendar - real, live TradingView widget (previously a
-              hardcoded 3-event array that never changed) */}
+              hardcoded 3-event array that never changed). Moved up (was
+              below the sentiment gauge, now removed) and shrunk a bit -
+              this card doesn't need to be as tall as the market chart. */}
           <Card glass={true} className="border-purple-500/15 hover:border-purple-500/30 transition-colors duration-300">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-purple-400">
@@ -516,15 +465,18 @@ export default function Home() {
               <CardDescription className="text-[10px] mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar (canlı, TradingView)</CardDescription>
             </CardHeader>
             <CardContent>
-              <EconomicCalendarWidget />
+              <EconomicCalendarWidget height={320} />
             </CardContent>
           </Card>
 
-          {/* Sector Leaderboard */}
+          {/* Index Performance - replaces the old sector-average leaderboard.
+              Real live quotes for BIST's 5 headline indices (see
+              /screener/market-summary), not sector averages computed from
+              the tracked-ticker sample. */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-base">Sektör Performansları</CardTitle>
-              <CardDescription>BIST Sektör endekslerinin günlük değişimi</CardDescription>
+              <CardTitle className="text-base">Endeks Performansları</CardTitle>
+              <CardDescription>BIST endekslerinin günlük değişimi</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {loadingSummary ? (
@@ -533,20 +485,35 @@ export default function Home() {
                   <Skeleton className="h-4.5 w-full rounded" />
                   <Skeleton className="h-4.5 w-full rounded" />
                   <Skeleton className="h-4.5 w-full rounded" />
+                  <Skeleton className="h-4.5 w-full rounded" />
                 </div>
-              ) : marketSummary.sectors.length > 0 ? (
-                marketSummary.sectors.map((sec: any) => (
-                  <div key={sec.name} className="flex items-center justify-between text-sm py-1">
-                    <span className="font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-                      {sec.name}
-                    </span>
-                    <span className={`font-mono font-bold ${sec.up ? "text-emerald-500" : "text-rose-500"}`}>
-                      {sec.change}
-                    </span>
-                  </div>
-                ))
               ) : (
-                <p className="text-xs text-muted-foreground text-center">Sektör verileri yüklenemedi.</p>
+                [
+                  { name: "XU100", label: "BIST 100", data: marketSummary.index },
+                  { name: "XU030", label: "BIST 30", data: marketSummary.xu030 },
+                  { name: "XUTUM", label: "BIST Tüm", data: marketSummary.xutum },
+                  { name: "XU500", label: "BIST 500", data: marketSummary.xu500 },
+                  { name: "XU050", label: "BIST 50", data: marketSummary.xu050 },
+                ].map(idx => {
+                  const chg = idx.data?.change_percent
+                  const up = (chg ?? 0) >= 0
+                  return (
+                    <div key={idx.name} className="flex items-center justify-between text-sm py-1">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-foreground">{idx.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{idx.label}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {idx.data?.price != null ? idx.data.price.toLocaleString("tr-TR", { maximumFractionDigits: 2 }) : "—"}
+                        </span>
+                        <span className={`font-mono font-bold ${up ? "text-emerald-500" : "text-rose-500"}`}>
+                          {chg != null ? `${up ? "+" : ""}${chg.toFixed(2)}%` : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </CardContent>
           </Card>
@@ -554,23 +521,6 @@ export default function Home() {
         </div>
 
       </div>
-
-      {/* Stock Heatmap - TradingView's own official BIST100 widget, full
-          width for readability. Previously a custom-built per-ticker box
-          heatmap; swapped for the real thing per feedback that the custom
-          version looked rough next to TradingView's polished one. */}
-      <Card glass={true}>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <Flame className="h-5 w-5 text-orange-400 mr-2" />
-            Hisse Isı Haritası
-          </CardTitle>
-          <CardDescription>TradingView canlı BIST 100 ısı haritası</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <StockHeatmapWidget height={420} />
-        </CardContent>
-      </Card>
     </div>
   )
 }

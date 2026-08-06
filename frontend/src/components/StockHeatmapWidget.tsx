@@ -22,7 +22,11 @@ export default function StockHeatmapWidget({ height = 420 }: { height?: number }
     script.type = "text/javascript"
     script.async = true
     script.innerHTML = JSON.stringify({
-      exchanges: [],
+      // No "exchanges" key here on purpose - TradingView's own real default
+      // config (observed directly: {"dataSource":"SPX500","blockColor":...})
+      // never includes it. Including it (even as an empty array) appears to
+      // override/reset dataSource back to the global default, which is
+      // almost certainly why this showed the US market instead of BIST.
       dataSource: "BIST100",
       grouping: "sector",
       blockSize: "market_cap_basic",
