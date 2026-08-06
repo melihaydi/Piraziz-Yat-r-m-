@@ -318,6 +318,15 @@ class MarketDataService:
             self.stream.subscribe("XU100")
             self.stream.subscribe("XU030")
             self.stream.subscribe("XBANK")
+            # BIST 50 / BIST 500 / BIST All Shares - for the homepage's
+            # "Endeks Performansları" section. Without an explicit subscribe
+            # here, get_quote() for these never gets a real value: it always
+            # returns a generic "not cached yet" placeholder (last=150.0,
+            # change_percent=0.0) rather than None, so market-summary's own
+            # per-symbol default price/change never gets a chance to apply.
+            self.stream.subscribe("XU050")
+            self.stream.subscribe("XU500")
+            self.stream.subscribe("XUTUM")
             self.stream.subscribe("USDTRY", exchange="FX_IDC")
             self.stream.subscribe("EURTRY", exchange="FX_IDC")
             self.stream.subscribe("XAUTRYG", exchange="FX_IDC")
@@ -326,7 +335,7 @@ class MarketDataService:
             self.stream.subscribe("NDX", exchange="NASDAQ")
             self.stream.subscribe("GOLD", exchange="TVC")
             with self._lock:
-                self._subscribed_set.update(["XU100", "XU030", "XBANK", "USDTRY", "EURTRY", "XAUTRYG", "XAUUSD", "BTCUSDT", "US100", "NDX", "GOLD"])
+                self._subscribed_set.update(["XU100", "XU030", "XBANK", "XU050", "XU500", "XUTUM", "USDTRY", "EURTRY", "XAUTRYG", "XAUUSD", "BTCUSDT", "US100", "NDX", "GOLD"])
             time.sleep(0.05)
         except Exception as e:
             logger.error(f"Error subscribing to index symbols: {e}")
