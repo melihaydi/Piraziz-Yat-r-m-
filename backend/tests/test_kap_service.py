@@ -50,6 +50,41 @@ def test_fetch_latest_disclosures_parses_real_response_and_extracts_ticker():
     assert item["link"] == "https://www.kap.org.tr/tr/Bildirim/999999"
 
 
+def test_fetch_latest_disclosures_attributes_fund_disclosure_to_correct_ticker():
+    """Fund disclosures come back with no stockCodes/fundCode - the ticker
+    must be attributed from which (fund, class) request matched, not
+    guessed from the response body."""
+    from app.services.kap_service import _TRACKED_FUND_OIDS
+
+    fund_item = {
+        "publishDate": "01.03.2026 10:00:00",
+        "kapTitle": "TERA PORTFÖY ALGORİTMİK STRATEJİLER SERBEST FON",
+        "summary": "İzahname Güncellemesi",
+        "subject": "İzahname Güncellemesi",
+        "disclosureIndex": 555555,
+        "stockCodes": None,
+        "fundCode": None,
+    }
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        if json.get("mkkMemberOidList") == [_TRACKED_FUND_OIDS["TMV"]] and json.get("disclosureClass") == "ODA":
+            mock_response.json.return_value = [fund_item]
+        else:
+            mock_response.json.return_value = []
+        return mock_response
+
+    service = KapService()
+    with patch("app.services.kap_service.httpx.post", side_effect=fake_post):
+        disclosures, is_sample = service.fetch_latest_disclosures()
+
+    assert is_sample is False
+    assert len(disclosures) == 1
+    assert disclosures[0]["ticker"] == "TMV"
+    assert disclosures[0]["id"] == "555555"
+
+
 def test_fetch_latest_disclosures_caps_at_ten_and_sorts_newest_first():
     service = KapService()
     many = []
