@@ -7,9 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 import httpx
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import func
 
 from app.db.session import SessionLocal
 from app.models.news_article import NewsArticle
+
+_MAX_AGE = timedelta(hours=24)
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +168,33 @@ class NewsService:
             db.close()
 
     @staticmethod
+    def prune_old_news() -> int:
+        """Deletes articles whose effective timestamp (published_at, falling
+        back to synced_at for feed items with no parseable pubDate) is older
+        than _MAX_AGE. GET /news/ only ever shows the last 24h (see
+        get_latest_news_from_db's filter), so rows past that window are dead
+        weight - keeping them around just makes the table grow forever for
+        no benefit. Returns the number of rows deleted."""
+        db = SessionLocal()
+        try:
+            cutoff = datetime.now(timezone.utc) - _MAX_AGE
+            deleted = (
+                db.query(NewsArticle)
+                .filter(func.coalesce(NewsArticle.published_at, NewsArticle.synced_at) < cutoff)
+                .delete(synchronize_session=False)
+            )
+            db.commit()
+            if deleted:
+                logger.info(f"News prune: removed {deleted} articles older than 24h.")
+            return deleted
+        except Exception as e:
+            db.rollback()
+            logger.error(f"News prune failed: {e}")
+            return 0
+        finally:
+            db.close()
+
+    @staticmethod
     def start_background_scheduler(interval_seconds: int = 20 * 60, startup_delay_seconds: int = 30):
         """Same daemon-thread-loop shape as the other periodic services
         (portfolio_snapshot.py, fund_estimate_snapshot.py) - runs once shortly
@@ -176,20 +206,26 @@ class NewsService:
         def loop():
             time.sleep(startup_delay_seconds)
             NewsService.sync_news_to_db()
+            NewsService.prune_old_news()
             while True:
                 time.sleep(interval_seconds)
                 NewsService.sync_news_to_db()
+                NewsService.prune_old_news()
 
         threading.Thread(target=loop, daemon=True).start()
 
     @staticmethod
     def get_latest_news_from_db(limit: int = 50) -> List[Dict[str, Any]]:
-        """Serves GET /news/ - reads only from the DB, newest first. Never
-        calls an external feed."""
+        """Serves GET /news/ - reads only from the DB, newest first, and only
+        articles from the last 24h (older items would be dead/stale news to
+        show a user opening the app - see _MAX_AGE). Never calls an external
+        feed."""
         db = SessionLocal()
         try:
+            cutoff = datetime.now(timezone.utc) - _MAX_AGE
             rows = (
                 db.query(NewsArticle)
+                .filter(func.coalesce(NewsArticle.published_at, NewsArticle.synced_at) >= cutoff)
                 .order_by(NewsArticle.published_at.desc().nullslast(), NewsArticle.synced_at.desc())
                 .limit(limit)
                 .all()

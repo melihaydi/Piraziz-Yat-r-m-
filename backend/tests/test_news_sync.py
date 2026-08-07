@@ -87,3 +87,29 @@ def test_get_latest_news_from_db_empty_returns_empty_list(news_db):
         results = NewsService.get_latest_news_from_db()
 
     assert results == []
+
+
+def test_get_latest_news_from_db_excludes_articles_older_than_24h(news_db):
+    now = datetime.now(timezone.utc)
+    news_db.add(NewsArticle(title="Stale", url="https://a.com/1", source="A", published_at=now - timedelta(hours=25)))
+    news_db.add(NewsArticle(title="Fresh", url="https://a.com/2", source="A", published_at=now - timedelta(hours=1)))
+    news_db.commit()
+
+    with patch("app.services.news.SessionLocal", return_value=news_db):
+        results = NewsService.get_latest_news_from_db()
+
+    assert [r["title"] for r in results] == ["Fresh"]
+
+
+def test_prune_old_news_deletes_articles_older_than_24h(news_db):
+    now = datetime.now(timezone.utc)
+    news_db.add(NewsArticle(title="Stale", url="https://a.com/1", source="A", published_at=now - timedelta(hours=25)))
+    news_db.add(NewsArticle(title="Fresh", url="https://a.com/2", source="A", published_at=now - timedelta(hours=1)))
+    news_db.commit()
+
+    with patch("app.services.news.SessionLocal", return_value=news_db):
+        deleted = NewsService.prune_old_news()
+
+    assert deleted == 1
+    remaining = news_db.query(NewsArticle).all()
+    assert [r.title for r in remaining] == ["Fresh"]
