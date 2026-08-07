@@ -3,6 +3,12 @@
 # service. sslip.io gives Caddy a real DNS name for automatic Let's
 # Encrypt HTTPS without owning a domain.
 92-5-160-231.sslip.io {
+	# HSTS - Caddy terminates TLS here, but doesn't add this header on its
+	# own; the backend's own security-headers middleware (main.py) covers
+	# X-Content-Type-Options/X-Frame-Options/Referrer-Policy instead, since
+	# those apply regardless of what's in front of it.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
 	route {
 		handle_path /download/* {
 			root * /srv/downloads

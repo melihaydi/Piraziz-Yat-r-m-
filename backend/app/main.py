@@ -54,6 +54,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Baseline response security headers on every request. No
+    Content-Security-Policy here on purpose - the frontend embeds several
+    third-party TradingView widgets (iframes/scripts across multiple
+    domains) and a CSP tight enough to matter would need constant upkeep
+    against that, or a loose enough one to be nearly meaningless; HSTS is
+    Caddy's job (it terminates TLS in front of this), not this app's."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 from app.api.v1.api import api_router
 app.include_router(api_router, prefix="/api/v1")
 
