@@ -5,6 +5,13 @@ on:
     branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master, develop ]
+  # Deploy is manual-trigger only (Actions tab -> this workflow -> Run
+  # workflow), never automatic on push - a bad push auto-deploying straight
+  # to a live financial app's prod server is too risky for a solo-maintained
+  # project. Triggering this way still runs every job below (tests/build/
+  # docker-verify) first; `deploy` only executes once those are green (see
+  # its `needs:` + `if:` at the bottom of this file).
+  workflow_dispatch:
 
 jobs:
   backend-tests:
@@ -144,3 +151,62 @@ jobs:
         with:
           context: ./frontend
           push: false
+
+  deploy:
+    # Manual-trigger only (see workflow_dispatch above) and gated on the
+    # real test/build jobs actually passing - `needs` fails this job
+    # outright if any of them failed, and `if` skips it entirely on a
+    # normal push/PR run (this only runs when someone explicitly clicks
+    # "Run workflow").
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-build, docker-build-verification]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy backend to production
+        env:
+          SERVER_HOST: 92.5.160.231
+          SERVER_USER: ubuntu
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          # The server's /home/ubuntu/bip is NOT a git clone (deliberately -
+          # see docker-compose.prod.yml's own comment) - rsync mirrors just
+          # the backend/ subtree instead, excluding everything that's
+          # server-local state rather than versioned source (.env,
+          # tv_auth_token.txt, the sqlite fallback db, __pycache__, the venv
+          # a fresh install would create, and the test suite - no reason to
+          # ship tests to a prod box).
+          rsync -avz --delete \
+            --exclude='.env' \
+            --exclude='tv_auth_token.txt' \
+            --exclude='*.db' \
+            --exclude='*.sqlite' \
+            --exclude='__pycache__' \
+            --exclude='**/__pycache__' \
+            --exclude='venv' \
+            --exclude='tests' \
+            --exclude='tefas_cache.json' \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/backend/"
+
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" '
+            cd /home/ubuntu/bip &&
+            sudo docker compose build backend &&
+            sudo docker compose up -d backend &&
+            sleep 8 &&
+            sudo docker compose exec -T backend alembic upgrade head
+          '
+
+      - name: Verify deployment health
+        run: |
+          # Through Caddy's public HTTPS endpoint, not a direct container
+          # port - backend:8000 isn't published on the host (Caddy reaches
+          # it over the internal docker network only), and this also proves
+          # the full real path (backend + Caddy + TLS) actually works, not
+          # just the container in isolation.
+          curl -sf https://92-5-160-231.sslip.io/health || (echo "Health check failed after deploy" && exit 1)
