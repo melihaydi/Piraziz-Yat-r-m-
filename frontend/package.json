@@ -39,22 +39,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "../backend",
-        "to": "backend",
-        "filter": [
-          "**/*",
-          "!venv",
-          "!venv/**",
-          "!__pycache__/**",
-          "!**/__pycache__/**",
-          "!*.db",
-          "!*.sqlite",
-          "!tefas_cache.json",
-          "!tests/**",
-          "!test_*.py"
-        ]
       }
     ]
   },
