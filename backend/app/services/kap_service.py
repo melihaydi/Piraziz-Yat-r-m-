@@ -1,82 +1,91 @@
-import xml.etree.ElementTree as ET
 import logging
 from typing import List, Dict, Any, Tuple
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import httpx
 
 logger = logging.getLogger(__name__)
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+    "Content-Type": "application/json",
 }
+
+_TR_TZ = ZoneInfo("Europe/Istanbul")
+
+_MAX_DISCLOSURES = 10
 
 
 class KapService:
+    """Fetches real KAP (Kamuyu Aydınlatma Platformu) material-event
+    disclosures directly from www.kap.org.tr's own internal JSON API - the
+    same one the KAP website's own frontend uses, and the one the
+    open-source `pykap` library (github.com/cemsinano/pykap) reverse-
+    engineered. No API key/auth required.
+
+    This replaces two previously dead paths: KAP's public RSS feed
+    (kap.org.tr/tr/api/disclosures/rss) times out completely from every
+    network tested, and the old MKK REST API (apigwdev.mkk.com.tr) requires
+    an OAuth-style token handshake that only works from within MKK's own
+    developer portal session - external callers get a
+    'Proxy was not found for client id (null)' error with no documented
+    fix, confirmed after extensive live testing 2026-08-08."""
+
     def __init__(self):
-        self.rss_url = "https://www.kap.org.tr/tr/api/disclosures/rss"
+        self.disclosures_url = "https://www.kap.org.tr/tr/api/disclosure/members/byCriteria"
 
     def fetch_latest_disclosures(self) -> Tuple[List[Dict[str, Any]], bool]:
-        """Fetch latest KAP disclosures from KAP's own RSS feed.
+        """Fetch the latest ODA (Özel Durum Açıklaması / material event)
+        disclosures across all companies for the last few days.
 
         Returns (disclosures, is_sample) - is_sample=True means this is the
-        hardcoded placeholder list below, NOT real KAP data. Verified on
-        2026-07-28 that KAP's RSS endpoint (https://www.kap.org.tr/tr/api/
-        disclosures/rss) times out completely (15s+, from multiple different
-        networks, with and without a browser User-Agent) - this isn't a
-        one-off outage or something specific to this app's server, it's the
-        endpoint itself currently being unreachable/blocking automated
-        requests. (The previously-tried MKK API path - apiywdev.mkk.com.tr -
-        was removed entirely: its hostname doesn't resolve at all anymore,
-        confirmed via an authoritative DNS lookup, i.e. that specific
-        endpoint no longer exists, not a transient DNS hiccup.)
-
-        Every caller of this MUST surface `is_sample` to the user (see
-        GET /screener/kap's `is_sample` field, mirrored from the same
-        pattern already used for TEFAS's `is_simulated` fund charts) -
-        presenting fallback content as if it were live KAP data would be
-        actively misleading for a feature whose whole value is "real
-        company disclosures."
-        """
+        hardcoded placeholder list (get_mock_disclosures), NOT real KAP
+        data, used only if the live call fails."""
         try:
-            response = httpx.get(self.rss_url, timeout=8.0, headers=_HEADERS)
+            today = datetime.now(_TR_TZ).date()
+            payload = {
+                "fromDate": (today - timedelta(days=3)).isoformat(),
+                "toDate": today.isoformat(),
+                "disclosureClass": "ODA",
+                "subjectList": [],
+                "mkkMemberOidList": [],
+                "inactiveMkkMemberOidList": [],
+                "bdkMemberOidList": [],
+                "fromSrc": False,
+                "disclosureIndexList": [],
+            }
+            response = httpx.post(self.disclosures_url, json=payload, timeout=10.0, headers=_HEADERS)
             response.raise_for_status()
+            raw_items = response.json()
 
-            root = ET.fromstring(response.content)
             disclosures = []
-
-            for item in root.findall(".//item"):
-                title = item.find("title").text if item.find("title") is not None else ""
-                link = item.find("link").text if item.find("link") is not None else ""
-                description = item.find("description").text if item.find("description") is not None else ""
-                pub_date_str = item.find("pubDate").text if item.find("pubDate") is not None else ""
-
-                ticker = None
-                words = title.split()
-                if words:
-                    first_word = words[0].replace(":", "").replace("[", "").replace("]", "").strip()
-                    if first_word.isupper() and len(first_word) <= 5:
-                        ticker = first_word
+            for item in raw_items:
+                stock_codes = (item.get("stockCodes") or "").strip()
+                ticker = stock_codes.split(",")[0].strip() if stock_codes else None
+                company = item.get("kapTitle") or ""
+                subject = item.get("subject") or item.get("summary") or ""
+                title = f"{ticker} [{company}] {subject}" if ticker else f"{company} {subject}"
 
                 try:
-                    publish_date = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %Z")
+                    publish_date = datetime.strptime(item["publishDate"], "%d.%m.%Y %H:%M:%S").replace(tzinfo=_TR_TZ)
                 except Exception:
-                    publish_date = datetime.now(timezone.utc)
+                    publish_date = datetime.now(_TR_TZ)
 
-                disclosure_id = link.split("/")[-1] if link else f"KAP-{hash(title)}"
-
+                disclosure_index = item.get("disclosureIndex")
                 disclosures.append({
-                    "id": disclosure_id,
+                    "id": str(disclosure_index),
                     "ticker": ticker,
                     "title": title,
-                    "summary": description,
+                    "summary": item.get("summary") or subject,
                     "publish_date": publish_date,
-                    "link": link
+                    "link": f"https://www.kap.org.tr/tr/Bildirim/{disclosure_index}",
                 })
 
+            disclosures.sort(key=lambda d: d["publish_date"], reverse=True)
+
             if disclosures:
-                logger.info(f"Successfully fetched {len(disclosures)} disclosures from KAP RSS.")
-                return disclosures, False
+                logger.info(f"Successfully fetched {len(disclosures)} disclosures from KAP's disclosure API.")
+                return disclosures[:_MAX_DISCLOSURES], False
 
         except Exception as e:
             logger.error(f"Failed to fetch KAP disclosures: {e}. Falling back to sample disclosures.")
@@ -87,13 +96,14 @@ class KapService:
         """Sample KAP-shaped disclosures shown (clearly flagged, see
         fetch_latest_disclosures's is_sample) when the real feed is
         unreachable."""
+        now = datetime.now(_TR_TZ)
         return [
             {
                 "id": "123456",
                 "ticker": "THYAO",
                 "title": "THYAO [TÜRK HAVA YOLLARI AO] Finansal Rapor Bildirimi",
                 "summary": "2026 2. Çeyrek bilançosunda beklentilerin üzerinde net kâr açıklanmıştır.",
-                "publish_date": datetime.now(timezone.utc),
+                "publish_date": now,
                 "link": "https://www.kap.org.tr/tr/Bildirim/123456"
             },
             {
@@ -101,7 +111,7 @@ class KapService:
                 "ticker": "EREGL",
                 "title": "EREGL [EREĞLİ DEMİR VE ÇELİK FABRİKALARI TAŞ] Özel Durum Açıklaması",
                 "summary": "Karbon nötr hedefleri kapsamında yeni bir güneş enerjisi santrali kurulmasına karar verilmiştir.",
-                "publish_date": datetime.now(timezone.utc),
+                "publish_date": now,
                 "link": "https://www.kap.org.tr/tr/Bildirim/123457"
             },
             {
@@ -109,7 +119,7 @@ class KapService:
                 "ticker": "TUPRS",
                 "title": "TUPRS [TÜPRAŞ TÜRKİYE PETROL RAFİNERİLERİ AŞ] Özel Durum Açıklaması",
                 "summary": "Bakım çalışmaları nedeniyle İzmir rafinerisinde üretime geçici olarak ara verilecektir.",
-                "publish_date": datetime.now(timezone.utc),
+                "publish_date": now,
                 "link": "https://www.kap.org.tr/tr/Bildirim/123458"
             }
         ]

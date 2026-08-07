@@ -2,7 +2,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 from app.services.financial_data import FinancialDataService
 from app.services.data_providers import RateLimitError, ProviderError
-from app.services.kap_service import KapService
 
 # Mock cache service behavior
 @patch("app.services.financial_data.cache_service")
@@ -64,18 +63,4 @@ def test_get_price_blocked_provider_skipped(mock_cache):
     provider_1.get_price.assert_not_called()
     provider_2.get_price.assert_called_once_with("THYAO")
 
-@patch("httpx.get")
-def test_kap_service_fallback(mock_get):
-    # Simulate network failure
-    mock_get.side_effect = Exception("Connection refused")
-
-    service = KapService()
-    disclosures, is_sample = service.fetch_latest_disclosures()
-
-    # is_sample=True is the whole point of this fallback path - callers
-    # (GET /screener/kap) rely on it to avoid presenting placeholder
-    # content as if it were live KAP data.
-    assert is_sample is True
-    assert len(disclosures) > 0
-    assert disclosures[0]["ticker"] == "THYAO"
-    assert "mock disclosures" in disclosures[0]["title"].lower() or "thyao" in disclosures[0]["title"].lower()
+# KapService's own fallback behavior is covered by tests/test_kap_service.py.
