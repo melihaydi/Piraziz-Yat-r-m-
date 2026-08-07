@@ -13,8 +13,7 @@ import {
 } from "recharts"
 import {
   TrendingUp,
-  TrendingDown, 
-  Flame,
+  TrendingDown,
   ArrowRight,
   Loader2,
   Calendar,
@@ -32,7 +31,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Skeleton } from "@/components/ui/Skeleton"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
-import StockHeatmapWidget from "@/components/StockHeatmapWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 
@@ -230,24 +228,6 @@ export default function Home() {
           </span>
         </div>
       </div>
-
-      {/* Stock Heatmap - TradingView's own official BIST100 widget, full
-          width for readability. Moved up near the top of the page (was
-          previously the last thing on the page, easy to miss without
-          scrolling) - it's the kind of at-a-glance overview that's more
-          useful seen first, before the detailed cards below. */}
-      <Card glass={true}>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <Flame className="h-5 w-5 text-orange-400 mr-2" />
-            Hisse Isı Haritası
-          </CardTitle>
-          <CardDescription>TradingView canlı BIST 100 ısı haritası</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <StockHeatmapWidget height={420} />
-        </CardContent>
-      </Card>
 
       {/* Grid Layout for Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
