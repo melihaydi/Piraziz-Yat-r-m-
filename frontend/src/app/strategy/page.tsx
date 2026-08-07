@@ -82,7 +82,6 @@ interface SignalHistoryEntry {
   // the moment it fired.
   live_price: number | null
   captured_pnl_pct: number | null
-  captured_pnl_per_share: number | null
 }
 
 type DirectionFilter = "ALL" | "LONG" | "SHORT"
@@ -709,7 +708,7 @@ export default function StrategyPage() {
                       ) : (
                         <>
                           <div className={`font-bold ${h.captured_pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                            {h.captured_pnl_pct >= 0 ? "+" : ""}{fmt(h.captured_pnl_per_share)}₺ ({h.captured_pnl_pct >= 0 ? "+" : ""}{fmt(h.captured_pnl_pct)}%)
+                            {h.captured_pnl_pct >= 0 ? "+" : ""}{fmt(h.captured_pnl_pct)}%
                           </div>
                           <div className="text-[10px] text-muted-foreground">₺{fmt(h.live_price)} anlık</div>
                         </>

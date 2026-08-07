@@ -14,10 +14,11 @@ import {
   CartesianGrid
 } from "recharts"
 import { 
-  Plus, 
-  Bell, 
-  TrendingUp, 
-  Briefcase, 
+  Plus,
+  Bell,
+  TrendingUp,
+  TrendingDown,
+  Briefcase,
   Trash2, 
   ToggleLeft, 
   ToggleRight,
@@ -259,6 +260,23 @@ export default function PortfolioPage() {
   const currentValue = activePortfolio ? activePortfolio.total_value || 0.0 : 0.0
   const totalProfit = activePortfolio ? activePortfolio.total_profit || 0.0 : 0.0
   const profitPercentage = activePortfolio ? activePortfolio.profit_percentage || 0.0 : 0.0
+
+  // Portfolio-wide REAL daily gain (₺ + %) - aggregated from each asset's
+  // own daily_gain_value (real for stocks via a live quote, estimate-
+  // flagged for funds via TEFAS-derived weighting - see portfolio.py's
+  // GET / handler). This is the "how much did I make TODAY" figure the
+  // all-time TOPLAM KÂR/ZARAR card can't answer, and is distinct from the
+  // narrower "Bugün (tahmini)" line elsewhere that only covers fund
+  // holdings' live estimate.
+  const dailyGain = React.useMemo(() => {
+    const known = assetsList.filter((a: any) => a.daily_gain_value != null)
+    if (known.length === 0) return null
+    const value = known.reduce((sum: number, a: any) => sum + a.daily_gain_value, 0)
+    const yesterdayBase = known.reduce((sum: number, a: any) => sum + ((a.total_value || 0) - a.daily_gain_value), 0)
+    const pct = yesterdayBase > 0 ? (value / yesterdayBase) * 100 : 0
+    const isPartial = known.length < assetsList.length
+    return { value, pct, isPartial }
+  }, [assetsList])
 
   // Sector distribution for PieChart (Request 6!)
   const pieData = assetsList.map((item: any, index: number) => ({
@@ -690,6 +708,14 @@ export default function PortfolioPage() {
                 ₺{currentValue.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
+            {dailyGain && (
+              <p className={`text-xs font-bold mt-1 flex items-center gap-1 ${dailyGain.value >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                {dailyGain.value >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                Bugün: {dailyGain.value >= 0 ? "+" : ""}₺{dailyGain.value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {" "}({dailyGain.value >= 0 ? "+" : ""}{dailyGain.pct.toFixed(2)}%)
+                {dailyGain.isPartial && <span className="text-muted-foreground font-normal">(kısmi)</span>}
+              </p>
+            )}
             <p className="text-[10px] text-muted-foreground mt-1">Toplam Maliyet: ₺{totalCost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             <button
               onClick={handleToggleLiveEstimate}

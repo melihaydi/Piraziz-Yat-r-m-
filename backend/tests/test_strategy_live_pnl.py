@@ -67,19 +67,12 @@ def test_missing_entry_has_no_pnl():
     assert result["captured_pnl_pct"] is None
 
 
-def test_long_signal_captures_pnl_per_share_in_currency():
+def test_no_currency_pnl_field_is_exposed():
+    # captured_pnl_per_share was removed - a raw ₺-per-share delta is
+    # meaningless without a real position size, so only the % figure ships.
     signal = {"ticker": "THYAO", "direction": "LONG", "entry": 300.0}
     with patch("app.api.v1.endpoints.strategy.market_data_service.is_known_ticker", return_value=True), \
          patch("app.api.v1.endpoints.strategy.market_data_service.get_quote", return_value={"last": 315.0}):
         result = _enrich_with_live_pnl(signal)
 
-    assert result["captured_pnl_per_share"] == 15.0
-
-
-def test_short_signal_pnl_per_share_flips_sign_vs_a_long_on_the_same_move():
-    signal = {"ticker": "THYAO", "direction": "SHORT", "entry": 300.0}
-    with patch("app.api.v1.endpoints.strategy.market_data_service.is_known_ticker", return_value=True), \
-         patch("app.api.v1.endpoints.strategy.market_data_service.get_quote", return_value={"last": 315.0}):
-        result = _enrich_with_live_pnl(signal)
-
-    assert result["captured_pnl_per_share"] == -15.0
+    assert "captured_pnl_per_share" not in result

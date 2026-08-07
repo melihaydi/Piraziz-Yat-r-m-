@@ -18,11 +18,11 @@ from app.services.tefas import tefas_service
 
 logger = logging.getLogger(__name__)
 
-# Same three funds the "Popüler Fonlar" feature tracks (see
-# POPULAR_LIVE_FUNDS in app/api/v1/endpoints/funds.py) - kept as a separate
-# constant here rather than imported from that endpoint module, since a
-# service pulling from an API-layer module would be backwards layering.
-TRACKED_FUND_CODES: List[str] = ["TMV", "PBR", "DFI"]
+# Same funds the "Popüler Fonlar" feature tracks (see POPULAR_LIVE_FUNDS in
+# app/api/v1/endpoints/funds.py) - kept as a separate constant here rather
+# than imported from that endpoint module, since a service pulling from an
+# API-layer module would be backwards layering.
+TRACKED_FUND_CODES: List[str] = ["TMV", "PBR", "DFI", "TLY"]
 
 
 class FundEstimateSnapshotService:
@@ -81,14 +81,30 @@ class FundEstimateSnapshotService:
         day's real final figure by the time this runs. Longer startup delay
         than PortfolioSnapshotService's (120s vs 90s) since this also needs
         market_data_service's live quotes populated for the estimate leg,
-        not just fund NAV prices."""
+        not just fund NAV prices.
+
+        The startup run only fires if today's target time has ALREADY
+        passed (a genuine catch-up - e.g. the backend was down at 19:45 and
+        just came back at 22:00) - it must NOT fire unconditionally on every
+        restart. TefasService refreshes daily_return hourly all day (see
+        tefas.py's price_loop) and it only reaches that day's real FINAL
+        figure once TEFAS's own 19:30 daily refresh has run - a restart
+        during market hours used to snapshot a still-moving intraday number
+        as if it were settled, and the (fund_code, snapshot_date) dedup
+        guard then permanently blocked the real 19:45 run from ever
+        correcting it. Confirmed live: two consecutive days' actual_change_pct
+        came out identical after a same-day restart, which is what exposed
+        this."""
         if self._scheduler_started:
             return
         self._scheduler_started = True
 
         def loop():
             time.sleep(startup_delay_seconds)
-            self._run_snapshot()
+            now = datetime.now()
+            target_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if now >= target_today:
+                self._run_snapshot()
             while True:
                 now = datetime.now()
                 target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
