@@ -35,7 +35,6 @@ export default function AuthGate({ children }: AuthGateProps) {
     const verifySession = async () => {
       const user = await fetchCurrentUser()
       if (user) {
-        localStorage.setItem("bip_username", user.full_name || user.email)
         setIsLoggedIn(true)
       }
       setCheckingSession(false)
@@ -72,7 +71,6 @@ export default function AuthGate({ children }: AuthGateProps) {
       return
     }
 
-    localStorage.setItem("bip_username", fullName || email)
     setIsLoggedIn(true)
     window.dispatchEvent(new Event("profile-updated"))
   }
@@ -93,7 +91,6 @@ export default function AuthGate({ children }: AuthGateProps) {
       return
     }
 
-    localStorage.setItem("bip_username", fullName || email)
     setIsLoggedIn(true)
     window.dispatchEvent(new Event("profile-updated"))
   }

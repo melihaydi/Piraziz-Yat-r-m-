@@ -1,9 +1,10 @@
 from typing import Literal, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.api import deps
+from app.core.limiter import limiter
 from app.models.user import User
 from app.services import trade_service
 from app.services.trade_service import TradeError
@@ -169,7 +170,9 @@ def update_broker(
 
 
 @router.post("/account/deposit")
+@limiter.limit("30/minute")
 def deposit(
+    request: Request,
     payload: DepositCreate,
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
@@ -186,7 +189,9 @@ def deposit(
 
 
 @router.post("/account/reset")
+@limiter.limit("30/minute")
 def reset_account(
+    request: Request,
     payload: AccountCreate,
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
@@ -224,7 +229,9 @@ def get_positions(
 
 
 @router.post("/order")
+@limiter.limit("30/minute")
 def place_order(
+    request: Request,
     payload: OrderCreate,
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
@@ -254,7 +261,9 @@ def get_pending_orders(
 
 
 @router.delete("/pending-orders/{order_id}")
+@limiter.limit("30/minute")
 def cancel_pending_order(
+    request: Request,
     order_id: int,
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),

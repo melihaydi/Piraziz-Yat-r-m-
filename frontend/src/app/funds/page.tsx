@@ -77,7 +77,7 @@ export default function FundsPage() {
   useEffect(() => {
     let active = true
     const fetchPopular = () => {
-      fetch(`${API_BASE_URL}/api/v1/funds/popular/live-estimate`)
+      authFetch(`/funds/popular/live-estimate`)
         .then(res => res.json())
         .then(data => {
           if (active && Array.isArray(data.funds)) setPopularFunds(data.funds)

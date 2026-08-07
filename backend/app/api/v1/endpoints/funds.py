@@ -1,7 +1,9 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from app.api import deps
+from app.core.limiter import limiter
+from app.models.user import User
 from app.services.tefas import tefas_service
 from app.services.market_data import market_data_service
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
@@ -70,7 +72,8 @@ def _with_impact_pct(holdings: List[dict]) -> List[dict]:
 
 
 @router.get("/popular/live-estimate")
-def get_popular_funds_live_estimate():
+@limiter.limit("120/minute")
+def get_popular_funds_live_estimate(request: Request, current_user: User = Depends(deps.get_current_user)):
     """Estimated INTRADAY % change for the "Popüler Fonlar" funds, computed
     from their last known holdings' live prices - see
     TefasService.get_live_estimated_return's docstring for exactly what this

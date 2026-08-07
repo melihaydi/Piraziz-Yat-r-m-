@@ -211,38 +211,46 @@ export default function Header({ onMenuClick }: HeaderProps) {
     return () => clearInterval(strategyInterval)
   }, [])
 
-  // Load profile from localStorage and handle updates
+  // Profile picture is a real per-browser choice (a data URL, never sent to
+  // the server), so it stays in localStorage - unlike the display name below.
+  useEffect(() => {
+    const loadPic = () => {
+      const savedPic = localStorage.getItem("bip_profile_pic")
+      if (savedPic) setProfilePic(savedPic)
+    }
+    loadPic()
+    window.addEventListener("profile-updated", loadPic)
+    return () => window.removeEventListener("profile-updated", loadPic)
+  }, [])
+
+  // Display name + subscription tier: both real server truth from /auth/me,
+  // never localStorage - a name typed in Settings on one device previously
+  // only ever got written to THAT browser's localStorage, so a fresh device/
+  // browser always showed the generic "Kullanıcı" fallback even though the
+  // backend had the real full_name all along. Re-fetched whenever a profile
+  // change might have happened (profile-updated is dispatched by Settings
+  // after any /auth/me PUT).
   useEffect(() => {
     const loadProfile = () => {
-      const savedName = localStorage.getItem("bip_username")
-      const savedPic = localStorage.getItem("bip_profile_pic")
-      if (savedName) setUsername(savedName)
-      if (savedPic) setProfilePic(savedPic)
+      authFetch("/auth/me")
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => {
+          if (!data) return
+          if (data.role) setRole(data.role)
+          const displayName = data.full_name?.trim() || data.email?.split("@")[0]
+          if (displayName) setUsername(displayName)
+        })
+        .catch(() => {})
     }
     loadProfile()
     window.addEventListener("profile-updated", loadProfile)
     return () => window.removeEventListener("profile-updated", loadProfile)
   }, [])
 
-  // Real subscription tier, not a hardcoded label - re-fetched whenever a
-  // subscription change might have happened (profile-updated is dispatched
-  // by Settings after any /auth/me PUT, and this also covers plan changes).
-  useEffect(() => {
-    const loadRole = () => {
-      authFetch("/auth/me")
-        .then(res => (res.ok ? res.json() : null))
-        .then(data => { if (data?.role) setRole(data.role) })
-        .catch(() => {})
-    }
-    loadRole()
-    window.addEventListener("profile-updated", loadRole)
-    return () => window.removeEventListener("profile-updated", loadRole)
-  }, [])
-
   // 1. Fetch live market indexes
   useEffect(() => {
     const fetchIndexes = () => {
-      fetch(`${API_BASE_URL}/api/v1/screener/market-summary`)
+      authFetch(`/screener/market-summary`)
         .then(res => res.json())
         .then(data => {
           if (data) {
@@ -310,7 +318,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   // 2. Fetch all tickers (stocks) for search autocomplete
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/screener/`)
+    authFetch(`/screener/`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {

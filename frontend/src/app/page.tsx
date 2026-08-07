@@ -76,7 +76,7 @@ export default function Home() {
 
   // Fetch index chart data dynamically when selectedIndex changes (Request 4!)
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/screener/chart/${selectedIndex}?interval=1d`)
+    authFetch(`/screener/chart/${selectedIndex}?interval=1d`)
       .then(res => {
         if (!res.ok) {
           console.warn("Index chart data not available from server");
@@ -103,7 +103,7 @@ export default function Home() {
   useEffect(() => {
     // 1. Fetch market summary
     const fetchMarketSummary = () => {
-      fetch(`${API_BASE_URL}/api/v1/screener/market-summary`)
+      authFetch(`/screener/market-summary`)
         .then(res => res.json())
         .then(data => {
           if (data && data.sentiment) {
@@ -120,7 +120,7 @@ export default function Home() {
     // 3. Fetch the "Popüler Fonlar - Anlık Getiri" live estimate (same
     // endpoint the funds page uses).
     const fetchPopularFunds = () => {
-      fetch(`${API_BASE_URL}/api/v1/funds/popular/live-estimate`)
+      authFetch(`/funds/popular/live-estimate`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data.funds)) setPopularFunds(data.funds)
@@ -139,7 +139,7 @@ export default function Home() {
 
       if (favStockTickers.length > 0) {
         try {
-          const res = await fetch(`${API_BASE_URL}/api/v1/screener/`)
+          const res = await authFetch(`/screener/`)
           const stocks = await res.json()
           if (Array.isArray(stocks)) {
             const matched = stocks.filter(s => favStockTickers.includes(s.ticker))

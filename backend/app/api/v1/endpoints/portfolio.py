@@ -1,10 +1,11 @@
 import logging
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.core.limiter import limiter
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
@@ -367,7 +368,9 @@ def get_portfolio_live_estimate(
 
 
 @router.post("/", response_model=PortfolioResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_portfolio(
+    request: Request,
     portfolio_in: PortfolioCreate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -393,7 +396,9 @@ def create_portfolio(
     )
 
 @router.post("/{id}/assets", response_model=PortfolioAssetResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def add_asset_to_portfolio(
+    request: Request,
     id: int,
     asset_in: PortfolioAssetCreate,
     db: Session = Depends(deps.get_db),
@@ -441,7 +446,9 @@ def add_asset_to_portfolio(
     return PortfolioAssetResponse(**metrics)
 
 @router.delete("/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def remove_asset_from_portfolio(
+    request: Request,
     asset_id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -469,7 +476,9 @@ class AssetSell(BaseModel):
     shares: float
 
 @router.put("/assets/{asset_id}", response_model=PortfolioAssetResponse)
+@limiter.limit("30/minute")
 def update_portfolio_asset(
+    request: Request,
     asset_id: int,
     asset_in: AssetUpdate,
     db: Session = Depends(deps.get_db),
@@ -493,7 +502,9 @@ def update_portfolio_asset(
     return PortfolioAssetResponse(**metrics)
 
 @router.post("/assets/{asset_id}/sell", response_model=Optional[PortfolioAssetResponse])
+@limiter.limit("30/minute")
 def sell_portfolio_asset(
+    request: Request,
     asset_id: int,
     sell_in: AssetSell,
     db: Session = Depends(deps.get_db),

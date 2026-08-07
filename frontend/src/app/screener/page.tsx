@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/Dialog"
 import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
-import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
@@ -248,7 +247,7 @@ export default function ScreenerPage() {
     const urlHadTicker = !!new URLSearchParams(window.location.search).get("ticker")
 
     const fetchStocks = () => {
-      fetch(`${API_BASE_URL}/api/v1/screener/`)
+      authFetch(`/screener/`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -285,7 +284,7 @@ export default function ScreenerPage() {
     const loadChart = () => {
       if (!selectedTicker) return;
       
-      fetch(`${API_BASE_URL}/api/v1/screener/chart/${selectedTicker}?interval=${selectedTimeframe}`)
+      authFetch(`/screener/chart/${selectedTicker}?interval=${selectedTimeframe}`)
         .then(res => {
           if (!res.ok) {
             console.warn("Chart data not available from server");
@@ -328,7 +327,7 @@ export default function ScreenerPage() {
   useEffect(() => {
     if (!selectedTicker) return
     setScoreLoading(true)
-    fetch(`${API_BASE_URL}/api/v1/screener/score-details/${selectedTicker}`)
+    authFetch(`/screener/score-details/${selectedTicker}`)
       .then(res => res.json())
       .then(data => {
         setScoreDetails(data)

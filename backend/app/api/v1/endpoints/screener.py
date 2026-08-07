@@ -1,7 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from app.api import deps
+from app.core.limiter import limiter
+from app.models.user import User
 from app.services.market_data import market_data_service
 from app.services.scoring import ScoringService
 from app.services.technical_analysis import TechnicalAnalysisService
@@ -151,7 +154,8 @@ _SCREENER_LIST_CACHE_KEY = "screener:all"
 _SCREENER_LIST_CACHE_TTL_SECONDS = 2
 
 @router.get("/", response_model=List[ScreenerStockResponse])
-def get_screener_stocks():
+@limiter.limit("120/minute")
+def get_screener_stocks(request: Request, current_user: User = Depends(deps.get_current_user)):
     """Retrieve all BIST 500 stocks with live TradingView quote fields and calculated AI scores."""
     from app.core.redis import cache_service
 
@@ -170,7 +174,8 @@ def get_screener_stocks():
 
 
 @router.get("/detail/{ticker}", response_model=ScreenerStockResponse)
-def get_screener_stock_detail(ticker: str):
+@limiter.limit("120/minute")
+def get_screener_stock_detail(request: Request, ticker: str, current_user: User = Depends(deps.get_current_user)):
     """Single-ticker equivalent of GET / - used by the stock detail page,
     which previously fetched and scored the entire BIST list just to pick
     one row back out of it client-side."""
@@ -232,7 +237,7 @@ def _fetch_compare_candles(ticker: str) -> List[dict]:
 
 
 @router.get("/compare")
-def compare_stocks(tickers: str):
+def compare_stocks(tickers: str, current_user: User = Depends(deps.get_current_user)):
     """Side-by-side comparison of 2-5 BIST stocks: latest price, 1mo/3mo/1yr
     return and annualized volatility, plus each stock's own candle series so
     the frontend can plot them overlaid (normalized to % change from a
@@ -275,7 +280,7 @@ def compare_stocks(tickers: str):
 
 
 @router.get("/chart/{symbol}")
-def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")):
+def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d"), current_user: User = Depends(deps.get_current_user)):
     """Get candlestick data along with EMA, SMA, VWAP, RSI, MACD, and Bollinger Bands plots."""
     symbol = symbol.upper()
     interval = interval.lower()
@@ -370,7 +375,8 @@ def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")
     return response_candles
 
 @router.get("/market-summary")
-def get_market_summary():
+@limiter.limit("120/minute")
+def get_market_summary(request: Request, current_user: User = Depends(deps.get_current_user)):
     """Calculate and return dynamic Bloomberg-style market tickers, sentiment, and sector performances using live quotes."""
     cached_quotes = market_data_service.get_all_quotes()
     
@@ -487,7 +493,7 @@ def get_market_summary():
     }
 
 @router.get("/score-details/{symbol}")
-def get_stock_score_details(symbol: str):
+def get_stock_score_details(symbol: str, current_user: User = Depends(deps.get_current_user)):
     """Retrieve detailed AI scoring breakdown for a specific stock using 13 technical indicators."""
     symbol = symbol.upper()
     quote = market_data_service.get_quote(symbol)
@@ -502,7 +508,8 @@ _ANALYZE_CACHE_TTL_SECONDS = 300
 
 
 @router.post("/analyze/{symbol}")
-def analyze_stock_ai(symbol: str):
+@limiter.limit("10/minute")
+def analyze_stock_ai(request: Request, symbol: str, current_user: User = Depends(deps.get_current_user)):
     """Retrieve live metrics and call Gemini to output real-time grounded investment analysis comments."""
     symbol = symbol.upper()
 
@@ -641,7 +648,7 @@ def _analyze_one_disclosure(disc: dict) -> dict:
 
 
 @router.get("/kap")
-def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10)):
+def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10), current_user: User = Depends(deps.get_current_user)):
     """Fetch latest KAP disclosures and analyze each with live-context Gemini
     AI (importance/sentiment/impact score/affected lines). Previously only
     ever analyzed the top 3 SEQUENTIALLY (each Gemini call ~1-5s) with no

@@ -281,17 +281,20 @@ export default function SettingsPage() {
 
   const refreshProfile = () => {
     fetchCurrentUser().then(user => {
-      if (user?.email) setEmail(user.email)
-      setTotpEnabled(!!user?.totp_enabled)
+      if (!user) return
+      if (user.email) setEmail(user.email)
+      setUsername(user.full_name?.trim() || user.email?.split("@")[0] || "")
+      setTotpEnabled(!!user.totp_enabled)
     })
   }
 
-  // Load display prefs from localStorage, but the email is the backend's -
-  // it's the real source of truth for the account, not a local cache.
+  // The display name is real account data (full_name, from the backend) -
+  // NOT a localStorage value, so it's consistent across devices/browsers
+  // instead of falling back to "Kullanıcı" on any device that never typed
+  // it in locally. Only the profile picture (a data URL never sent to the
+  // server) stays in localStorage.
   useEffect(() => {
-    const savedName = localStorage.getItem("bip_username")
     const savedPic = localStorage.getItem("bip_profile_pic")
-    if (savedName) setUsername(savedName)
     if (savedPic) setProfilePic(savedPic)
 
     refreshProfile()
@@ -311,12 +314,10 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    localStorage.setItem("bip_username", username)
     localStorage.setItem("bip_profile_pic", profilePic)
 
-    // Display name lives on the real account too (Header etc. read the
-    // localStorage copy for instant display, but the backend is the source
-    // of truth other devices/sessions would see).
+    // Display name is real account data - the backend (full_name) is the
+    // only source of truth, Header/etc. all read it fresh from /auth/me.
     await authFetch("/auth/me", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

@@ -18,6 +18,7 @@ import {
 import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
 
 export default function StockDetailPage() {
   const params = useParams()
@@ -116,7 +117,7 @@ export default function StockDetailPage() {
     // screener list (every ticker's live quote + computed AI score) just to
     // filter out one row client-side, which meant visiting any stock detail
     // page paid the cost of scoring every other stock too.
-    fetch(`${API_BASE_URL}/api/v1/screener/detail/${ticker}`)
+    authFetch(`/screener/detail/${ticker}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.ticker) {
@@ -130,7 +131,7 @@ export default function StockDetailPage() {
       })
 
     // B. Fetch detailed scoring indicators breakdown
-    fetch(`${API_BASE_URL}/api/v1/screener/score-details/${ticker}`)
+    authFetch(`/screener/score-details/${ticker}`)
       .then(res => res.json())
       .then(data => {
         if (data && !data.detail) {
@@ -152,7 +153,7 @@ export default function StockDetailPage() {
     const loadChart = () => {
       if (!ticker) return;
       
-      fetch(`${API_BASE_URL}/api/v1/screener/chart/${ticker}?interval=${selectedTimeframe}`)
+      authFetch(`/screener/chart/${ticker}?interval=${selectedTimeframe}`)
         .then(res => {
           if (!res.ok) {
             console.warn("No chart data from server");
@@ -193,7 +194,7 @@ export default function StockDetailPage() {
   // 3. Fetch AI financial analysis report
   useEffect(() => {
     setAiLoading(true)
-    fetch(`${API_BASE_URL}/api/v1/screener/analyze/${ticker}`, {
+    authFetch(`/screener/analyze/${ticker}`, {
       method: "POST"
     })
       .then(res => {
