@@ -3,5 +3,11 @@
 # service. sslip.io gives Caddy a real DNS name for automatic Let's
 # Encrypt HTTPS without owning a domain.
 92-5-160-231.sslip.io {
-	reverse_proxy backend:8000
+	route {
+		handle_path /download/* {
+			root * /srv/downloads
+			file_server
+		}
+		reverse_proxy backend:8000
+	}
 }

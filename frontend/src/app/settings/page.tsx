@@ -4,12 +4,13 @@ import React, { useState, useEffect } from "react"
 import {
   User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon,
   Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle,
-  Smartphone, XCircle, LogOut
+  Smartphone, XCircle, LogOut, Download, Monitor
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { authFetch, fetchCurrentUser, logout } from "@/lib/auth"
+import { API_BASE_URL } from "@/lib/config"
 
 function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
   const [step, setStep] = useState<"idle" | "setup" | "disable">("idle")
@@ -546,6 +547,29 @@ export default function SettingsPage() {
                   Çıkış Yap
                 </button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Desktop app installer - a static file served directly by
+              Caddy (see /download/* in the Caddyfile), not the backend
+              API. Same domain as everything else, no separate host to
+              maintain. */}
+          <Card glass={true}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center">
+                <Monitor className="h-4.5 w-4.5 mr-2 text-cyan-400" />
+                Masaüstü Uygulaması
+              </CardTitle>
+              <CardDescription>Windows için Piraziz Yatırım masaüstü uygulamasını indirin.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <a
+                href={`${API_BASE_URL}/download/PirazizYatirim-Setup.exe`}
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-cyan-300 border border-cyan-500/25 bg-cyan-500/5 hover:bg-cyan-500/15 transition-colors cursor-pointer"
+              >
+                <Download className="h-4 w-4" />
+                İndir (.exe, Windows)
+              </a>
             </CardContent>
           </Card>
 

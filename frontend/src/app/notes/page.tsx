@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Newsreader } from "next/font/google"
 import {
   StickyNote, Plus, Pin, PinOff, Pencil, Trash2, Search,
   X, Loader2, ArrowUpRight,
@@ -13,12 +12,6 @@ import { Input } from "@/components/ui/Input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
-
-// A dedicated editorial serif for note text only - the rest of the app is
-// Inter (see layout.tsx), which reads great for data-dense tables but flat
-// for something meant to feel like a personal notebook. Scoped to this page
-// via its own className rather than touching the root font.
-const notesFont = Newsreader({ subsets: ["latin"], style: ["normal", "italic"], weight: ["400", "500", "600"] })
 
 interface Note {
   id: number
@@ -235,7 +228,7 @@ export default function NotesPage() {
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className={`h-2 w-2 rounded-full ${c.dot} shrink-0`} />
-                    <h3 className={`${notesFont.className} text-base font-semibold text-foreground truncate`}>{n.title}</h3>
+                    <h3 className="text-base font-semibold text-foreground truncate">{n.title}</h3>
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
@@ -271,7 +264,7 @@ export default function NotesPage() {
                 )}
 
                 {n.content && (
-                  <p className={`${notesFont.className} italic text-[15px] leading-relaxed text-foreground/85 whitespace-pre-wrap line-clamp-6`}>
+                  <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap line-clamp-6">
                     {n.content}
                   </p>
                 )}
@@ -365,7 +358,7 @@ export default function NotesPage() {
                 onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
                 placeholder="Aklınızdakileri buraya yazın..."
                 rows={8}
-                className={`${notesFont.className} italic w-full px-3 py-2.5 rounded-md bg-secondary/40 border border-border text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground placeholder:not-italic placeholder:font-sans placeholder:text-sm focus:outline-none focus:border-pink-500/40 resize-none`}
+                className="w-full px-3 py-2.5 rounded-md bg-secondary/40 border border-border text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-pink-500/40 resize-none"
               />
             </div>
 

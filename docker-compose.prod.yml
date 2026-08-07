@@ -76,6 +76,11 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      # Desktop app installer download (see Caddyfile's /download/* route) -
+      # a static file directory, not something the backend serves. Kept
+      # read-only since the exe is only ever written here from this host's
+      # own deploy step, never from inside the container.
+      - ./downloads:/srv/downloads:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
