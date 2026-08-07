@@ -15,7 +15,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Bot,
-  ShieldCheck
+  ShieldCheck,
+  StickyNote
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
@@ -122,6 +123,14 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       activeClass: "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_12px_rgba(168,85,247,0.1)] font-extrabold",
       hoverClass: "text-muted-foreground hover:bg-purple-500/5 hover:text-purple-400",
       iconClass: "text-purple-400"
+    },
+    {
+      name: "Notlarım",
+      href: "/notes",
+      icon: StickyNote,
+      activeClass: "bg-pink-500/10 text-pink-400 border border-pink-500/20 shadow-[0_0_12px_rgba(236,72,153,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-pink-500/5 hover:text-pink-400",
+      iconClass: "text-pink-400"
     },
     {
       name: "Ayarlar",
