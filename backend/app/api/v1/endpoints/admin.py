@@ -1,8 +1,10 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.core.audit import log_audit
+from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.schemas.user import UserOut
 
@@ -24,6 +26,7 @@ def list_users(
 def update_user_role(
     user_id: int,
     role: str,
+    request: Request,
     db: Session = Depends(deps.get_db),
     _admin: User = Depends(deps.get_current_active_superuser),
 ):
@@ -40,9 +43,12 @@ def update_user_role(
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
 
+    old_role = target.role
     target.role = role
     db.commit()
     db.refresh(target)
+    log_audit(db, "role_change", request=request, user_id=_admin.id, resource_type="user",
+              resource_id=target.id, details={"old_role": old_role, "new_role": role, "target_email": target.email})
     return target
 
 
@@ -65,3 +71,31 @@ def set_user_active(
     db.commit()
     db.refresh(target)
     return target
+
+
+@router.get("/audit-log")
+def get_audit_log(
+    limit: int = 100,
+    action: Optional[str] = None,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Recent audit trail (trade orders, role changes, login attempts),
+    newest first - superuser only. Optionally filtered to one action type."""
+    query = db.query(AuditLog).order_by(AuditLog.created_at.desc())
+    if action:
+        query = query.filter(AuditLog.action == action)
+    rows = query.limit(min(limit, 500)).all()
+    return [
+        {
+            "id": r.id,
+            "user_id": r.user_id,
+            "action": r.action,
+            "resource_type": r.resource_type,
+            "resource_id": r.resource_id,
+            "details": r.details,
+            "ip_address": r.ip_address,
+            "created_at": r.created_at,
+        }
+        for r in rows
+    ]

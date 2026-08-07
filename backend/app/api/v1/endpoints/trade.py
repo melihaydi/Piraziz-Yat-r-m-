@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.api import deps
+from app.core.audit import log_audit
 from app.core.limiter import limiter
 from app.models.user import User
 from app.services import trade_service
@@ -239,12 +240,18 @@ def place_order(
 ):
     account = _require_account(db, current_user, account_id)
     try:
-        return trade_service.place_order(
+        result = trade_service.place_order(
             db, account, payload.instrument_type, payload.symbol, payload.side, payload.lot,
             payload.order_type, payload.limit_price, payload.stop_price,
         )
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    log_audit(db, "order_placed", request=request, user_id=current_user.id, resource_type="order",
+              resource_id=result.get("id"), details={
+                  "account_id": account.id, "symbol": payload.symbol, "side": payload.side,
+                  "lot": payload.lot, "order_type": payload.order_type,
+              })
+    return result
 
 
 @router.get("/pending-orders")
@@ -271,9 +278,12 @@ def cancel_pending_order(
 ):
     account = _require_account(db, current_user, account_id)
     try:
-        return trade_service.cancel_pending_order(db, account, order_id)
+        result = trade_service.cancel_pending_order(db, account, order_id)
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    log_audit(db, "order_cancelled", request=request, user_id=current_user.id, resource_type="order",
+              resource_id=order_id, details={"account_id": account.id})
+    return result
 
 
 @router.get("/history")

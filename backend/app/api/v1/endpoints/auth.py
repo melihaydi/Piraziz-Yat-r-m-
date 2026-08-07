@@ -7,6 +7,7 @@ from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
 from app.core import security
+from app.core.audit import log_audit
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.api import deps
@@ -75,11 +76,14 @@ def login_access_token(
     temp_token plus the current authenticator code to get the real token."""
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not security.verify_password(form_data.password, user.hashed_password):
+        log_audit(db, "login_failed", request=request, user_id=user.id if user else None,
+                   details={"email": form_data.username})
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect email or password"
         )
     elif not user.is_active:
+        log_audit(db, "login_failed", request=request, user_id=user.id, details={"reason": "inactive"})
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
@@ -94,6 +98,7 @@ def login_access_token(
         return {"requires_2fa": True, "temp_token": temp_token}
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    log_audit(db, "login_success", request=request, user_id=user.id)
     return {
         "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
         "token_type": "bearer",
@@ -123,9 +128,11 @@ def login_verify_2fa(request: Request, body: TwoFactorLoginRequest, db: Session 
         raise credentials_exception
 
     if not pyotp.TOTP(user.totp_secret).verify(body.code, valid_window=1):
+        log_audit(db, "login_failed", request=request, user_id=user.id, details={"reason": "bad_2fa_code"})
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kod hatalı veya süresi dolmuş.")
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    log_audit(db, "login_success", request=request, user_id=user.id, details={"via": "2fa"})
     return {
         "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
         "token_type": "bearer",
