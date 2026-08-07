@@ -71,6 +71,27 @@ def _daily_change(ticker: str) -> tuple:
         return pct, pct is not None
     return _stock_daily_change_pct(ticker), False
 
+def _fund_official_daily_change_pct(ticker: str) -> Optional[float]:
+    """Real, OFFICIALLY PUBLISHED TEFAS daily return for a fund holding -
+    NOT the intraday estimate used by _fund_estimated_daily_change_pct above.
+    Straight from TefasService's own daily NAV crawl (get_fund's
+    daily_return), the same figure the estimate-accuracy snapshot compares
+    itself against. Used only for the portfolio-wide "Bugün" headline gain -
+    per explicit request, that figure must be real settled data, not an
+    estimate, even though the estimate is fine as a clearly-labeled per-row
+    number elsewhere in the assets table."""
+    if len(ticker) != 3:
+        return None
+    fund = tefas_service.get_fund(ticker)
+    return fund.get("daily_return") if fund else None
+
+def _official_daily_change_pct(ticker: str) -> Optional[float]:
+    """Unified OFFICIAL daily %change - real live quote for a stock, real
+    published TEFAS daily_return for a fund. Never an estimate."""
+    if len(ticker) == 3:
+        return _fund_official_daily_change_pct(ticker)
+    return _stock_daily_change_pct(ticker)
+
 def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None) -> dict:
     """Helper to compute real-time value and profit metrics for an asset.
     Pass a pre-fetched `live_price` (see _fetch_live_price) to skip the
@@ -124,6 +145,9 @@ def get_user_portfolios(
     # see _fund_estimated_daily_change_pct's docstring for why). Done per
     # distinct ticker, same reasoning as the price batch above.
     daily_change_by_ticker = {ticker: _daily_change(ticker) for ticker in all_tickers}
+    # Separate OFFICIAL-only version (no fund estimate) for the portfolio-
+    # wide "Bugün" headline gain - see _official_daily_change_pct's docstring.
+    official_daily_change_by_ticker = {ticker: _official_daily_change_pct(ticker) for ticker in all_tickers}
 
     response_list = []
     for p in portfolios:
@@ -140,6 +164,12 @@ def get_user_portfolios(
             metrics["daily_gain_value"] = (
                 metrics["total_value"] * daily_change_pct / 100
                 if daily_change_pct is not None else None
+            )
+            official_daily_change_pct = official_daily_change_by_ticker.get(ticker)
+            metrics["official_daily_change_pct"] = official_daily_change_pct
+            metrics["official_daily_gain_value"] = (
+                metrics["total_value"] * official_daily_change_pct / 100
+                if official_daily_change_pct is not None else None
             )
             assets_responses.append(PortfolioAssetResponse(**metrics))
 

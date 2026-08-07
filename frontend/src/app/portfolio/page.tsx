@@ -261,18 +261,20 @@ export default function PortfolioPage() {
   const totalProfit = activePortfolio ? activePortfolio.total_profit || 0.0 : 0.0
   const profitPercentage = activePortfolio ? activePortfolio.profit_percentage || 0.0 : 0.0
 
-  // Portfolio-wide REAL daily gain (₺ + %) - aggregated from each asset's
-  // own daily_gain_value (real for stocks via a live quote, estimate-
-  // flagged for funds via TEFAS-derived weighting - see portfolio.py's
-  // GET / handler). This is the "how much did I make TODAY" figure the
-  // all-time TOPLAM KÂR/ZARAR card can't answer, and is distinct from the
-  // narrower "Bugün (tahmini)" line elsewhere that only covers fund
-  // holdings' live estimate.
+  // Portfolio-wide OFFICIAL daily gain (₺ + %) - aggregated from each
+  // asset's official_daily_gain_value: a real live quote for stocks, the
+  // real PUBLISHED TEFAS daily_return for funds (never the intraday
+  // estimate - see portfolio.py's _official_daily_change_pct). This is the
+  // "how much did I make TODAY" figure the all-time TOPLAM KÂR/ZARAR card
+  // can't answer. Deliberately NOT the estimate-based daily_gain_value used
+  // in the per-row assets table below (that one is fine there since it's
+  // clearly labeled "tahmini" per row) - this headline figure must be
+  // settled, official data only.
   const dailyGain = React.useMemo(() => {
-    const known = assetsList.filter((a: any) => a.daily_gain_value != null)
+    const known = assetsList.filter((a: any) => a.official_daily_gain_value != null)
     if (known.length === 0) return null
-    const value = known.reduce((sum: number, a: any) => sum + a.daily_gain_value, 0)
-    const yesterdayBase = known.reduce((sum: number, a: any) => sum + ((a.total_value || 0) - a.daily_gain_value), 0)
+    const value = known.reduce((sum: number, a: any) => sum + a.official_daily_gain_value, 0)
+    const yesterdayBase = known.reduce((sum: number, a: any) => sum + ((a.total_value || 0) - a.official_daily_gain_value), 0)
     const pct = yesterdayBase > 0 ? (value / yesterdayBase) * 100 : 0
     const isPartial = known.length < assetsList.length
     return { value, pct, isPartial }

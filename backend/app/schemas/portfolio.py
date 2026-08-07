@@ -26,6 +26,11 @@ class PortfolioAssetResponse(PortfolioAssetBase):
     daily_change_pct: Optional[float] = None
     daily_gain_value: Optional[float] = None
     daily_change_is_estimate: Optional[bool] = False
+    # Official-only counterpart of the pair above (real stock quote / real
+    # published TEFAS daily_return, NEVER a fund estimate) - powers the
+    # portfolio-wide "Bugün" headline gain, which must be settled data.
+    official_daily_change_pct: Optional[float] = None
+    official_daily_gain_value: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
