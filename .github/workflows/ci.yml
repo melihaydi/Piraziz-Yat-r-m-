@@ -208,5 +208,19 @@ jobs:
           # port - backend:8000 isn't published on the host (Caddy reaches
           # it over the internal docker network only), and this also proves
           # the full real path (backend + Caddy + TLS) actually works, not
-          # just the container in isolation.
-          curl -sf https://92-5-160-231.sslip.io/health || (echo "Health check failed after deploy" && exit 1)
+          # just the container in isolation. Retries for up to 60s - a fresh
+          # container needs a few seconds past `docker compose up -d`
+          # returning before uvicorn is actually accepting connections and
+          # Caddy's upstream check picks it up; a single immediate curl
+          # attempt failed here on the very first real run even though the
+          # container came up healthy moments later.
+          for i in $(seq 1 12); do
+            if curl -sf https://92-5-160-231.sslip.io/health; then
+              echo "Healthy."
+              exit 0
+            fi
+            echo "Not ready yet (attempt $i/12), retrying in 5s..."
+            sleep 5
+          done
+          echo "Health check failed after deploy"
+          exit 1
