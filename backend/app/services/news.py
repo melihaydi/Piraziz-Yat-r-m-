@@ -1,12 +1,15 @@
 import logging
 import threading
+import time
 import xml.etree.ElementTree as ET
 import email.utils
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 import httpx
 from datetime import datetime, timedelta, timezone
-from app.services.kap_service import KapService
+
+from app.db.session import SessionLocal
+from app.models.news_article import NewsArticle
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +40,14 @@ def format_date_tr(dt: datetime) -> str:
     """Helper to format dates dynamically into Turkish relative dates (Today, Yesterday, or Calendar date)."""
     now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
     diff = now.date() - dt.date()
-    
+
     months_tr = {
         1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
         7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"
     }
-    
+
     time_str = dt.strftime("%H:%M")
-    
+
     if diff.days == 0:
         return f"Bugün, {time_str}"
     elif diff.days == 1:
@@ -80,9 +83,8 @@ def _fetch_rss_feed(rss_url: str, source_name: str) -> List[Dict[str, Any]]:
                     parsed_dt = email.utils.parsedate_to_datetime(date_text)
                     if parsed_dt.tzinfo is None:
                         parsed_dt = parsed_dt.replace(tzinfo=timezone.utc)
-                    formatted_date = format_date_tr(parsed_dt)
                 except Exception:
-                    formatted_date = date_text
+                    parsed_dt = None
 
                 if link_text:
                     items.append({
@@ -90,236 +92,117 @@ def _fetch_rss_feed(rss_url: str, source_name: str) -> List[Dict[str, Any]]:
                         "link": link_text,
                         "summary": desc_text,
                         "source": source_name,
-                        "pub_date": formatted_date,
-                        "_sort_dt": parsed_dt
+                        "published_at": parsed_dt,
                     })
     except Exception as e:
         logger.warning(f"Failed to fetch live financial news from {rss_url} ({source_name}): {e}")
     return items
 
 
-def _kick_off_ai_enrichment(tracked_disclosures: List[Dict[str, Any]]) -> None:
-    """
-    Fire-and-forget: run the (slow, network-bound) Gemini AI analysis for
-    tracked-ticker KAP disclosures in a background thread, then patch the
-    already-returned/cached news list in place once done. Never blocks the
-    request that triggered it - see the comment above where this is called.
-    """
-    def _worker():
-        def _analyze(dis):
-            ticker = dis["ticker"]
-            ticker_str = f" [{ticker}]"
-            try:
-                formatted_kap_date = format_date_tr(dis["publish_date"])
-            except Exception:
-                formatted_kap_date = format_date_tr(datetime.now(timezone.utc))
-
-            try:
-                from app.services.ai_analysis import ai_analysis_service
-                analysis = ai_analysis_service.analyze_kap_announcement(
-                    ticker, dis["title"], dis["summary"]
-                )
-            except Exception as ai_err:
-                logger.warning(f"AI analysis unavailable for KAP disclosure {ticker}: {ai_err}")
-                return None
-
-            sentiment_tr = (
-                "Pozitif" if analysis.get("sentiment") == "positive"
-                else "Negatif" if analysis.get("sentiment") == "negative"
-                else "Nötr"
-            )
-            return {
-                "link": dis["link"],
-                "title": f"{dis['title']}{ticker_str}",
-                "summary": analysis.get("summary") or dis["summary"],
-                "source": f"KAP • AI Analiz ({sentiment_tr})",
-                "pub_date": formatted_kap_date
-            }
-
-        try:
-            with ThreadPoolExecutor(max_workers=min(len(tracked_disclosures), 5)) as pool:
-                enriched = [r for r in pool.map(_analyze, tracked_disclosures) if r]
-        except Exception as e:
-            logger.error(f"KAP AI enrichment background pass failed: {e}")
-            return
-
-        if not enriched:
-            return
-
-        by_link = {item["link"]: item for item in enriched}
-        with NewsService._cache_lock:
-            for entry in NewsService._cached_news:
-                match = by_link.get(entry.get("link"))
-                if match:
-                    entry["title"] = match["title"]
-                    entry["summary"] = match["summary"]
-                    entry["source"] = match["source"]
-        logger.info(f"KAP AI enrichment applied to {len(enriched)} tracked disclosures in the background.")
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-
 class NewsService:
-    # Short in-memory cache so repeat page visits/navigations don't re-run the
-    # whole RSS + KAP + AI-analysis chain every time - this, combined with fetching
-    # everything concurrently below, is what actually fixes the "sayfa çok geç
-    # açılıyor" complaint (previously every load did 2 RSS feeds + KAP fetch
-    # sequentially, up to ~20s combined, on every single visit).
-    _cache_lock = threading.Lock()
-    _cached_news: List[Dict[str, Any]] = []
-    _cache_built_at = datetime.min
-    _cache_ttl = timedelta(seconds=90)
+    """Piyasa Haberleri: RSS feeds are synced into the news_article DB table
+    by a 20-minute background job (start_background_scheduler/sync_news_to_db)
+    - GET /news/ (get_latest_news_from_db) only ever reads that table, never
+    calling the external feeds itself. This replaces the previous design
+    (live RSS fetch + 90s process-memory cache on every request), which lost
+    everything on a restart and meant every cache-miss request paid the full
+    RSS round-trip. KAP disclosures have their own separate, already-correct
+    flow (GET /screener/kap) and are deliberately NOT merged into this feed
+    anymore - the previous in-memory "patch the cache in place once the AI
+    analysis finishes" trick doesn't translate cleanly to a DB-backed model,
+    and mixing the two only blurred what was otherwise a clean split between
+    "KAP Bildirimleri" and "Piyasa Haberleri" as two distinct sections."""
+
+    _scheduler_started = False
 
     @staticmethod
-    def get_latest_news() -> List[Dict[str, Any]]:
-        """Fetch and parse latest economy news from financial RSS feeds with a fallback, merging KAP disclosures."""
-        with NewsService._cache_lock:
-            if NewsService._cached_news and (datetime.now() - NewsService._cache_built_at) < NewsService._cache_ttl:
-                return NewsService._cached_news
-
-        news_list = []
-        seen_links = set()
-
-        # 1. Fetch all RSS sources AND KAP disclosures concurrently (previously
-        # sequential: feed 1 -> feed 2 -> KAP, each with its own multi-second
-        # timeout, adding up fast).
-        kap_service = KapService()
-        with ThreadPoolExecutor(max_workers=len(_RSS_FEEDS) + 1) as pool:
-            rss_futures = {
-                pool.submit(_fetch_rss_feed, url, name): name for url, name in _RSS_FEEDS
-            }
-            kap_future = pool.submit(kap_service.fetch_latest_disclosures)
-
-            for future in as_completed(rss_futures):
-                for entry in future.result():
-                    link_text = entry["link"]
-                    if link_text not in seen_links:
-                        seen_links.add(link_text)
-                        news_list.append(entry)
-
-            try:
-                disclosures, kap_is_sample = kap_future.result()
-                # Sample/fallback disclosures aren't real news - merging them
-                # into the general feed here (unlike the dedicated KAP tab,
-                # which explicitly flags is_sample) would misrepresent them
-                # as live. Just show the real RSS items in that case.
-                if kap_is_sample:
-                    disclosures = []
-            except Exception as e:
-                logger.error(f"KAP disclosure fetch failed: {e}")
-                disclosures = []
-
-        # Sort merged multi-source items newest-first (each feed is individually
-        # newest-first, but interleaving two feeds needs an explicit merge sort)
-        epoch = datetime.min.replace(tzinfo=timezone.utc)
-        news_list.sort(key=lambda n: n.get("_sort_dt") or epoch, reverse=True)
-        for n in news_list:
-            n.pop("_sort_dt", None)
-
-        # Fallback to realistic, rich economy news if RSS is blocked/offline
-        if not news_list:
-            logger.info("Using rich default economy news feed.")
-            now = datetime.now()
-            news_list = [
-                {
-                    "title": "Borsa İstanbul Güne Rekor Tazeleyerek Başladı: 10,240 Puan Aşılıyor",
-                    "link": "https://bloomberght.com",
-                    "summary": "BIST 100 endeksi, güne alıcılı başladı. Bankacılık ve holding endeksindeki güçlü performansla endeks zirve tazeledi.",
-                    "source": "Bloomberg Terminal",
-                    "pub_date": format_date_tr(now - timedelta(minutes=45))
-                },
-                {
-                    "title": "Federal Reserve (Fed) Faiz İndirimi İyimserliği Küresel Piyasaları Destekliyor",
-                    "link": "https://bloomberght.com",
-                    "summary": "Fed'in enflasyon verilerindeki yavaşlama sonrası Eylül ayında faiz indirimine gideceği yönündeki beklentiler borsaları canlandırdı. US100 ve S&P500 endeksleri primli seyrediyor.",
-                    "source": "Reuters Türkiye",
-                    "pub_date": format_date_tr(now - timedelta(hours=2, minutes=15))
-                },
-                {
-                    "title": "Altın Fiyatlarında Güçlü Duruş Sürüyor: Gram Altın Zirvesini Koruyor",
-                    "link": "https://bloomberght.com",
-                    "summary": "Ons altın fiyatlarının 2,410 dolar seviyesinde tutunması ve döviz kurlarındaki yatay hareket ile birlikte iç piyasada Gram Altın fiyatı güçlü yükseliş trendini sürdürüyor.",
-                    "source": "Bloomberg Terminal",
-                    "pub_date": format_date_tr(now - timedelta(hours=4, minutes=30))
-                },
-                {
-                    "title": "TCMB Rezervlerinde Artış Trendi Sürüyor: Swap Hariç Net Rezervler Pozitifte",
-                    "link": "https://bloomberght.com",
-                    "summary": "Merkez Bankası verilerine göre swap hariç net rezerv pozisyonunda iyileşme devam ediyor. Yabancı portföy girişlerinin rezerv birikimine katkı sağladığı vurgulandı.",
-                    "source": "Reuters Türkiye",
-                    "pub_date": format_date_tr(now - timedelta(hours=5, minutes=10))
-                }
-            ]
-
-        # 2. Merge KAP disclosures (already fetched concurrently above) into the feed.
-        # Disclosures about one of our tracked tickers eventually get a real AI
-        # analysis (impact/sentiment) attached; other disclosures are still
-        # shown, just without the AI layer.
-        #
-        # IMPORTANT: Gemini calls (~2-15s each, even when parallelized across
-        # tracked items) must never block this request - that was the main
-        # remaining source of "sayfa hala yavaş açılıyor" after the RSS/KAP
-        # parallelization above. So the response returned here always uses the
-        # instant, no-network placeholder text for tracked items; the real AI
-        # analysis runs in a fire-and-forget background thread and patches the
-        # cache in place once it finishes, so the NEXT request (within the 90s
-        # TTL) gets the AI-enriched version for free, with zero added latency
-        # on any single request.
+    def sync_news_to_db() -> int:
+        """Fetch all RSS feeds concurrently and upsert new articles into the
+        DB, deduped by url (a feed re-serving an already-synced item is a
+        no-op, not a duplicate row or an update - articles are immutable
+        once synced). Returns the number of NEW rows inserted."""
+        db = SessionLocal()
         try:
-            from app.services.market_data import market_data_service
-            tracked_tickers = {t["ticker"] for t in market_data_service.tickers}
+            all_items: List[Dict[str, Any]] = []
+            with ThreadPoolExecutor(max_workers=len(_RSS_FEEDS)) as pool:
+                futures = [pool.submit(_fetch_rss_feed, url, name) for url, name in _RSS_FEEDS]
+                for future in as_completed(futures):
+                    all_items.extend(future.result())
 
-            if disclosures:
-                tracked_disclosures = []
-                other_items = []
-                for dis in disclosures[:15]:
-                    ticker = dis.get("ticker")
-                    if ticker and ticker in tracked_tickers:
-                        tracked_disclosures.append(dis)
-                    else:
-                        ticker_str = f" [{ticker}]" if ticker else ""
-                        try:
-                            formatted_kap_date = format_date_tr(dis["publish_date"])
-                        except Exception:
-                            formatted_kap_date = format_date_tr(datetime.now(timezone.utc))
-                        other_items.append({
-                            "title": f"{dis['title']}{ticker_str}",
-                            "link": dis["link"],
-                            "summary": dis["summary"],
-                            "source": "KAP / MKK",
-                            "pub_date": formatted_kap_date
-                        })
+            if not all_items:
+                return 0
 
-                def _placeholder_item(dis):
-                    ticker = dis["ticker"]
-                    ticker_str = f" [{ticker}]"
-                    try:
-                        formatted_kap_date = format_date_tr(dis["publish_date"])
-                    except Exception:
-                        formatted_kap_date = format_date_tr(datetime.now(timezone.utc))
-                    return {
-                        "title": f"{dis['title']}{ticker_str}",
-                        "link": dis["link"],
-                        "summary": dis["summary"],
-                        "source": "KAP / Takip Listesi",
-                        "pub_date": formatted_kap_date
-                    }
+            existing_urls = {
+                row[0] for row in
+                db.query(NewsArticle.url)
+                .filter(NewsArticle.url.in_([item["link"] for item in all_items]))
+                .all()
+            }
 
-                tracked_items = [_placeholder_item(dis) for dis in tracked_disclosures]
+            inserted = 0
+            for item in all_items:
+                if item["link"] in existing_urls:
+                    continue
+                db.add(NewsArticle(
+                    title=item["title"],
+                    url=item["link"],
+                    source=item["source"],
+                    summary=item["summary"],
+                    published_at=item["published_at"],
+                ))
+                existing_urls.add(item["link"])  # guards duplicate items within the same batch
+                inserted += 1
 
-                # Highest priority: tracked-ticker disclosures, right at the top.
-                news_list = tracked_items + news_list
-                # Then general KAP disclosures, just below the hero headline as before.
-                for dis_item in other_items[:5]:
-                    news_list.insert(min(1, len(news_list)), dis_item)
-
-                if tracked_disclosures:
-                    _kick_off_ai_enrichment(tracked_disclosures)
+            db.commit()
+            if inserted:
+                logger.info(f"News sync: inserted {inserted} new articles.")
+            return inserted
         except Exception as e:
-            logger.error(f"Failed to merge KAP disclosures into news: {e}")
+            db.rollback()
+            logger.error(f"News sync failed: {e}")
+            return 0
+        finally:
+            db.close()
 
-        with NewsService._cache_lock:
-            NewsService._cached_news = news_list
-            NewsService._cache_built_at = datetime.now()
+    @staticmethod
+    def start_background_scheduler(interval_seconds: int = 20 * 60, startup_delay_seconds: int = 30):
+        """Same daemon-thread-loop shape as the other periodic services
+        (portfolio_snapshot.py, fund_estimate_snapshot.py) - runs once shortly
+        after startup, then every `interval_seconds` (default 20 minutes)."""
+        if NewsService._scheduler_started:
+            return
+        NewsService._scheduler_started = True
 
-        return news_list
+        def loop():
+            time.sleep(startup_delay_seconds)
+            NewsService.sync_news_to_db()
+            while True:
+                time.sleep(interval_seconds)
+                NewsService.sync_news_to_db()
+
+        threading.Thread(target=loop, daemon=True).start()
+
+    @staticmethod
+    def get_latest_news_from_db(limit: int = 50) -> List[Dict[str, Any]]:
+        """Serves GET /news/ - reads only from the DB, newest first. Never
+        calls an external feed."""
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(NewsArticle)
+                .order_by(NewsArticle.published_at.desc().nullslast(), NewsArticle.synced_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "title": r.title,
+                    "link": r.url,
+                    "summary": r.summary or "",
+                    "source": r.source,
+                    "pub_date": format_date_tr(r.published_at) if r.published_at else format_date_tr(r.synced_at),
+                }
+                for r in rows
+            ]
+        finally:
+            db.close()

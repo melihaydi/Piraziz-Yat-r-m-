@@ -8,6 +8,7 @@ from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.models.alert import Alert
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.models.note import Note
+from app.models.news_article import NewsArticle
 
 __all__ = [
     "Base",
@@ -20,5 +21,6 @@ __all__ = [
     "PortfolioSnapshot",
     "Alert",
     "FundEstimateSnapshot",
-    "Note"
+    "Note",
+    "NewsArticle"
 ]
