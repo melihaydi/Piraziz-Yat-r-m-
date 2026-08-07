@@ -20,30 +20,9 @@ interface KapItem {
   ticker: string
   title: string
   summary: string
-  importance: "high" | "medium" | "low"
-  affected_financial_lines: string[]
-  short_term_impact: string
-  long_term_impact: string
-  sentiment: "Pozitif" | "Negatif" | "Nötr"
-  score: number
+  link: string
   time: string
   is_dividend: boolean
-}
-
-function SentimentBadge({ sentiment }: { sentiment: string }) {
-  const cls =
-    sentiment === "Pozitif" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25" :
-    sentiment === "Negatif" ? "bg-rose-500/10 text-rose-400 border-rose-500/25" :
-    "bg-zinc-800/60 text-muted-foreground border-border/50"
-  return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cls}`}>{sentiment}</span>
-}
-
-function ImportanceBadge({ importance }: { importance: string }) {
-  const label = importance === "high" ? "Yüksek Önem" : importance === "low" ? "Düşük Önem" : "Orta Önem"
-  const cls =
-    importance === "high" ? "bg-amber-500/10 text-amber-400 border-amber-500/25" :
-    "bg-secondary/60 text-muted-foreground border-border/50"
-  return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cls}`}>{label}</span>
 }
 
 // Module-level (not component state) so it survives this page unmounting -
@@ -253,7 +232,7 @@ export default function EconomyNewsPage() {
                   {kapLoading ? (
                     <div className="flex flex-col items-center justify-center gap-2 py-20">
                       <Loader2 className="h-6 w-6 text-primary animate-spin" />
-                      <span className="text-[11px] text-muted-foreground">KAP bildirimleri yapay zekâ ile analiz ediliyor...</span>
+                      <span className="text-[11px] text-muted-foreground">KAP bildirimleri yükleniyor...</span>
                     </div>
                   ) : filteredKap.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -273,8 +252,6 @@ export default function EconomyNewsPage() {
                               <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-black text-foreground bg-secondary px-2 py-0.5 rounded">{k.ticker}</span>
-                                  <SentimentBadge sentiment={k.sentiment} />
-                                  <ImportanceBadge importance={k.importance} />
                                   {k.is_dividend && (
                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-purple-500/10 text-purple-400 border-purple-500/25 flex items-center gap-1">
                                       <Gift className="h-2.5 w-2.5" /> Temettü
@@ -287,31 +264,18 @@ export default function EconomyNewsPage() {
                                 </span>
                               </div>
                               <div className="text-sm font-bold text-foreground leading-snug">{k.title}</div>
-                              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">{k.summary}</p>
+                              <p className={`text-xs text-muted-foreground leading-relaxed ${isExpanded ? "" : "line-clamp-2"}`}>{k.summary}</p>
                             </button>
                             {isExpanded && (
-                              <div className="px-5 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-secondary/10">
-                                <div>
-                                  <div className="text-[10px] font-black text-muted-foreground uppercase mb-1.5">Kısa Vadeli Etki</div>
-                                  <p className="text-[11px] text-foreground/90">{k.short_term_impact}</p>
-                                  <div className="text-[10px] font-black text-muted-foreground uppercase mb-1.5 mt-3">Uzun Vadeli Etki</div>
-                                  <p className="text-[11px] text-foreground/90">{k.long_term_impact}</p>
-                                </div>
-                                <div>
-                                  <div className="text-[10px] font-black text-muted-foreground uppercase mb-1.5">Etkilenen Kalemler</div>
-                                  <div className="flex flex-wrap gap-1.5 mb-2">
-                                    {k.affected_financial_lines.map((line, i) => (
-                                      <span key={i} className="px-2 py-0.5 rounded bg-secondary/60 text-[10px] font-semibold text-foreground/80">{line}</span>
-                                    ))}
-                                  </div>
-                                  <div className="text-[10px] font-black text-muted-foreground uppercase mb-1.5">Etki Skoru</div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                                      <div className="h-full bg-primary transition-all duration-300" style={{ width: `${k.score}%` }} />
-                                    </div>
-                                    <span className="text-[10px] font-bold text-muted-foreground w-7 text-right">{k.score}</span>
-                                  </div>
-                                </div>
+                              <div className="px-5 pb-4 bg-secondary/10">
+                                <a
+                                  href={k.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
+                                >
+                                  KAP&apos;ta görüntüle <ExternalLink className="h-3 w-3" />
+                                </a>
                               </div>
                             )}
                           </div>

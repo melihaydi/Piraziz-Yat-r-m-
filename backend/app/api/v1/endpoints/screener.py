@@ -587,31 +587,21 @@ def analyze_stock_ai(request: Request, symbol: str, current_user: User = Depends
 
 _KAP_DIVIDEND_KEYWORDS = ("temettü", "kar payı", "kâr payı", "temettü dağıtım")
 
-# Redis-backed cache, same pattern as NewsService - the whole point is to
-# never make a page load wait on N Gemini calls more than once per TTL
-# window, and (since this moved off process memory) to keep serving that
-# cached analysis across a backend restart too.
+# Redis-backed cache, same pattern as NewsService - avoids re-hitting KAP's
+# own API (and the fund-oid fan-out in kap_service) on every page load.
 _KAP_CACHE_TTL_SECONDS = 180
 
 
-def _analyze_one_disclosure(disc: dict) -> dict:
-    from app.services.ai_analysis import ai_analysis_service
+def _format_disclosure(disc: dict) -> dict:
+    """Formats one raw KAP disclosure for the API response. No AI
+    analysis/enrichment - that used to call Gemini per-disclosure, which
+    under quota pressure (429s) silently fell back to identical hardcoded
+    text for every item. Removed entirely per explicit request: KAP's own
+    title/summary is the real content, this just adds a relative time and
+    a dividend-keyword flag."""
     ticker = disc["ticker"] or "BIST"
     title = disc["title"]
     summary = disc["summary"]
-
-    try:
-        analysis = ai_analysis_service.analyze_kap_announcement(ticker, title, summary)
-    except Exception:
-        analysis = {
-            "summary": summary,
-            "importance": "medium",
-            "affected_financial_lines": ["Genel Karlılık"],
-            "short_term_impact": "Nötr etki bekleniyor.",
-            "long_term_impact": "Etki sınırlı.",
-            "sentiment": "neutral",
-            "impact_score": 50
-        }
 
     time_diff = "Biraz önce"
     try:
@@ -635,13 +625,8 @@ def _analyze_one_disclosure(disc: dict) -> dict:
         "id": disc["id"],
         "ticker": ticker,
         "title": title,
-        "summary": analysis["summary"],
-        "importance": analysis["importance"],
-        "affected_financial_lines": analysis["affected_financial_lines"],
-        "short_term_impact": analysis["short_term_impact"],
-        "long_term_impact": analysis["long_term_impact"],
-        "sentiment": "Pozitif" if analysis["sentiment"] == "positive" else "Negatif" if analysis["sentiment"] == "negative" else "Nötr",
-        "score": analysis["impact_score"],
+        "summary": summary,
+        "link": disc["link"],
         "time": time_diff,
         "is_dividend": is_dividend,
     }
@@ -649,33 +634,22 @@ def _analyze_one_disclosure(disc: dict) -> dict:
 
 @router.get("/kap")
 def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10), current_user: User = Depends(deps.get_current_user)):
-    """Fetch latest KAP disclosures and analyze each with live-context Gemini
-    AI (importance/sentiment/impact score/affected lines). Previously only
-    ever analyzed the top 3 SEQUENTIALLY (each Gemini call ~1-5s) with no
-    caching - fine for a 3-item dashboard widget, too slow for a real KAP
-    page. Now processes up to `limit` (kap_service itself caps at ~10
-    disclosures) concurrently, same pattern as NewsService's KAP enrichment,
-    and caches the analyzed result for a few minutes so repeat page loads
-    don't redo the AI analysis."""
+    """Fetch latest KAP disclosures (general company + tracked-fund feed,
+    see kap_service) formatted for display. No AI enrichment - just KAP's
+    own data, cached briefly so repeat page loads don't re-hit KAP/re-run
+    kap_service's fund-oid fan-out."""
     from app.core.redis import cache_service
     from app.services.kap_service import kap_service
 
-    cache_key = f"kap_analysis:{limit}"
+    cache_key = f"kap_disclosures:{limit}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
 
     all_disclosures, is_sample = kap_service.fetch_latest_disclosures()
     disclosures = all_disclosures[:limit]
-    if not disclosures:
-        result = {"is_sample": is_sample, "items": []}
-        cache_service.set_json(cache_key, result, expire_seconds=_KAP_CACHE_TTL_SECONDS)
-        return result
 
-    with ThreadPoolExecutor(max_workers=min(len(disclosures), 6)) as pool:
-        analyzed_list = list(pool.map(_analyze_one_disclosure, disclosures))
-
-    result = {"is_sample": is_sample, "items": analyzed_list}
+    result = {"is_sample": is_sample, "items": [_format_disclosure(d) for d in disclosures]}
     cache_service.set_json(cache_key, result, expire_seconds=_KAP_CACHE_TTL_SECONDS)
     return result
 
