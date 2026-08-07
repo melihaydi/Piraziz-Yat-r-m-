@@ -40,6 +40,7 @@ import pandas as pd
 import borsapy
 
 from app.core.redis import cache_service
+from app.services.market_data import market_data_service
 
 logger = logging.getLogger(__name__)
 
@@ -687,8 +688,16 @@ def _build_signal(ticker: str, name: str) -> Signal:
             )
 
         price = float(df["Close"].iloc[-1])
-        prev_close = float(df["Close"].iloc[-2]) if len(df) > 1 else price
-        change_pct = (price - prev_close) / prev_close * 100 if prev_close else 0.0
+        # Real daily change%, from the same live TradingView quote used
+        # everywhere else in the app (Screener, homepage, trade tickets) -
+        # NOT derived from the OHLC dataframe above, since that now holds 1h
+        # candles (see _fetch_history_with_retry) for the MA7/MA21 signal.
+        # Deriving change% from two consecutive 1h closes silently turned
+        # this into an hour-over-hour move instead of the expected daily
+        # change, which is why it looked wrong/inconsistent with the rest
+        # of the app.
+        quote = market_data_service.get_quote(ticker) if market_data_service.is_known_ticker(ticker) else None
+        change_pct = float(quote.get("change_percent") or 0.0) if quote else 0.0
 
         swings = _find_swings(df)
         structure, structure_tags = _classify_structure(swings)
