@@ -4,7 +4,8 @@ import os
 import threading
 import time
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, time as dt_time, timezone
+from zoneinfo import ZoneInfo
 import borsapy
 from borsapy.stream import TradingViewStream
 from app.core.config import settings
@@ -37,6 +38,30 @@ SPECIAL_EXCHANGES: Dict[str, str] = {
     # in the app (Header, screener, etc. keep using FX_IDC as before).
     "GOLD": "TVC",
 }
+
+# Symbols that legitimately move outside BIST hours (FX/crypto/gold trade
+# ~24/7, NDX is a different exchange's index) - _is_bist_session_open() below
+# gates fresh TradingView subscribes for everything ELSE (plain BIST stocks
+# and the BIST indices), not these.
+_ALWAYS_LIVE_SYMBOLS = set(SPECIAL_EXCHANGES.keys())
+
+_BIST_TZ = ZoneInfo("Europe/Istanbul")
+_BIST_SESSION_OPEN = dt_time(9, 30)
+_BIST_SESSION_CLOSE = dt_time(18, 15)
+
+
+def _is_bist_session_open() -> bool:
+    """Whether Borsa Istanbul is in its regular trading session right now
+    (09:30-18:15 Europe/Istanbul, Monday-Friday). Used to skip firing fresh
+    TradingView subscribe requests for BIST symbols outside session hours -
+    the exchange itself isn't generating new prices then, so those requests
+    would just be wasted TradingView API calls (and, at volume, a plausible
+    contributor to rate-limiting/bans)."""
+    now = datetime.now(_BIST_TZ)
+    if now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    return _BIST_SESSION_OPEN <= now.time() <= _BIST_SESSION_CLOSE
+
 
 # Monkeypatch TradingViewStream.subscribe_chart to prevent duplicate series ID disconnects
 def patched_subscribe_chart(self, symbol: str, interval: str = "1m", exchange: str = "BIST") -> None:
@@ -310,7 +335,16 @@ class MarketDataService:
             logger.error(f"Failed to connect TradingView Stream WebSocket: {e}")
 
     def _subscribe_all_tickers(self) -> None:
-        """Gradually subscribes to all BIST 500+ symbols to populate the cache without flooding the socket."""
+        """Gradually subscribes to all BIST 500+ symbols to populate the cache
+        without flooding the socket. Runs exactly ONCE, at process startup -
+        deliberately NOT gated by _is_bist_session_open(), unlike get_quote()'s
+        per-request dynamic subscribe below. Gating a one-time startup call
+        would mean a backend restart outside session hours leaves the entire
+        quote cache empty until the next restart (nothing else ever re-triggers
+        this), which is a worse outcome than the modest, one-off request cost
+        of subscribing off-hours. The real recurring waste this whole feature
+        is meant to cut is the PER-REQUEST dynamic subscribe fallback, which
+        IS gated."""
         logger.info("Starting background subscription manager for BIST tickers...")
         
         # Subscribe to Bloomberg index and parity symbols first
@@ -490,12 +524,21 @@ class MarketDataService:
             self._correct_stale_corporate_action(symbol, item)
             return item
             
-        # 2. Subscribe dynamically in the background thread if not already triggered (non-blocking)
+        # 2. Subscribe dynamically in the background thread if not already
+        # triggered (non-blocking) - but only if it's actually worth a fresh
+        # TradingView request right now: always for FX/crypto/gold/NDX (they
+        # move outside BIST hours too), otherwise only during the BIST
+        # session, since a plain BIST symbol's price genuinely can't have
+        # changed while the exchange is closed. Deliberately does NOT mark
+        # the symbol as subscribed when skipped, so the first request once
+        # the session reopens can still trigger the real subscribe.
+        should_subscribe_now = lookup_symbol in _ALWAYS_LIVE_SYMBOLS or _is_bist_session_open()
         need_subscribe = False
-        with self._lock:
-            if lookup_symbol not in self._subscribed_set:
-                self._subscribed_set.add(lookup_symbol)
-                need_subscribe = True
+        if should_subscribe_now:
+            with self._lock:
+                if lookup_symbol not in self._subscribed_set:
+                    self._subscribed_set.add(lookup_symbol)
+                    need_subscribe = True
 
         if need_subscribe:
             # Use lookup_symbol (e.g. "NDX", not "US100") and the correct exchange for
@@ -512,7 +555,7 @@ class MarketDataService:
                 except Exception:
                     pass
             threading.Thread(target=bg_subscribe, daemon=True).start()
-            
+
         # Return a quick fallback estimate immediately to prevent blocking
         fallbacks = {
             "XU100": 10240.50,
