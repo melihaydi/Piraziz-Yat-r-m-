@@ -325,6 +325,60 @@ export default function SettingsPage() {
     setPushLoading(false)
   }
 
+  interface SupportTicket {
+    id: number
+    subject: string
+    message: string
+    status: "open" | "closed"
+    admin_reply: string | null
+    created_at: string
+  }
+  const [tickets, setTickets] = useState<SupportTicket[]>([])
+  const [ticketsLoading, setTicketsLoading] = useState(true)
+  const [ticketSubject, setTicketSubject] = useState("")
+  const [ticketMessage, setTicketMessage] = useState("")
+  const [ticketSubmitting, setTicketSubmitting] = useState(false)
+  const [ticketError, setTicketError] = useState("")
+
+  const refreshTickets = () => {
+    authFetch("/support/tickets").then(async (res) => {
+      if (res.ok) setTickets(await res.json())
+      setTicketsLoading(false)
+    }).catch(() => setTicketsLoading(false))
+  }
+
+  useEffect(() => {
+    refreshTickets()
+  }, [])
+
+  const handleSubmitTicket = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setTicketError("")
+    if (!ticketSubject || !ticketMessage) {
+      setTicketError("Lütfen konu ve mesaj alanlarını doldurun.")
+      return
+    }
+    setTicketSubmitting(true)
+    try {
+      const res = await authFetch("/support/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: ticketSubject, message: ticketMessage }),
+      })
+      if (!res.ok) {
+        setTicketError("Talep gönderilemedi.")
+        setTicketSubmitting(false)
+        return
+      }
+      setTicketSubject("")
+      setTicketMessage("")
+      refreshTickets()
+    } catch {
+      setTicketError("Sunucuya ulaşılamadı.")
+    }
+    setTicketSubmitting(false)
+  }
+
   const [exportLoading, setExportLoading] = useState(false)
   const handleExportData = async () => {
     setExportLoading(true)
@@ -883,6 +937,63 @@ export default function SettingsPage() {
                     Hemen ara <MessageCircle className="h-3 w-3 ml-1" />
                   </span>
                 </a>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-border/40 space-y-4">
+                <div>
+                  <p className="text-sm font-bold text-foreground">Destek Talebi Oluştur</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Talebiniz kaydedilir ve yanıt geldiğinde e-posta ile bilgilendirilirsiniz.</p>
+                </div>
+                {ticketError && (
+                  <p className="text-[11px] text-rose-400 font-semibold">{ticketError}</p>
+                )}
+                <form onSubmit={handleSubmitTicket} className="space-y-2.5">
+                  <Input
+                    value={ticketSubject}
+                    onChange={(e) => setTicketSubject(e.target.value)}
+                    placeholder="Konu"
+                    className="bg-zinc-900/60 border-zinc-800"
+                  />
+                  <textarea
+                    value={ticketMessage}
+                    onChange={(e) => setTicketMessage(e.target.value)}
+                    placeholder="Mesajınız..."
+                    rows={3}
+                    className="w-full text-sm rounded-md bg-zinc-900/60 border border-zinc-800 px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={ticketSubmitting}
+                    className="cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold px-4 py-2 h-auto"
+                  >
+                    {ticketSubmitting ? "Gönderiliyor..." : "Talebi Gönder"}
+                  </Button>
+                </form>
+
+                {!ticketsLoading && tickets.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Taleplerim</p>
+                    {tickets.map((t) => (
+                      <div key={t.id} className="p-3 bg-secondary/20 rounded-lg border border-border/30 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-foreground">{t.subject}</span>
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${
+                            t.status === "open" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          }`}>
+                            {t.status === "open" ? "Açık" : "Kapalı"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{t.message}</p>
+                        {t.admin_reply && (
+                          <div className="mt-1.5 pt-1.5 border-t border-border/30">
+                            <p className="text-[10px] font-bold text-primary">Yanıt</p>
+                            <p className="text-[11px] text-foreground/90">{t.admin_reply}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

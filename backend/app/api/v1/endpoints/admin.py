@@ -4,8 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.core.audit import log_audit
+from app.core.email import send_email
 from app.models.audit_log import AuditLog
+from app.models.support_ticket import SupportTicket
 from app.models.user import User
+from app.schemas.support import SupportTicketAdminResponse, SupportTicketUpdate
 from app.schemas.user import UserOut
 
 router = APIRouter()
@@ -99,3 +102,62 @@ def get_audit_log(
         }
         for r in rows
     ]
+
+
+@router.get("/support/tickets", response_model=List[SupportTicketAdminResponse])
+def list_support_tickets(
+    status_filter: Optional[str] = None,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """All support tickets across all users, newest first - superuser only.
+    Optionally filtered to status=open|closed."""
+    query = db.query(SupportTicket).order_by(SupportTicket.created_at.desc())
+    if status_filter:
+        query = query.filter(SupportTicket.status == status_filter)
+    tickets = query.all()
+    return [
+        SupportTicketAdminResponse(
+            id=t.id, user_id=t.user_id, subject=t.subject, message=t.message,
+            status=t.status, admin_reply=t.admin_reply, created_at=t.created_at,
+            updated_at=t.updated_at, user_email=t.user.email,
+        )
+        for t in tickets
+    ]
+
+
+@router.put("/support/tickets/{ticket_id}", response_model=SupportTicketAdminResponse)
+def update_support_ticket(
+    ticket_id: int,
+    body: SupportTicketUpdate,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Answers/closes a ticket - superuser only. Emails the ticket's owner
+    when a reply is added, same as a real support inbox."""
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Destek talebi bulunamadı.")
+
+    reply_added = body.admin_reply is not None and body.admin_reply != ticket.admin_reply
+    if body.admin_reply is not None:
+        ticket.admin_reply = body.admin_reply
+    if body.status is not None:
+        if body.status not in ("open", "closed"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Geçersiz durum.")
+        ticket.status = body.status
+    db.commit()
+    db.refresh(ticket)
+
+    if reply_added:
+        send_email(
+            ticket.user.email,
+            f"Destek Talebinize Yanıt Verildi: {ticket.subject}",
+            f"<p><strong>Konu:</strong> {ticket.subject}</p><p>{ticket.admin_reply}</p>",
+        )
+
+    return SupportTicketAdminResponse(
+        id=ticket.id, user_id=ticket.user_id, subject=ticket.subject, message=ticket.message,
+        status=ticket.status, admin_reply=ticket.admin_reply, created_at=ticket.created_at,
+        updated_at=ticket.updated_at, user_email=ticket.user.email,
+    )

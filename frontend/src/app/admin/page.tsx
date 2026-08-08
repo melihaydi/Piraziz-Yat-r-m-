@@ -1,8 +1,9 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { ShieldCheck, Loader2, ShieldAlert } from "lucide-react"
+import { ShieldCheck, Loader2, ShieldAlert, LifeBuoy } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
+import { Button } from "@/components/ui/Button"
 import { authFetch } from "@/lib/auth"
 
 interface AdminUser {
@@ -13,6 +14,17 @@ interface AdminUser {
   role: string
   is_superuser: boolean
   totp_enabled: boolean
+  created_at: string
+}
+
+interface SupportTicket {
+  id: number
+  user_id: number
+  user_email: string
+  subject: string
+  message: string
+  status: "open" | "closed"
+  admin_reply: string | null
   created_at: string
 }
 
@@ -30,6 +42,44 @@ export default function AdminPage() {
   const [forbidden, setForbidden] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  const [tickets, setTickets] = useState<SupportTicket[]>([])
+  const [ticketsLoading, setTicketsLoading] = useState(true)
+  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({})
+  const [ticketBusyId, setTicketBusyId] = useState<number | null>(null)
+
+  const loadTickets = async () => {
+    try {
+      const res = await authFetch("/admin/support/tickets")
+      if (res.ok) setTickets(await res.json())
+    } catch (e) {
+      // Non-fatal - the user table above still loads independently.
+    } finally {
+      setTicketsLoading(false)
+    }
+  }
+
+  const replyToTicket = async (id: number, close: boolean) => {
+    setTicketBusyId(id)
+    try {
+      const body: Record<string, string> = {}
+      const reply = replyDrafts[id]?.trim()
+      if (reply) body.admin_reply = reply
+      if (close) body.status = "closed"
+      const res = await authFetch(`/admin/support/tickets/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setTickets(prev => prev.map(t => (t.id === id ? updated : t)))
+        setReplyDrafts(prev => ({ ...prev, [id]: "" }))
+      }
+    } finally {
+      setTicketBusyId(null)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -50,6 +100,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     loadUsers()
+    loadTickets()
   }, [])
 
   const changeRole = async (id: number, role: string) => {
@@ -195,6 +246,79 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card glass={true}>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <LifeBuoy className="h-5 w-5 text-primary" />
+            Destek Talepleri ({tickets.filter(t => t.status === "open").length} açık)
+          </CardTitle>
+          <CardDescription>Kullanıcıların gönderdiği destek talepleri - yanıt yazınca kullanıcıya e-posta gider.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {ticketsLoading ? (
+            <div className="py-10 flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : tickets.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Henüz destek talebi yok.</p>
+          ) : (
+            <div className="space-y-3">
+              {tickets.map(t => (
+                <div key={t.id} className="p-4 bg-secondary/20 rounded-lg border border-border/30 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-sm font-bold text-foreground">{t.subject}</span>
+                      <span className="text-xs text-muted-foreground ml-2">({t.user_email})</span>
+                    </div>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${
+                      t.status === "open" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    }`}>
+                      {t.status === "open" ? "Açık" : "Kapalı"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-foreground/90">{t.message}</p>
+                  {t.admin_reply && (
+                    <div className="pt-2 border-t border-border/30">
+                      <p className="text-[10px] font-bold text-primary">Verilen Yanıt</p>
+                      <p className="text-xs text-foreground/90">{t.admin_reply}</p>
+                    </div>
+                  )}
+                  {t.status === "open" && (
+                    <div className="flex items-start gap-2 pt-1">
+                      <textarea
+                        value={replyDrafts[t.id] || ""}
+                        onChange={(e) => setReplyDrafts(prev => ({ ...prev, [t.id]: e.target.value }))}
+                        placeholder="Yanıt yaz..."
+                        rows={2}
+                        className="flex-1 text-xs rounded-md bg-zinc-900/60 border border-zinc-800 px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      />
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        <Button
+                          type="button"
+                          onClick={() => replyToTicket(t.id, false)}
+                          disabled={ticketBusyId === t.id || !replyDrafts[t.id]?.trim()}
+                          className="cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] font-bold px-3 py-1.5 h-auto"
+                        >
+                          Yanıtla
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => replyToTicket(t.id, true)}
+                          disabled={ticketBusyId === t.id}
+                          className="cursor-pointer bg-secondary/60 hover:bg-secondary text-foreground border border-border/40 text-[11px] font-bold px-3 py-1.5 h-auto"
+                        >
+                          Kapat
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
