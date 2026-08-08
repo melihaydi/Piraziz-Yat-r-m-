@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, portfolio, alert, subscription, screener, news, funds, trade, strategy, admin, note
+from app.api.v1.endpoints import auth, portfolio, alert, subscription, screener, news, funds, trade, strategy, admin, note, notifications
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -13,3 +13,4 @@ api_router.include_router(trade.router, prefix="/trade", tags=["trade"])
 api_router.include_router(strategy.router, prefix="/strategy", tags=["strategy"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(note.router, prefix="/notes", tags=["notes"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

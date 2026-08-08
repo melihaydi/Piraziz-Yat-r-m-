@@ -10,6 +10,7 @@ from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.models.note import Note
 from app.models.news_article import NewsArticle
 from app.models.audit_log import AuditLog
+from app.models.push_subscription import PushSubscription
 
 __all__ = [
     "Base",

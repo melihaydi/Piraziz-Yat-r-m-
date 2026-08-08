@@ -55,6 +55,17 @@ class Settings(BaseSettings):
     # deployment; override in .env for a custom domain.
     FRONTEND_URL: str = "https://pirazizyatirim.netlify.app"
 
+    # Web Push (VAPID) - generated once for this app (see core/push.py),
+    # baked in as a working default so browser push works out of the box
+    # with no extra account/service to sign up for. Unlike SECRET_KEY, a
+    # leaked VAPID key pair only lets someone send push notifications
+    # impersonating this app to browsers already subscribed to it - low
+    # enough severity that a shipped default (rather than requiring every
+    # deploy to generate its own) is an acceptable tradeoff here.
+    VAPID_PRIVATE_KEY: str = "W220UfduPvFWa1_YqkuiWu45MJ0YDcYQRB-PnsclVH4"
+    VAPID_PUBLIC_KEY: str = "BJRydjIkbKT-pe8eI40bROhRg8XlreZu2qCCQRzA-VPoh__Rx-3r-0tjv5ewkMU43yrokPs0hGwKvMeSlqvxxm8"
+    VAPID_CLAIM_EMAIL: str = "mailto:melihaydi@gmail.com"
+
     # TradingView Real-time Data Authentication
     TV_SESSION: Optional[str] = None
     TV_SESSION_SIGN: Optional[str] = None

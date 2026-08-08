@@ -258,5 +258,19 @@ def check_and_trigger_alerts(
         for alert in triggered_alerts:
             db.refresh(alert)
 
+        from app.core.email import send_email
+        from app.core.push import send_push
+
+        for alert in triggered_alerts:
+            desc = alert.trigger_condition.get("current_val_desc", "")
+            title = f"{alert.ticker} Alarmı Tetiklendi"
+            body = desc or "Belirlediğiniz koşul gerçekleşti."
+            send_email(
+                current_user.email,
+                title,
+                f"<p><strong>{alert.ticker}</strong> için ayarladığınız alarm tetiklendi.</p><p>{body}</p>",
+            )
+            send_push(db, current_user.id, title, body, url=f"/stock/{alert.ticker}" if alert.ticker else "/")
+
     return triggered_alerts
 

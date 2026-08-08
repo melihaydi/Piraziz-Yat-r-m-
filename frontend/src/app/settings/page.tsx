@@ -4,12 +4,13 @@ import React, { useState, useEffect } from "react"
 import {
   User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon,
   Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle,
-  Smartphone, XCircle, LogOut, Download, Monitor
+  Smartphone, XCircle, LogOut, Download, Monitor, Bell, BellOff
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { authFetch, fetchCurrentUser, logout, resendVerification } from "@/lib/auth"
+import { isPushSupported, getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from "@/lib/push"
 import { API_BASE_URL } from "@/lib/config"
 
 function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
@@ -295,6 +296,33 @@ export default function SettingsPage() {
     setResendState("sending")
     await resendVerification(email)
     setResendState("sent")
+  }
+
+  const [pushSupported, setPushSupported] = useState(false)
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
+  const [pushError, setPushError] = useState("")
+
+  useEffect(() => {
+    setPushSupported(isPushSupported())
+    getPushSubscriptionStatus().then(setPushEnabled)
+  }, [])
+
+  const handleTogglePush = async () => {
+    setPushError("")
+    setPushLoading(true)
+    if (pushEnabled) {
+      await unsubscribeFromPush()
+      setPushEnabled(false)
+    } else {
+      const result = await subscribeToPush()
+      if (result.ok) {
+        setPushEnabled(true)
+      } else {
+        setPushError(result.error || "Bir hata oluştu.")
+      }
+    }
+    setPushLoading(false)
   }
 
   const [exportLoading, setExportLoading] = useState(false)
@@ -691,6 +719,47 @@ export default function SettingsPage() {
                   )
                 })}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Notifications */}
+          <Card glass={true}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center">
+                <Bell className="h-4.5 w-4.5 mr-2 text-primary" />
+                Bildirimler
+              </CardTitle>
+              <CardDescription>Fiyat/alarm bildirimleri e-posta ile gönderilir. Tarayıcı bildirimlerini de burada açabilirsiniz.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!pushSupported ? (
+                <p className="text-xs text-muted-foreground">Bu tarayıcı/cihaz tarayıcı bildirimlerini desteklemiyor.</p>
+              ) : (
+                <div className="flex items-center justify-between gap-4 p-4 bg-secondary/20 rounded-lg border border-border/30">
+                  <div className="flex items-center gap-3">
+                    {pushEnabled ? <Bell className="h-4 w-4 text-primary" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
+                    <div>
+                      <p className="text-sm font-bold text-foreground">Tarayıcı Bildirimleri</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {pushEnabled ? "Etkin - alarmlarınız bu cihaza da bildirim olarak düşer." : "Kapalı"}
+                      </p>
+                      {pushError && <p className="text-[11px] text-rose-400 font-semibold mt-1">{pushError}</p>}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleTogglePush}
+                    disabled={pushLoading}
+                    className={`cursor-pointer text-xs font-bold px-4 py-2 h-auto shrink-0 ${
+                      pushEnabled
+                        ? "bg-secondary/60 hover:bg-secondary text-foreground border border-border/40"
+                        : "bg-primary hover:bg-primary/90 text-primary-foreground"
+                    }`}
+                  >
+                    {pushLoading ? "..." : pushEnabled ? "Kapat" : "Aç"}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
