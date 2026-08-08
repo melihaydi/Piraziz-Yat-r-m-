@@ -117,6 +117,67 @@ export async function fetchCurrentUser(): Promise<any | null> {
   }
 }
 
+/** Always returns ok:true with a generic message, whether or not the email
+ * belongs to a real account - matches the backend's enumeration-safe
+ * response (see /auth/forgot-password's docstring). */
+export async function forgotPassword(email: string): Promise<AuthResult> {
+  try {
+    const res = await fetchWithRetry(`${API_BASE_URL}/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+    return { ok: res.ok, error: res.ok ? undefined : await firstErrorDetail(res, "Bir hata oluştu.") }
+  } catch (e) {
+    return { ok: false, error: "Sunucuya ulaşılamadı." }
+  }
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<AuthResult> {
+  try {
+    const res = await fetchWithRetry(`${API_BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    })
+    if (!res.ok) {
+      return { ok: false, error: await firstErrorDetail(res, "Bağlantı geçersiz veya süresi dolmuş.") }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: "Sunucuya ulaşılamadı." }
+  }
+}
+
+export async function verifyEmail(token: string): Promise<AuthResult> {
+  try {
+    const res = await fetchWithRetry(`${API_BASE_URL}/auth/verify-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+    if (!res.ok) {
+      return { ok: false, error: await firstErrorDetail(res, "Doğrulama bağlantısı geçersiz veya süresi dolmuş.") }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: "Sunucuya ulaşılamadı." }
+  }
+}
+
+export async function resendVerification(email: string): Promise<AuthResult> {
+  try {
+    const res = await fetchWithRetry(`${API_BASE_URL}/auth/resend-verification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+    return { ok: res.ok, error: res.ok ? undefined : await firstErrorDetail(res, "Bir hata oluştu.") }
+  } catch (e) {
+    return { ok: false, error: "Sunucuya ulaşılamadı." }
+  }
+}
+
 /** Clears the session and notifies AuthGate to show the login screen again. */
 export function logout() {
   localStorage.removeItem("token")

@@ -9,11 +9,18 @@ from sqlalchemy.orm import Session
 from app.core import security
 from app.core.audit import log_audit
 from app.core.config import settings
+from app.core.email import send_email
 from app.core.limiter import limiter
 from app.api import deps
 from app.models.user import User
 from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.schemas.token import Token
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    ResendVerificationRequest,
+    VerifyEmailRequest,
+)
 from app.schemas.twofa import (
     TwoFactorSetupResponse,
     TwoFactorCodeRequest,
@@ -28,6 +35,29 @@ router = APIRouter()
 # check passed a few minutes ago" (see security.create_access_token's
 # scope="2fa_pending" docstring).
 TWO_FA_PENDING_TOKEN_MINUTES = 5
+
+# Same short-lived special-purpose-token pattern (scope check enforced in
+# app/api/deps.py's get_current_user, which rejects anything whose scope
+# isn't None/"access") reused for password reset and email verification.
+PASSWORD_RESET_TOKEN_MINUTES = 15
+EMAIL_VERIFY_TOKEN_HOURS = 24
+
+
+def _send_verification_email(user: User) -> None:
+    token = security.create_access_token(
+        user.id, expires_delta=timedelta(hours=EMAIL_VERIFY_TOKEN_HOURS), scope="email_verify"
+    )
+    link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+    send_email(
+        user.email,
+        "E-posta adresini doğrula - Piraziz Yatırım",
+        f"""
+        <p>Merhaba{f' {user.full_name}' if user.full_name else ''},</p>
+        <p>Piraziz Yatırım hesabını kullanmaya başlamak için e-posta adresini doğrula:</p>
+        <p><a href="{link}">E-postamı Doğrula</a></p>
+        <p>Bu bağlantı {EMAIL_VERIFY_TOKEN_HOURS} saat geçerlidir. Bu isteği sen yapmadıysan bu e-postayı görmezden gelebilirsin.</p>
+        """,
+    )
 
 # 5 attempts/minute per IP - generous enough for a real user who mistypes a
 # password, tight enough to make credential-stuffing/brute-force impractical.
@@ -61,6 +91,7 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(d
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    _send_verification_email(db_user)
     return db_user
 
 @router.post("/login", response_model=LoginResponse)
@@ -245,3 +276,85 @@ def disable_2fa(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session = Depends(deps.get_db)):
+    """Always returns the same 200 response whether or not the email
+    belongs to a real account - revealing that would let an attacker
+    enumerate registered emails (OWASP guidance). The actual reset link is
+    only ever sent if a matching, active account exists."""
+    user = db.query(User).filter(User.email == body.email).first()
+    if user and user.is_active:
+        token = security.create_access_token(
+            user.id, expires_delta=timedelta(minutes=PASSWORD_RESET_TOKEN_MINUTES), scope="password_reset"
+        )
+        link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        send_email(
+            user.email,
+            "Şifre Sıfırlama - Piraziz Yatırım",
+            f"""
+            <p>Merhaba{f' {user.full_name}' if user.full_name else ''},</p>
+            <p>Hesabın için bir şifre sıfırlama isteği aldık. Aşağıdaki bağlantıya tıklayarak yeni bir şifre belirleyebilirsin:</p>
+            <p><a href="{link}">Şifremi Sıfırla</a></p>
+            <p>Bu bağlantı {PASSWORD_RESET_TOKEN_MINUTES} dakika geçerlidir. Bu isteği sen yapmadıysan bu e-postayı görmezden gelebilirsin, şifren değişmeyecek.</p>
+            """,
+        )
+    return {"detail": "E-posta adresine kayıtlıysa bir şifre sıfırlama bağlantısı gönderildi."}
+
+
+@router.post("/reset-password", response_model=UserOut)
+@limiter.limit("5/minute")
+def reset_password(request: Request, body: ResetPasswordRequest, db: Session = Depends(deps.get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail="Geçersiz veya süresi dolmuş bağlantı, lütfen tekrar deneyin."
+    )
+    try:
+        payload = jwt.decode(body.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        raise credentials_exception
+    if payload.get("scope") != "password_reset" or not payload.get("sub"):
+        raise credentials_exception
+
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    if not user or not user.is_active:
+        raise credentials_exception
+
+    user.hashed_password = security.get_password_hash(body.new_password)
+    db.commit()
+    db.refresh(user)
+    log_audit(db, "password_reset", request=request, user_id=user.id)
+    return user
+
+
+@router.post("/verify-email", response_model=UserOut)
+def verify_email(body: VerifyEmailRequest, db: Session = Depends(deps.get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail="Geçersiz veya süresi dolmuş doğrulama bağlantısı."
+    )
+    try:
+        payload = jwt.decode(body.token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        raise credentials_exception
+    if payload.get("scope") != "email_verify" or not payload.get("sub"):
+        raise credentials_exception
+
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    if not user:
+        raise credentials_exception
+
+    user.is_email_verified = True
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/resend-verification")
+@limiter.limit("5/minute")
+def resend_verification(request: Request, body: ResendVerificationRequest, db: Session = Depends(deps.get_db)):
+    """Same enumeration-safe 200-regardless response as /forgot-password."""
+    user = db.query(User).filter(User.email == body.email).first()
+    if user and user.is_active and not user.is_email_verified:
+        _send_verification_email(user)
+    return {"detail": "E-posta adresine kayıtlıysa yeni bir doğrulama bağlantısı gönderildi."}

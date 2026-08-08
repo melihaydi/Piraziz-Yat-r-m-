@@ -10,6 +10,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     role = Column(String(50), default="free")  # free, starter, pro, premium, institutional
+    is_email_verified = Column(Boolean, default=False)
+    terms_accepted_at = Column(DateTime(timezone=True), nullable=True)
     # totp_secret is written by POST /auth/2fa/setup as soon as a QR is
     # generated, but totp_enabled only flips to True once the user proves
     # possession by submitting one real code to POST /auth/2fa/verify - so a

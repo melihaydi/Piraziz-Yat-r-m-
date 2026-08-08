@@ -18,9 +18,19 @@ interface AppChromeProps {
  */
 const SIDEBAR_COLLAPSED_KEY = "bip_sidebar_collapsed"
 
+// Same reasoning as isTradeRoute below, but for the public auth pages
+// (password reset / email verification / legal) - these render for a
+// logged-out visitor (see AuthGate's PUBLIC_PATHS), so the normal
+// Sidebar/Header shell (which assumes an authenticated session, e.g.
+// Header's own /auth/me call) doesn't belong here either.
+const BARE_PATHS = ["/forgot-password", "/reset-password", "/verify-email"]
+const isBarePath = (path: string | null) =>
+  !!path && (BARE_PATHS.includes(path) || path.startsWith("/legal/"))
+
 export default function AppChrome({ children }: AppChromeProps) {
   const pathname = usePathname()
   const isTradeRoute = pathname?.startsWith("/trade") ?? false
+  const isBareRoute = isBarePath(pathname)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   // Starts false (expanded) on the server/first paint - the persisted value
   // is read after mount so the initial render always matches what the
@@ -64,7 +74,7 @@ export default function AppChrome({ children }: AppChromeProps) {
     return () => window.removeEventListener("keydown", handler)
   }, [isTradeRoute])
 
-  if (isTradeRoute) {
+  if (isTradeRoute || isBareRoute) {
     return <div className="flex-1 flex flex-col overflow-hidden h-screen w-full">{children}</div>
   }
 

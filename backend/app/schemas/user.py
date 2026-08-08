@@ -18,6 +18,7 @@ class UserInDBBase(UserBase):
     id: int
     is_superuser: bool
     totp_enabled: bool = False
+    is_email_verified: bool = False
     created_at: datetime
     updated_at: datetime
 

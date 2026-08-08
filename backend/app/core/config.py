@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
 
+    # Public web app URL - used to build links inside emails (password
+    # reset, email verification, etc.). Defaults to the live Netlify
+    # deployment; override in .env for a custom domain.
+    FRONTEND_URL: str = "https://pirazizyatirim.netlify.app"
+
     # TradingView Real-time Data Authentication
     TV_SESSION: Optional[str] = None
     TV_SESSION_SIGN: Optional[str] = None

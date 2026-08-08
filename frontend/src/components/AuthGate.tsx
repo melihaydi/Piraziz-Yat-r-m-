@@ -1,6 +1,8 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { User, Mail, Lock, LogIn, ArrowRight, CheckCircle2, Loader2, ShieldCheck } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -11,7 +13,17 @@ interface AuthGateProps {
   children: React.ReactNode
 }
 
+// Routes that must render even for a logged-out visitor - password reset
+// links and legal pages are handed out (or need to be readable) before
+// anyone has a session.
+const PUBLIC_PATHS = ["/forgot-password", "/reset-password", "/verify-email"]
+const isPublicPath = (path: string | null) =>
+  !!path && (PUBLIC_PATHS.includes(path) || path.startsWith("/legal/"))
+
 export default function AuthGate({ children }: AuthGateProps) {
+  const pathname = usePathname()
+  const publicRoute = isPublicPath(pathname)
+
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
   const [isRegister, setIsRegister] = useState(false)
@@ -30,8 +42,14 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   // Validate any stored token against the backend on load, instead of
   // trusting a "bip_logged_in" flag that (previously) was set once and
-  // never re-checked - a token can be missing/expired/revoked.
+  // never re-checked - a token can be missing/expired/revoked. Skipped
+  // entirely on a public route - no reason to pay for an /auth/me call
+  // just to render a password-reset form.
   useEffect(() => {
+    if (publicRoute) {
+      setCheckingSession(false)
+      return
+    }
     const verifySession = async () => {
       const user = await fetchCurrentUser()
       if (user) {
@@ -44,7 +62,11 @@ export default function AuthGate({ children }: AuthGateProps) {
     const onExpired = () => setIsLoggedIn(false)
     window.addEventListener("bip:session-expired", onExpired)
     return () => window.removeEventListener("bip:session-expired", onExpired)
-  }, [])
+  }, [publicRoute])
+
+  if (publicRoute) {
+    return <>{children}</>
+  }
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -234,10 +256,20 @@ export default function AuthGate({ children }: AuthGateProps) {
                     required
                   />
                 </div>
+                {!isRegister && (
+                  <div className="text-right">
+                    <Link
+                      href="/forgot-password"
+                      className="text-[11px] text-muted-foreground hover:text-purple-400 transition-colors"
+                    >
+                      Şifremi unuttum
+                    </Link>
+                  </div>
+                )}
               </div>
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={loading}
                 className="w-full mt-4 cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-foreground font-black text-sm py-2.5 flex items-center justify-center gap-1.5 border-0 shadow-lg shadow-purple-500/10"
               >

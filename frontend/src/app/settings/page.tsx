@@ -9,7 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { authFetch, fetchCurrentUser, logout } from "@/lib/auth"
+import { authFetch, fetchCurrentUser, logout, resendVerification } from "@/lib/auth"
 import { API_BASE_URL } from "@/lib/config"
 
 function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
@@ -278,6 +278,8 @@ export default function SettingsPage() {
   const [authError, setAuthError] = useState("")
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [totpEnabled, setTotpEnabled] = useState(false)
+  const [isEmailVerified, setIsEmailVerified] = useState(true)
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle")
 
   const refreshProfile = () => {
     fetchCurrentUser().then(user => {
@@ -285,7 +287,14 @@ export default function SettingsPage() {
       if (user.email) setEmail(user.email)
       setUsername(user.full_name?.trim() || user.email?.split("@")[0] || "")
       setTotpEnabled(!!user.totp_enabled)
+      setIsEmailVerified(!!user.is_email_verified)
     })
+  }
+
+  const handleResendVerification = async () => {
+    setResendState("sending")
+    await resendVerification(email)
+    setResendState("sent")
   }
 
   // The display name is real account data (full_name, from the backend) -
@@ -377,6 +386,23 @@ export default function SettingsPage() {
           Kullanıcı profilinizi güncelleyin, hesap bilgilerini yönetin veya destek ekibiyle iletişime geçin.
         </p>
       </div>
+
+      {!isEmailVerified && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-300/90">
+            <Mail className="h-4 w-4 shrink-0" />
+            <span className="text-xs font-semibold">E-posta adresini henüz doğrulamadın.</span>
+          </div>
+          <Button
+            type="button"
+            onClick={handleResendVerification}
+            disabled={resendState !== "idle"}
+            className="cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 text-xs font-bold px-3 py-1.5 h-auto"
+          >
+            {resendState === "sending" ? "Gönderiliyor..." : resendState === "sent" ? "Gönderildi" : "Doğrulama E-postasını Gönder"}
+          </Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         
