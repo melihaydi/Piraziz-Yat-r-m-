@@ -6,7 +6,7 @@ def test_register_user(client):
             "password": "testpassword123",
             "full_name": "Test User",
             "role": "free"
-        }
+        , "terms_accepted": True}
     )
     assert response.status_code == 201
     data = response.json()
@@ -16,16 +16,29 @@ def test_register_user(client):
     assert data["role"] == "free"
     assert "password" not in data  # Ensure password is not exposed
 
+def test_register_without_terms_accepted_is_rejected(client):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "noconsent@example.com", "password": "password123"}
+    )
+    assert response.status_code == 400
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "noconsent@example.com", "password": "password123", "terms_accepted": False}
+    )
+    assert response.status_code == 400
+
 def test_register_duplicate_email(client):
     # First registration
     client.post(
         "/api/v1/auth/register",
-        json={"email": "duplicate@example.com", "password": "password123"}
+        json={"email": "duplicate@example.com", "password": "password123", "terms_accepted": True}
     )
     # Duplicate registration
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": "duplicate@example.com", "password": "password123"}
+        json={"email": "duplicate@example.com", "password": "password123", "terms_accepted": True}
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "The user with this email already exists in the system."
@@ -34,7 +47,7 @@ def test_login_user(client):
     # Register user
     client.post(
         "/api/v1/auth/register",
-        json={"email": "loginuser@example.com", "password": "loginpassword"}
+        json={"email": "loginuser@example.com", "password": "loginpassword", "terms_accepted": True}
     )
     # Login
     response = client.post(
@@ -49,7 +62,7 @@ def test_login_user(client):
 def test_login_user_incorrect_password(client):
     client.post(
         "/api/v1/auth/register",
-        json={"email": "wrongpwd@example.com", "password": "correctpassword"}
+        json={"email": "wrongpwd@example.com", "password": "correctpassword", "terms_accepted": True}
     )
     response = client.post(
         "/api/v1/auth/login",
@@ -61,7 +74,7 @@ def test_login_user_incorrect_password(client):
 def test_read_user_me(client):
     client.post(
         "/api/v1/auth/register",
-        json={"email": "me@example.com", "password": "mypassword"}
+        json={"email": "me@example.com", "password": "mypassword", "terms_accepted": True}
     )
     # Get JWT
     login_response = client.post(

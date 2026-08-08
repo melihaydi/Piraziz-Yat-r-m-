@@ -3,7 +3,7 @@ import pytest
 
 @pytest.fixture(scope="function")
 def auth_headers(client):
-    client.post("/api/v1/auth/register", json={"email": "multiacct@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "multiacct@example.com", "password": "mypassword", "terms_accepted": True})
     login = client.post("/api/v1/auth/login", data={"username": "multiacct@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -11,7 +11,7 @@ def auth_headers(client):
 
 @pytest.fixture(scope="function")
 def other_auth_headers(client):
-    client.post("/api/v1/auth/register", json={"email": "otheruser@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "otheruser@example.com", "password": "mypassword", "terms_accepted": True})
     login = client.post("/api/v1/auth/login", data={"username": "otheruser@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

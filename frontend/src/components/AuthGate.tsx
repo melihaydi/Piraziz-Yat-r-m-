@@ -34,6 +34,7 @@ export default function AuthGate({ children }: AuthGateProps) {
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [termsAccepted, setTermsAccepted] = useState(false)
 
   // 2FA step: set once login() reports requires2FA - the form switches to
   // asking for the authenticator code instead of email/password.
@@ -74,6 +75,10 @@ export default function AuthGate({ children }: AuthGateProps) {
 
     if (!email || !password || (isRegister && !fullName)) {
       setError("Lütfen tüm alanları doldurun.")
+      return
+    }
+    if (isRegister && !termsAccepted) {
+      setError("Devam etmek için Kullanım Koşulları'nı ve KVKK Aydınlatma Metni'ni kabul etmelisiniz.")
       return
     }
 
@@ -267,6 +272,27 @@ export default function AuthGate({ children }: AuthGateProps) {
                   </div>
                 )}
               </div>
+
+              {isRegister && (
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900/60 accent-purple-500 cursor-pointer shrink-0"
+                  />
+                  <span className="text-[11px] text-muted-foreground leading-snug">
+                    <Link href="/legal/terms" className="text-purple-400 hover:text-purple-300 underline">
+                      Kullanım Koşulları
+                    </Link>
+                    'nı ve{" "}
+                    <Link href="/legal/privacy" className="text-purple-400 hover:text-purple-300 underline">
+                      KVKK Aydınlatma Metni
+                    </Link>
+                    'ni okudum, kabul ediyorum.
+                  </span>
+                </label>
+              )}
 
               <Button
                 type="submit"

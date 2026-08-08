@@ -91,7 +91,7 @@ export async function register(email: string, password: string, fullName: string
     const res = await fetchWithRetry(`${API_BASE_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, full_name: fullName }),
+      body: JSON.stringify({ email, password, full_name: fullName, terms_accepted: true }),
     })
     if (!res.ok) {
       return { ok: false, error: await firstErrorDetail(res, "Kayıt oluşturulamadı.") }

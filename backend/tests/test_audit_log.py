@@ -7,7 +7,7 @@ from app.services import trade_service
 
 @pytest.fixture
 def admin_headers(client, db):
-    client.post("/api/v1/auth/register", json={"email": "auditadmin@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "auditadmin@example.com", "password": "mypassword", "terms_accepted": True})
     user = db.query(User).filter(User.email == "auditadmin@example.com").first()
     user.is_superuser = True
     db.commit()
@@ -18,14 +18,14 @@ def admin_headers(client, db):
 
 @pytest.fixture
 def plain_headers(client):
-    client.post("/api/v1/auth/register", json={"email": "auditplain@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "auditplain@example.com", "password": "mypassword", "terms_accepted": True})
     login = client.post("/api/v1/auth/login", data={"username": "auditplain@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
 def test_successful_login_writes_audit_row(client, db):
-    client.post("/api/v1/auth/register", json={"email": "loginaudit@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "loginaudit@example.com", "password": "mypassword", "terms_accepted": True})
     client.post("/api/v1/auth/login", data={"username": "loginaudit@example.com", "password": "mypassword"})
 
     rows = db.query(AuditLog).filter(AuditLog.action == "login_success").all()
@@ -33,7 +33,7 @@ def test_successful_login_writes_audit_row(client, db):
 
 
 def test_failed_login_writes_audit_row_with_no_pnl_leak(client, db):
-    client.post("/api/v1/auth/register", json={"email": "badlogin@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "badlogin@example.com", "password": "mypassword", "terms_accepted": True})
     client.post("/api/v1/auth/login", data={"username": "badlogin@example.com", "password": "wrongpassword"})
 
     rows = db.query(AuditLog).filter(AuditLog.action == "login_failed").all()

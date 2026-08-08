@@ -7,7 +7,7 @@ from app.models.user import User
 def admin_headers(client, db):
     client.post(
         "/api/v1/auth/register",
-        json={"email": "admin@example.com", "password": "mypassword"},
+        json={"email": "admin@example.com", "password": "mypassword", "terms_accepted": True},
     )
     user = db.query(User).filter(User.email == "admin@example.com").first()
     user.is_superuser = True
@@ -25,7 +25,7 @@ def admin_headers(client, db):
 def plain_headers(client):
     client.post(
         "/api/v1/auth/register",
-        json={"email": "plainuser@example.com", "password": "mypassword"},
+        json={"email": "plainuser@example.com", "password": "mypassword", "terms_accepted": True},
     )
     login_response = client.post(
         "/api/v1/auth/login",

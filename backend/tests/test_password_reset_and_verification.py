@@ -6,7 +6,7 @@ from app.models.user import User
 
 
 def _register(client, email="reset@example.com", password="originalpassword"):
-    return client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    return client.post("/api/v1/auth/register", json={"email": email, "password": password, "terms_accepted": True})
 
 
 def test_register_sends_verification_email_and_user_starts_unverified(client, db):

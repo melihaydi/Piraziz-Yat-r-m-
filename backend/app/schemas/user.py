@@ -10,6 +10,10 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    # Must be True - enforced in the /register endpoint, not just here,
+    # since a bare Pydantic default wouldn't reject a request that omits
+    # the field entirely (only one that sends terms_accepted: false).
+    terms_accepted: bool = False
 
 class UserUpdate(UserBase):
     password: Optional[str] = None

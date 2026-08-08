@@ -5,7 +5,7 @@ def auth_headers(client):
     # Register a user
     client.post(
         "/api/v1/auth/register",
-        json={"email": "portuser@example.com", "password": "mypassword"}
+        json={"email": "portuser@example.com", "password": "mypassword", "terms_accepted": True}
     )
     # Login to get token
     login_response = client.post(

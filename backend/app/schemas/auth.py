@@ -16,3 +16,7 @@ class ResendVerificationRequest(BaseModel):
 
 class VerifyEmailRequest(BaseModel):
     token: str
+
+
+class DeleteAccountRequest(BaseModel):
+    password: str

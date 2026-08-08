@@ -5,7 +5,7 @@ import pytest
 
 @pytest.fixture(scope="function")
 def auth_headers(client):
-    client.post("/api/v1/auth/register", json={"email": "alertcheck@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "alertcheck@example.com", "password": "mypassword", "terms_accepted": True})
     login = client.post(
         "/api/v1/auth/login", data={"username": "alertcheck@example.com", "password": "mypassword"}
     )

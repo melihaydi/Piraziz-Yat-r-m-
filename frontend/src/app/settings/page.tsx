@@ -297,6 +297,52 @@ export default function SettingsPage() {
     setResendState("sent")
   }
 
+  const [exportLoading, setExportLoading] = useState(false)
+  const handleExportData = async () => {
+    setExportLoading(true)
+    try {
+      const res = await authFetch("/auth/me/export")
+      if (res.ok) {
+        const data = await res.json()
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `piraziz-yatirim-verilerim-${new Date().toISOString().slice(0, 10)}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deletePassword, setDeletePassword] = useState("")
+  const [deleteError, setDeleteError] = useState("")
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const handleDeleteAccount = async () => {
+    setDeleteError("")
+    setDeleteLoading(true)
+    try {
+      const res = await authFetch("/auth/me/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setDeleteError(err.detail || "Hesap silinemedi.")
+        setDeleteLoading(false)
+        return
+      }
+      logout()
+    } catch {
+      setDeleteError("Sunucuya ulaşılamadı.")
+      setDeleteLoading(false)
+    }
+  }
+
   // The display name is real account data (full_name, from the backend) -
   // NOT a localStorage value, so it's consistent across devices/browsers
   // instead of falling back to "Kullanıcı" on any device that never typed
@@ -370,9 +416,9 @@ export default function SettingsPage() {
     setAuthSubmitting(false)
   }
 
-  const [activeSection, setActiveSection] = useState<"profile" | "security" | "help">("profile")
+  const [activeSection, setActiveSection] = useState<"profile" | "security" | "privacy" | "help">("profile")
 
-  const scrollToSection = (section: "profile" | "security" | "help") => {
+  const scrollToSection = (section: "profile" | "security" | "privacy" | "help") => {
     setActiveSection(section)
     document.getElementById(`section-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
@@ -427,6 +473,15 @@ export default function SettingsPage() {
               >
                 <Shield className="h-4 w-4 mr-3" />
                 Güvenlik & Yetkiler
+              </button>
+              <button
+                onClick={() => scrollToSection("privacy")}
+                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
+                  activeSection === "privacy" ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+                }`}
+              >
+                <Database className="h-4 w-4 mr-3" />
+                Gizlilik ve Veri
               </button>
               <button
                 onClick={() => scrollToSection("help")}
@@ -635,6 +690,88 @@ export default function SettingsPage() {
                     </div>
                   )
                 })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Privacy & Data Rights (KVKK m.11) */}
+          <Card glass={true} id="section-privacy">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center">
+                <Database className="h-4.5 w-4.5 mr-2 text-primary" />
+                Gizlilik ve Veri
+              </CardTitle>
+              <CardDescription>
+                KVKK madde 11 kapsamında verilerinize erişim ve hesabınızı silme haklarınız. Detaylar için{" "}
+                <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  Gizlilik Politikası
+                </a>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4 p-4 bg-secondary/20 rounded-lg border border-border/30">
+                <div>
+                  <p className="text-sm font-bold text-foreground">Verilerimi İndir</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Hesabınıza ait tüm verileri (profil, işlem geçmişi, portföyler, notlar, alarmlar) JSON olarak indirin.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleExportData}
+                  disabled={exportLoading}
+                  className="cursor-pointer bg-secondary/60 hover:bg-secondary text-foreground border border-border/40 text-xs font-bold px-4 py-2 h-auto shrink-0"
+                >
+                  {exportLoading ? "Hazırlanıyor..." : "İndir"}
+                </Button>
+              </div>
+
+              <div className="p-4 bg-rose-500/5 rounded-lg border border-rose-500/20 space-y-3">
+                <div>
+                  <p className="text-sm font-bold text-rose-300">Hesabımı Sil</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Hesabınız devre dışı bırakılır ve kişisel verileriniz (e-posta, isim) anonimleştirilir. Bu işlem geri alınamaz.
+                  </p>
+                </div>
+                {!showDeleteConfirm ? (
+                  <Button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 text-xs font-bold px-4 py-2 h-auto"
+                  >
+                    Hesabımı Sil
+                  </Button>
+                ) : (
+                  <div className="space-y-2.5">
+                    {deleteError && (
+                      <p className="text-[11px] text-rose-400 font-semibold">{deleteError}</p>
+                    )}
+                    <Input
+                      type="password"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="Şifrenizi girerek onaylayın"
+                      className="bg-zinc-900/60 border-zinc-800 max-w-xs"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={handleDeleteAccount}
+                        disabled={deleteLoading || !deletePassword}
+                        className="cursor-pointer bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold px-4 py-2 h-auto"
+                      >
+                        {deleteLoading ? "Siliniyor..." : "Kalıcı Olarak Sil"}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowDeleteConfirm(false); setDeletePassword(""); setDeleteError("") }}
+                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        Vazgeç
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

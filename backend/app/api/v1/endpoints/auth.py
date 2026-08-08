@@ -1,6 +1,6 @@
 import base64
 import io
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt, JWTError
@@ -20,6 +20,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     ResendVerificationRequest,
     VerifyEmailRequest,
+    DeleteAccountRequest,
 )
 from app.schemas.twofa import (
     TwoFactorSetupResponse,
@@ -66,6 +67,12 @@ def _send_verification_email(user: User) -> None:
 @limiter.limit("5/minute")
 def register_user(request: Request, user_in: UserCreate, db: Session = Depends(deps.get_db)):
     """Register a new user."""
+    if not user_in.terms_accepted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kullanım Koşulları ve KVKK Aydınlatma Metni'ni kabul etmeniz gerekiyor.",
+        )
+
     # Check if user already exists
     user = db.query(User).filter(User.email == user_in.email).first()
     if user:
@@ -73,7 +80,7 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(d
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The user with this email already exists in the system.",
         )
-    
+
     # Hash password and create user. `role`/`is_active` are deliberately NOT
     # taken from user_in here even though UserCreate has those fields (they
     # exist for admin update flows) - self-registration must never be able
@@ -86,7 +93,8 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(d
         full_name=user_in.full_name,
         role="free",
         is_active=True,
-        is_superuser=False
+        is_superuser=False,
+        terms_accepted_at=datetime.now(timezone.utc),
     )
     db.add(db_user)
     db.commit()
@@ -202,6 +210,118 @@ def update_user_me(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.get("/me/export")
+def export_my_data(db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_user)):
+    """KVKK madde 11 kapsamındaki 'verilerimi indir' hakkı - kullanıcının
+    kendi hesabına ait tüm verileri (profil + simüle trading hesapları +
+    portföyler + notlar + alarmlar) tek bir JSON olarak döner."""
+    from app.models.trade import TradeAccount
+    from app.models.portfolio import Portfolio
+    from app.models.note import Note
+    from app.models.alert import Alert
+
+    def iso(dt):
+        return dt.isoformat() if dt else None
+
+    trade_accounts = []
+    for acc in db.query(TradeAccount).filter(TradeAccount.user_id == current_user.id).all():
+        trade_accounts.append({
+            "id": acc.id,
+            "name": acc.name,
+            "broker": acc.broker,
+            "starting_balance": acc.starting_balance,
+            "cash_balance": acc.cash_balance,
+            "created_at": iso(acc.created_at),
+            "positions": [
+                {"symbol": p.symbol, "instrument_type": p.instrument_type, "lot": p.lot, "avg_cost": p.avg_cost}
+                for p in acc.positions
+            ],
+            "orders": [
+                {
+                    "symbol": o.symbol, "side": o.side, "lot": o.lot, "price": o.price,
+                    "commission": o.commission, "total": o.total, "realized_pnl": o.realized_pnl,
+                    "executed_at": iso(o.executed_at),
+                }
+                for o in acc.orders
+            ],
+        })
+
+    portfolios = []
+    for p in db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all():
+        portfolios.append({
+            "id": p.id,
+            "name": p.name,
+            "created_at": iso(p.created_at),
+            "assets": [
+                {"ticker": a.ticker, "shares": a.shares, "average_cost": a.average_cost}
+                for a in p.assets
+            ],
+        })
+
+    notes = [
+        {
+            "title": n.title, "content": n.content, "ticker": n.ticker,
+            "category": n.category, "created_at": iso(n.created_at),
+        }
+        for n in db.query(Note).filter(Note.user_id == current_user.id).all()
+    ]
+
+    alerts = [
+        {
+            "ticker": a.ticker, "alert_type": a.alert_type, "trigger_condition": a.trigger_condition,
+            "is_active": a.is_active, "created_at": iso(a.created_at),
+        }
+        for a in db.query(Alert).filter(Alert.user_id == current_user.id).all()
+    ]
+
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "profile": {
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "role": current_user.role,
+            "is_email_verified": current_user.is_email_verified,
+            "totp_enabled": current_user.totp_enabled,
+            "created_at": iso(current_user.created_at),
+            "terms_accepted_at": iso(current_user.terms_accepted_at),
+        },
+        "trade_accounts": trade_accounts,
+        "portfolios": portfolios,
+        "notes": notes,
+        "alerts": alerts,
+    }
+
+
+@router.post("/me/delete")
+def delete_my_account(
+    request: Request,
+    body: DeleteAccountRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """KVKK madde 11 kapsamındaki 'hesabımı sil' hakkı. Şifre tekrar
+    istenerek (çalıntı bir oturum token'ının tek başına yeterli olmaması
+    için, 2FA disable ile aynı desen) doğrulanır. Gerçek bir hard-delete
+    yerine soft-delete + anonimleştirme yapılır - is_active=False zaten
+    /auth/login ve get_current_user'da hesabı tamamen kullanılamaz hale
+    getiriyor, ilişkili trade/portföy/not/alarm kayıtları veritabanında
+    kalır (finansal/denetim izi için) ama artık kimseyle ilişkilendirilebilir
+    kişisel veri (e-posta, isim) içermez."""
+    if not security.verify_password(body.password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Şifre hatalı.")
+
+    user_id = current_user.id
+    current_user.is_active = False
+    current_user.email = f"deleted-user-{user_id}@piraziz.local"
+    current_user.full_name = None
+    current_user.totp_secret = None
+    current_user.totp_enabled = False
+    db.commit()
+
+    log_audit(db, "account_deleted", request=request, user_id=user_id)
+    return {"detail": "Hesabınız silindi."}
 
 
 @router.post("/2fa/setup", response_model=TwoFactorSetupResponse)

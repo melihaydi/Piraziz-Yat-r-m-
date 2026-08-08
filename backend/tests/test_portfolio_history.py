@@ -9,7 +9,7 @@ from app.models.portfolio import PortfolioSnapshot
 def auth_headers(client):
     client.post(
         "/api/v1/auth/register",
-        json={"email": "historyuser@example.com", "password": "mypassword"}
+        json={"email": "historyuser@example.com", "password": "mypassword", "terms_accepted": True}
     )
     login_response = client.post(
         "/api/v1/auth/login",

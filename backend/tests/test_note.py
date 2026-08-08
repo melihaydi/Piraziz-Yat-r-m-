@@ -5,7 +5,7 @@ import pytest
 def auth_headers(client):
     client.post(
         "/api/v1/auth/register",
-        json={"email": "notesuser@example.com", "password": "mypassword"},
+        json={"email": "notesuser@example.com", "password": "mypassword", "terms_accepted": True},
     )
     login_response = client.post(
         "/api/v1/auth/login",
@@ -34,7 +34,7 @@ def test_create_and_list_note(client, auth_headers):
 def test_note_isolated_per_user(client, auth_headers):
     client.post("/api/v1/notes/", json={"title": "Not 1"}, headers=auth_headers)
 
-    client.post("/api/v1/auth/register", json={"email": "other@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "other@example.com", "password": "mypassword", "terms_accepted": True})
     other_login = client.post("/api/v1/auth/login", data={"username": "other@example.com", "password": "mypassword"})
     other_headers = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
 
@@ -58,7 +58,7 @@ def test_update_note(client, auth_headers):
 def test_cannot_update_another_users_note(client, auth_headers):
     created = client.post("/api/v1/notes/", json={"title": "Gizli not"}, headers=auth_headers).json()
 
-    client.post("/api/v1/auth/register", json={"email": "intruder@example.com", "password": "mypassword"})
+    client.post("/api/v1/auth/register", json={"email": "intruder@example.com", "password": "mypassword", "terms_accepted": True})
     intruder_login = client.post("/api/v1/auth/login", data={"username": "intruder@example.com", "password": "mypassword"})
     intruder_headers = {"Authorization": f"Bearer {intruder_login.json()['access_token']}"}
 

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import Sidebar from "@/components/Sidebar"
 import Header from "@/components/Header"
+import Footer from "@/components/Footer"
 
 interface AppChromeProps {
   children: React.ReactNode
@@ -90,6 +91,7 @@ export default function AppChrome({ children }: AppChromeProps) {
         <Header onMenuClick={() => setMobileMenuOpen(true)} />
         <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8">
           {children}
+          <Footer />
         </main>
       </div>
     </>
