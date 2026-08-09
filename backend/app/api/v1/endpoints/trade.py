@@ -1,5 +1,7 @@
+from datetime import date
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -322,3 +324,25 @@ def get_tax_report(
     frontend should present as editable, not fixed."""
     account = _require_account(db, current_user, account_id)
     return trade_service.get_tax_report(db, account, stock_stopaj_pct, viop_stopaj_pct)
+
+
+@router.get("/statement")
+def get_statement(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    account_id: Optional[int] = None,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Downloadable PDF account statement for the given period (defaults to
+    all-time) - see statement_service for what it contains."""
+    from app.services.statement_service import generate_account_statement_pdf
+
+    account = _require_account(db, current_user, account_id)
+    pdf_bytes = generate_account_statement_pdf(db, account, from_date, to_date)
+    filename = f"piraziz-yatirim-ekstre-{account.id}-{date.today().isoformat()}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

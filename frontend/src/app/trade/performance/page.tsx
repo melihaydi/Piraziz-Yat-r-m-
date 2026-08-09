@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, FileDown } from "lucide-react"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { authFetch } from "@/lib/auth"
 import { useTrade } from "@/contexts/TradeContext"
@@ -56,6 +56,24 @@ export default function TradePerformancePage() {
   const [taxLoading, setTaxLoading] = useState(true)
   const [stockStopajPct, setStockStopajPct] = useState("0")
   const [viopStopajPct, setViopStopajPct] = useState("10")
+  const [statementLoading, setStatementLoading] = useState(false)
+
+  const handleDownloadStatement = async () => {
+    setStatementLoading(true)
+    try {
+      const res = await authFetch(`/trade/statement?account_id=${activeAccountId}`)
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `piraziz-yatirim-ekstre-${new Date().toISOString().slice(0, 10)}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setStatementLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!account) return
@@ -105,11 +123,21 @@ export default function TradePerformancePage() {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center gap-3">
-        <Link href="/trade" className="text-slate-500 hover:text-white transition-colors">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="text-xl font-black tracking-tight text-white">Performans</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link href="/trade" className="text-slate-500 hover:text-white transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h1 className="text-xl font-black tracking-tight text-white">Performans</h1>
+        </div>
+        <button
+          onClick={handleDownloadStatement}
+          disabled={statementLoading}
+          className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-md border border-slate-700 bg-[#16171E] text-slate-300 hover:text-white hover:border-slate-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {statementLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+          PDF Ekstre İndir
+        </button>
       </div>
 
       <div className="bg-[#16171E] border border-slate-800 rounded-xl p-4">
