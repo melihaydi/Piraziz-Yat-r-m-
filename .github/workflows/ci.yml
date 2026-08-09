@@ -132,6 +132,78 @@ jobs:
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
+      # Only on a manual "Run workflow" click, not every push - previously
+      # the APK only ever lived as a 14-day GitHub Actions artifact, so the
+      # Settings page's download link had nothing durable to point at.
+      # Ships to the same server /downloads directory the desktop exe
+      # already uses (see build-desktop below), reusing the DEPLOY_SSH_KEY
+      # secret already scoped for exactly this kind of file drop.
+      - name: Publish APK to download server
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SERVER_HOST: 92.5.160.231
+          SERVER_USER: ubuntu
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            frontend/android/app/build/outputs/apk/debug/app-debug.apk \
+            "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/downloads/PirazizYatirim.apk"
+
+  build-desktop:
+    # Builds and publishes the Electron desktop installer - previously this
+    # was 100% manual (build locally with `npm run dist`, scp the result up
+    # by hand), the source of the 22 numbered dist*/ folders that piled up
+    # in frontend/ from repeated local builds. windows-latest specifically
+    # (not the Linux runners used elsewhere in this file) because
+    # electron-builder's --windows target needs a real Windows toolchain
+    # (signtool.exe etc.) - cross-building for Windows from Linux would need
+    # Wine and loses the code-signing step this app's package.json config
+    # already relies on.
+    runs-on: windows-latest
+    needs: [backend-tests, frontend-build, docker-build-verification]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build Electron installer
+        run: |
+          cd frontend
+          npm run dist
+
+      - name: Publish installer to download server
+        shell: bash
+        env:
+          SERVER_HOST: 92.5.160.231
+          SERVER_USER: ubuntu
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Globbed rather than hardcoding the version number in the
+          # filename (electron-builder names it "<productName> Setup
+          # <version>.exe") - this must keep working as package.json's
+          # version bumps over time without editing this workflow.
+          installer=$(ls frontend/dist/*.exe | head -n 1)
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            "$installer" \
+            "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/downloads/PirazizYatirim-Setup.exe"
+
   docker-build-verification:
     runs-on: ubuntu-latest
     steps:

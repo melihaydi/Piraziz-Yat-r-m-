@@ -722,17 +722,24 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center">
                 <Monitor className="h-4.5 w-4.5 mr-2 text-cyan-400" />
-                Masaüstü Uygulaması
+                Masaüstü ve Mobil Uygulamalar
               </CardTitle>
-              <CardDescription>Windows için Piraziz Yatırım masaüstü uygulamasını indirin.</CardDescription>
+              <CardDescription>Windows masaüstü uygulamasını veya Android APK'sını indirin.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-2">
               <a
                 href={`${API_BASE_URL}/download/PirazizYatirim-Setup.exe`}
                 className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-cyan-300 border border-cyan-500/25 bg-cyan-500/5 hover:bg-cyan-500/15 transition-colors cursor-pointer"
               >
                 <Download className="h-4 w-4" />
                 İndir (.exe, Windows)
+              </a>
+              <a
+                href={`${API_BASE_URL}/download/PirazizYatirim.apk`}
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-emerald-300 border border-emerald-500/25 bg-emerald-500/5 hover:bg-emerald-500/15 transition-colors cursor-pointer"
+              >
+                <Smartphone className="h-4 w-4" />
+                İndir (.apk, Android)
               </a>
             </CardContent>
           </Card>
