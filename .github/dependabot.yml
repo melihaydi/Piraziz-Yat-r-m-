@@ -1,0 +1,65 @@
+version: 2
+
+# Weekly dependency PRs. Before this existed there was no signal at all when
+# a security patch shipped for anything this app depends on - the versions
+# only ever moved when someone happened to reinstall.
+#
+# Grouped deliberately: a wall of one-PR-per-package is what makes teams
+# start ignoring Dependabot. Security updates are kept ungrouped so they
+# stand out and can be merged on their own.
+updates:
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "backend"]
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "frontend"]
+    ignore:
+      # Next.js/React majors are migrations, not dependency bumps - this
+      # project already pins an intentionally recent Next (see
+      # frontend/AGENTS.md) and moving those needs a deliberate pass over
+      # the App Router APIs, not an auto-merged PR.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      # electron-builder output is what ships to users as a signed
+      # installer; major bumps there change packaging behaviour.
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
+
+  # The workflow itself pins actions by major tag (checkout@v4 etc.) - this
+  # keeps those current too, which is where the "Node 20 is deprecated"
+  # warnings on every CI run are coming from.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "ci"]
+
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "docker"]

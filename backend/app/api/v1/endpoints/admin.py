@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.core.audit import log_audit
+from app.core.limiter import limiter
 from app.core.email import send_email
 from app.models.audit_log import AuditLog
 from app.models.support_ticket import SupportTicket
@@ -17,7 +18,9 @@ VALID_ROLES = {"free", "starter", "pro", "premium", "institutional"}
 
 
 @router.get("/users", response_model=List[UserOut])
+@limiter.limit("60/minute")
 def list_users(
+    request: Request,
     db: Session = Depends(deps.get_db),
     _admin: User = Depends(deps.get_current_active_superuser),
 ):
@@ -26,10 +29,11 @@ def list_users(
 
 
 @router.put("/users/{user_id}/role", response_model=UserOut)
+@limiter.limit("30/minute")
 def update_user_role(
+    request: Request,
     user_id: int,
     role: str,
-    request: Request,
     db: Session = Depends(deps.get_db),
     _admin: User = Depends(deps.get_current_active_superuser),
 ):
@@ -56,7 +60,9 @@ def update_user_role(
 
 
 @router.put("/users/{user_id}/active", response_model=UserOut)
+@limiter.limit("30/minute")
 def set_user_active(
+    request: Request,
     user_id: int,
     is_active: bool,
     db: Session = Depends(deps.get_db),
@@ -76,8 +82,40 @@ def set_user_active(
     return target
 
 
+@router.post("/users/{user_id}/reset-2fa", response_model=UserOut)
+@limiter.limit("10/minute")
+def reset_user_2fa(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Last-resort account recovery: switches 2FA off for a user who has
+    lost both their authenticator device and their recovery codes -
+    superuser only, and audit-logged, because this deliberately strips a
+    security control off someone else's account. The user can (and should)
+    re-enable 2FA from Settings afterwards. Verify the requester's identity
+    out-of-band before using this."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+    if not target.totp_enabled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bu hesapta 2FA zaten kapalı.")
+
+    target.totp_enabled = False
+    target.totp_secret = None
+    target.totp_recovery_codes = None
+    db.commit()
+    db.refresh(target)
+    log_audit(db, "admin_2fa_reset", request=request, user_id=_admin.id, resource_type="user",
+              resource_id=target.id, details={"target_email": target.email})
+    return target
+
+
 @router.get("/audit-log")
+@limiter.limit("60/minute")
 def get_audit_log(
+    request: Request,
     limit: int = 100,
     action: Optional[str] = None,
     db: Session = Depends(deps.get_db),
@@ -105,7 +143,9 @@ def get_audit_log(
 
 
 @router.get("/support/tickets", response_model=List[SupportTicketAdminResponse])
+@limiter.limit("60/minute")
 def list_support_tickets(
+    request: Request,
     status_filter: Optional[str] = None,
     db: Session = Depends(deps.get_db),
     _admin: User = Depends(deps.get_current_active_superuser),
@@ -127,7 +167,9 @@ def list_support_tickets(
 
 
 @router.put("/support/tickets/{ticket_id}", response_model=SupportTicketAdminResponse)
+@limiter.limit("30/minute")
 def update_support_ticket(
+    request: Request,
     ticket_id: int,
     body: SupportTicketUpdate,
     db: Session = Depends(deps.get_db),

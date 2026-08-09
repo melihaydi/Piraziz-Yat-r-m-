@@ -1,8 +1,15 @@
 import bcrypt
+import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any, Union
+from typing import Any, List, Tuple, Union
 from jose import jwt
 from app.core.config import settings
+
+# How many single-use 2FA recovery codes are handed out when 2FA is enabled.
+RECOVERY_CODE_COUNT = 10
+# Unambiguous alphabet - no 0/O or 1/I/L, since these get written down on
+# paper and typed back in by hand, often months later.
+_RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 def get_password_hash(password: str) -> str:
     """Hash password using bcrypt."""
@@ -36,3 +43,38 @@ def create_access_token(subject: Union[str, Any], expires_delta: timedelta = Non
     to_encode = {"exp": expire, "sub": str(subject), "scope": scope}
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
+
+
+def _normalize_recovery_code(code: str) -> str:
+    """Strips formatting so a code is accepted however the user types it
+    back - with or without the display hyphen, any case, stray spaces."""
+    return code.strip().upper().replace("-", "").replace(" ", "")
+
+
+def generate_recovery_codes() -> Tuple[List[str], List[str]]:
+    """Returns (plaintext_codes, hashed_codes). The plaintext half is shown
+    to the user exactly once at generation time and never stored; only the
+    hashes are persisted (User.totp_recovery_codes)."""
+    plaintext = []
+    hashed = []
+    for _ in range(RECOVERY_CODE_COUNT):
+        raw = "".join(secrets.choice(_RECOVERY_ALPHABET) for _ in range(10))
+        # Displayed hyphenated (ABCDE-FGHIJ) purely for readability; the
+        # hyphen is stripped before hashing and before any comparison.
+        plaintext.append(f"{raw[:5]}-{raw[5:]}")
+        hashed.append(get_password_hash(raw))
+    return plaintext, hashed
+
+
+def consume_recovery_code(code: str, hashed_codes: List[str]) -> Union[List[str], None]:
+    """Checks `code` against the stored hashes. On a match, returns the
+    remaining hashes with the used one removed (recovery codes are
+    single-use); returns None if nothing matched, so callers can tell
+    "wrong code" from "correct, here's the new list"."""
+    if not hashed_codes:
+        return None
+    candidate = _normalize_recovery_code(code)
+    for stored in hashed_codes:
+        if verify_password(candidate, stored):
+            return [h for h in hashed_codes if h != stored]
+    return None

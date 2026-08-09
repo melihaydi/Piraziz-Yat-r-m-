@@ -1,9 +1,10 @@
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.core.limiter import limiter
 from app.models.user import User
 from app.models.alert import Alert
 from app.schemas.alert import AlertCreate, AlertResponse
@@ -11,7 +12,9 @@ from app.schemas.alert import AlertCreate, AlertResponse
 router = APIRouter()
 
 @router.get("/", response_model=List[AlertResponse])
+@limiter.limit("60/minute")
 def get_user_alerts(
+    request: Request,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -19,7 +22,9 @@ def get_user_alerts(
     return db.query(Alert).filter(Alert.user_id == current_user.id).all()
 
 @router.post("/", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_alert(
+    request: Request,
     alert_in: AlertCreate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -39,7 +44,9 @@ def create_alert(
     return db_alert
 
 @router.post("/{id}/toggle", response_model=AlertResponse)
+@limiter.limit("60/minute")
 def toggle_alert_status(
+    request: Request,
     id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -55,7 +62,9 @@ def toggle_alert_status(
     return db_alert
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_alert(
+    request: Request,
     id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -70,7 +79,9 @@ def delete_alert(
     return None
 
 @router.post("/check", response_model=List[AlertResponse])
+@limiter.limit("30/minute")
 def check_and_trigger_alerts(
+    request: Request,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):

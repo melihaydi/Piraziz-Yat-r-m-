@@ -1,9 +1,10 @@
 from dataclasses import asdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api import deps
+from app.core.limiter import limiter
 from app.models.user import User
 from app.services.strategy_engine import strategy_engine, backtest_engine
 from app.services.market_data import market_data_service
@@ -40,7 +41,9 @@ def _enrich_with_live_pnl(signal_dict: dict) -> dict:
 
 
 @router.get("/scan")
+@limiter.limit("30/minute")
 def scan_bist30(
+    request: Request,
     current_user: User = Depends(deps.get_current_user),
 ):
     """Frantic Algoritmik Strateji's live BIST30 scanner - serves the
@@ -56,7 +59,9 @@ def scan_bist30(
 
 
 @router.get("/history")
+@limiter.limit("60/minute")
 def signal_history(
+    request: Request,
     current_user: User = Depends(deps.get_current_user),
 ):
     """Intraday log of LONG/SHORT calls the scanner has made today - each
@@ -75,7 +80,9 @@ def signal_history(
 
 
 @router.get("/scan/{ticker}")
+@limiter.limit("30/minute")
 def scan_one(
+    request: Request,
     ticker: str,
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -87,7 +94,9 @@ def scan_one(
 
 
 @router.get("/backtest")
+@limiter.limit("10/minute")
 def backtest_bist30(
+    request: Request,
     current_user: User = Depends(deps.get_current_user),
 ):
     """Walk-forward backtest of the same signal logic over ~2 years of
@@ -105,7 +114,9 @@ def backtest_bist30(
 
 
 @router.get("/backtest/{ticker}")
+@limiter.limit("10/minute")
 def backtest_one(
+    request: Request,
     ticker: str,
     current_user: User = Depends(deps.get_current_user),
 ):

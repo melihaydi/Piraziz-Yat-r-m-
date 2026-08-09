@@ -1,9 +1,10 @@
 from typing import List
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.core.email import send_email
+from app.core.limiter import limiter
 from app.models.support_ticket import SupportTicket
 from app.models.user import User
 from app.schemas.support import SupportTicketCreate, SupportTicketResponse
@@ -16,7 +17,9 @@ _SUPPORT_INBOX = "melihaydi@gmail.com"
 
 
 @router.get("/tickets", response_model=List[SupportTicketResponse])
+@limiter.limit("60/minute")
 def list_my_tickets(
+    request: Request,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -29,8 +32,14 @@ def list_my_tickets(
     )
 
 
+# Tight on purpose: every ticket fires an email to the support inbox, so an
+# unlimited endpoint is a direct way to flood that mailbox (and get the
+# sending account flagged for spam). 5/min is far above what a real person
+# filing a support request needs.
 @router.post("/tickets", response_model=SupportTicketResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 def create_ticket(
+    request: Request,
     body: SupportTicketCreate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),

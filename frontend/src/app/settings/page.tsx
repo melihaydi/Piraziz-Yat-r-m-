@@ -14,12 +14,29 @@ import { isPushSupported, getPushSubscriptionStatus, subscribeToPush, unsubscrib
 import { API_BASE_URL } from "@/lib/config"
 
 function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
-  const [step, setStep] = useState<"idle" | "setup" | "disable">("idle")
+  const [step, setStep] = useState<"idle" | "setup" | "disable" | "codes" | "regenerate">("idle")
   const [qrCode, setQrCode] = useState("")
   const [secret, setSecret] = useState("")
   const [code, setCode] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  // Shown exactly once, right after 2FA is enabled or codes are
+  // regenerated - the backend only stores hashes, so there is no way to
+  // retrieve these again later.
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+
+  const downloadCodes = () => {
+    const body =
+      "Piraziz Yatırım - 2FA Kurtarma Kodları\n" +
+      "Her kod yalnızca bir kez kullanılabilir. Güvenli bir yerde saklayın.\n\n" +
+      recoveryCodes.join("\n") + "\n"
+    const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "piraziz-yatirim-kurtarma-kodlari.txt"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const startSetup = async () => {
     setError("")
@@ -58,9 +75,37 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
         setLoading(false)
         return
       }
-      setStep("idle")
+      const data = await res.json()
+      setRecoveryCodes(data.recovery_codes || [])
+      setStep("codes")
       setCode("")
       onChanged()
+    } catch {
+      setError("Sunucuya ulaşılamadı.")
+    }
+    setLoading(false)
+  }
+
+  const regenerateCodes = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const res = await authFetch("/auth/2fa/recovery-codes/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.detail || "Kod hatalı.")
+        setLoading(false)
+        return
+      }
+      const data = await res.json()
+      setRecoveryCodes(data.recovery_codes || [])
+      setStep("codes")
+      setCode("")
     } catch {
       setError("Sunucuya ulaşılamadı.")
     }
@@ -124,14 +169,80 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
         )}
 
         {step === "idle" && totpEnabled && (
-          <Button
-            onClick={() => setStep("disable")}
-            variant="destructive"
-            className="cursor-pointer font-bold text-xs h-10"
-          >
-            <XCircle className="h-4 w-4 mr-1.5" />
-            2FA'yı Devre Dışı Bırak
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => setStep("disable")}
+              variant="destructive"
+              className="cursor-pointer font-bold text-xs h-10"
+            >
+              <XCircle className="h-4 w-4 mr-1.5" />
+              2FA'yı Devre Dışı Bırak
+            </Button>
+            <Button
+              onClick={() => { setStep("regenerate"); setError("") }}
+              variant="outline"
+              className="cursor-pointer font-bold text-xs h-10"
+            >
+              <KeyRound className="h-4 w-4 mr-1.5" />
+              Kurtarma Kodlarını Yenile
+            </Button>
+          </div>
+        )}
+
+        {step === "codes" && (
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg border border-amber-500/25 bg-amber-500/5 text-[11px] text-amber-300/90 leading-relaxed">
+              <strong>Bu kodları şimdi kaydedin.</strong> Bir daha gösterilmeyecek. Telefonunuzu
+              kaybederseniz hesabınıza girmenin tek yolu bunlar. Her kod yalnızca bir kez kullanılabilir.
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3 bg-secondary/20 rounded-lg border border-border/30">
+              {recoveryCodes.map((c) => (
+                <code key={c} className="text-xs font-mono text-foreground text-center py-1">{c}</code>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={downloadCodes} className="cursor-pointer font-bold text-xs h-10">
+                <Download className="h-4 w-4 mr-1.5" />
+                Kodları İndir (.txt)
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => { setStep("idle"); setRecoveryCodes([]) }}
+                className="cursor-pointer font-bold text-xs h-10"
+              >
+                Kaydettim, kapat
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "regenerate" && (
+          <form onSubmit={regenerateCodes} className="space-y-4">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Yeni kodlar üretildiğinde eski kodlarınızın tamamı geçersiz olur. Onaylamak için
+              authenticator uygulamanızdaki güncel kodu girin.
+            </p>
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              inputMode="numeric"
+              className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono"
+            />
+            <div className="flex gap-2">
+              <Button type="submit" disabled={loading || code.length < 6} className="flex-1 cursor-pointer font-bold text-xs h-10">
+                {loading ? "Üretiliyor..." : "Yeni Kodlar Üret"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setStep("idle"); setCode(""); setError("") }}
+                className="cursor-pointer font-bold text-xs h-10"
+              >
+                Vazgeç
+              </Button>
+            </div>
+          </form>
         )}
 
         {step === "setup" && (

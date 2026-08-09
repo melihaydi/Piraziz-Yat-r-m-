@@ -1,9 +1,10 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.core.limiter import limiter
 from app.models.user import User
 from app.models.note import Note
 from app.schemas.note import NoteCreate, NoteUpdate, NoteResponse
@@ -11,7 +12,9 @@ from app.schemas.note import NoteCreate, NoteUpdate, NoteResponse
 router = APIRouter()
 
 @router.get("/", response_model=List[NoteResponse])
+@limiter.limit("60/minute")
 def get_user_notes(
+    request: Request,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -24,7 +27,9 @@ def get_user_notes(
     )
 
 @router.post("/", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_note(
+    request: Request,
     note_in: NoteCreate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -43,7 +48,9 @@ def create_note(
     return db_note
 
 @router.put("/{id}", response_model=NoteResponse)
+@limiter.limit("30/minute")
 def update_note(
+    request: Request,
     id: int,
     note_in: NoteUpdate,
     db: Session = Depends(deps.get_db),
@@ -64,7 +71,9 @@ def update_note(
     return db_note
 
 @router.post("/{id}/pin", response_model=NoteResponse)
+@limiter.limit("60/minute")
 def toggle_note_pin(
+    request: Request,
     id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -79,7 +88,9 @@ def toggle_note_pin(
     return db_note
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_note(
+    request: Request,
     id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)

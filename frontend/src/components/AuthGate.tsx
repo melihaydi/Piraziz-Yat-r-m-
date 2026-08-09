@@ -40,6 +40,10 @@ export default function AuthGate({ children }: AuthGateProps) {
   // asking for the authenticator code instead of email/password.
   const [pendingTempToken, setPendingTempToken] = useState<string | null>(null)
   const [twoFACode, setTwoFACode] = useState("")
+  // Switches the second-step input between a 6-digit TOTP and an
+  // alphanumeric recovery code. The backend accepts either at the same
+  // endpoint, so this only changes input handling/wording.
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false)
 
   // Validate any stored token against the backend on load, instead of
   // trusting a "bip_logged_in" flag that (previously) was set once and
@@ -106,7 +110,7 @@ export default function AuthGate({ children }: AuthGateProps) {
     e.preventDefault()
     setError("")
     if (!pendingTempToken || twoFACode.length < 6) {
-      setError("Lütfen 6 haneli kodu girin.")
+      setError(useRecoveryCode ? "Lütfen kurtarma kodunu girin." : "Lütfen 6 haneli kodu girin.")
       return
     }
     setLoading(true)
@@ -150,7 +154,9 @@ export default function AuthGate({ children }: AuthGateProps) {
                 İki Adımlı Doğrulama
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground mt-1">
-                Authenticator uygulamanızdaki 6 haneli kodu girin
+                {useRecoveryCode
+                  ? "Kaydettiğiniz kurtarma kodlarından birini girin"
+                  : "Authenticator uygulamanızdaki 6 haneli kodu girin"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -160,13 +166,24 @@ export default function AuthGate({ children }: AuthGateProps) {
                 </div>
               )}
               <form onSubmit={handleVerify2FA} className="space-y-3.5">
+                {/* Recovery codes contain letters, so the digits-only
+                    filter used for TOTP would make them impossible to type -
+                    the input has to change shape with the mode. */}
                 <Input
                   value={twoFACode}
-                  onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="000000"
-                  inputMode="numeric"
+                  onChange={(e) =>
+                    setTwoFACode(
+                      useRecoveryCode
+                        ? e.target.value.toUpperCase().slice(0, 11)
+                        : e.target.value.replace(/\D/g, "").slice(0, 6)
+                    )
+                  }
+                  placeholder={useRecoveryCode ? "ABCDE-FGHIJ" : "000000"}
+                  inputMode={useRecoveryCode ? "text" : "numeric"}
                   autoFocus
-                  className="text-center text-2xl tracking-[0.5em] font-mono bg-zinc-900/60 border-zinc-800"
+                  className={`text-center font-mono bg-zinc-900/60 border-zinc-800 ${
+                    useRecoveryCode ? "text-lg tracking-[0.15em]" : "text-2xl tracking-[0.5em]"
+                  }`}
                 />
                 <Button
                   type="submit"
@@ -176,6 +193,15 @@ export default function AuthGate({ children }: AuthGateProps) {
                   {loading ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : "Doğrula ve Giriş Yap"}
                 </Button>
               </form>
+
+              <button
+                onClick={() => { setUseRecoveryCode(v => !v); setTwoFACode(""); setError("") }}
+                className="w-full text-center text-[11px] text-purple-400 hover:text-purple-300 transition-colors cursor-pointer"
+              >
+                {useRecoveryCode
+                  ? "Authenticator kodu ile gir"
+                  : "Telefonuma erişemiyorum, kurtarma kodu kullan"}
+              </button>
               <button
                 onClick={() => { setPendingTempToken(null); setTwoFACode(""); setError("") }}
                 className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"

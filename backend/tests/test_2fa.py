@@ -42,7 +42,14 @@ def test_setup_then_verify_enables_2fa(client, auth_headers):
         "/api/v1/auth/2fa/verify", json={"code": code}, headers=auth_headers
     )
     assert verify_response.status_code == 200
-    assert verify_response.json()["totp_enabled"] is True
+    # Enabling 2FA hands back the one-time recovery codes (and nothing else -
+    # they're only ever visible in this response).
+    codes = verify_response.json()["recovery_codes"]
+    assert len(codes) == 10
+    assert all("-" in c for c in codes)
+
+    me_after = client.get("/api/v1/auth/me", headers=auth_headers).json()
+    assert me_after["totp_enabled"] is True
 
 
 def test_verify_rejects_wrong_code(client, auth_headers):

@@ -1,10 +1,18 @@
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel
 
 
 class TwoFactorSetupResponse(BaseModel):
     secret: str
     qr_code_base64: str  # data URI - <img src="{qr_code_base64}"> renders it directly
+
+
+class TwoFactorVerifyResponse(BaseModel):
+    """Returned once, when 2FA is first switched on. `recovery_codes` is the
+    only time the plaintext codes ever exist outside the user's hands - the
+    backend keeps hashes only (see security.generate_recovery_codes), so
+    they cannot be shown again later, only regenerated."""
+    recovery_codes: List[str]
 
 
 class TwoFactorCodeRequest(BaseModel):

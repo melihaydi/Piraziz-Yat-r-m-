@@ -122,6 +122,30 @@ export default function AdminPage() {
     }
   }
 
+  const reset2FA = async (id: number, email: string) => {
+    if (!window.confirm(
+      `${email} hesabının 2FA'sı kapatılacak.\n\nBunu yalnızca kullanıcının kimliğini başka bir yoldan ` +
+      `doğruladıysanız yapın - bu işlem hesabın ikinci güvenlik katmanını kaldırır ve denetim kaydına işlenir.`
+    )) return
+
+    setBusyId(id)
+    setActionError(null)
+    try {
+      const res = await authFetch(`/admin/users/${id}/reset-2fa`, { method: "POST" })
+      if (res.ok) {
+        const updated = await res.json()
+        setUsers(prev => prev.map(u => (u.id === id ? updated : u)))
+      } else {
+        const body = await res.json().catch(() => null)
+        setActionError(body?.detail || "2FA sıfırlanamadı.")
+      }
+    } catch (e) {
+      setActionError("Sunucuya ulaşılamadı.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const toggleActive = async (id: number, nextActive: boolean) => {
     setBusyId(id)
     setActionError(null)
@@ -234,9 +258,21 @@ export default function AdminPage() {
                       </button>
                     </td>
                     <td className="px-3 md:px-6 text-center">
-                      <span className={`text-[10px] font-bold ${u.totp_enabled ? "text-emerald-400" : "text-muted-foreground"}`}>
-                        {u.totp_enabled ? "Açık" : "Kapalı"}
-                      </span>
+                      {u.totp_enabled ? (
+                        // Only offered when 2FA is actually on - this is the
+                        // recovery path for a user who lost both their
+                        // authenticator device and their recovery codes.
+                        <button
+                          onClick={() => reset2FA(u.id, u.email)}
+                          disabled={busyId === u.id}
+                          title="Kullanıcının 2FA'sını sıfırla (hesap kurtarma)"
+                          className="text-[10px] font-bold px-2 py-1 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/25 cursor-pointer disabled:opacity-50 transition-colors"
+                        >
+                          Açık — Sıfırla
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-bold text-muted-foreground">Kapalı</span>
+                      )}
                     </td>
                     <td className="px-3 md:px-6 text-muted-foreground text-xs font-mono">
                       {new Date(u.created_at).toLocaleDateString("tr-TR")}

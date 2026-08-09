@@ -33,6 +33,12 @@ htmlcov/
 node_modules/
 .next/
 out/
+# electron-builder output. `dist/` above only matches that exact name -
+# repeated local builds used to be kept side by side as dist2/, dist3/ ...
+# dist22/ (~16GB of dead build output that showed up as untracked noise in
+# every `git status`). The exe is built and published by CI now (see the
+# build-desktop job), so no local copy needs keeping at all.
+dist*/
 next-env.d.ts
 .npm
 .yarn

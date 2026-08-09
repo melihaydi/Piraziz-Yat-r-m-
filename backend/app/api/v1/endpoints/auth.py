@@ -24,6 +24,7 @@ from app.schemas.auth import (
 )
 from app.schemas.twofa import (
     TwoFactorSetupResponse,
+    TwoFactorVerifyResponse,
     TwoFactorCodeRequest,
     TwoFactorLoginRequest,
     LoginResponse,
@@ -148,8 +149,12 @@ def login_access_token(
 @limiter.limit("5/minute")
 def login_verify_2fa(request: Request, body: TwoFactorLoginRequest, db: Session = Depends(deps.get_db)):
     """Second step of a 2FA login: exchanges a temp_token (from POST
-    /auth/login) plus the current 6-digit authenticator code for a real
-    access token."""
+    /auth/login) plus either the current 6-digit authenticator code OR one
+    of the account's single-use recovery codes for a real access token.
+
+    The recovery-code path is what makes a lost/wiped authenticator device
+    survivable - password reset alone doesn't help, since it leaves
+    totp_enabled on and the second factor would still be demanded."""
     import pyotp
 
     credentials_exception = HTTPException(
@@ -166,24 +171,40 @@ def login_verify_2fa(request: Request, body: TwoFactorLoginRequest, db: Session 
     if not user or not user.totp_enabled or not user.totp_secret:
         raise credentials_exception
 
-    if not pyotp.TOTP(user.totp_secret).verify(body.code, valid_window=1):
-        log_audit(db, "login_failed", request=request, user_id=user.id, details={"reason": "bad_2fa_code"})
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kod hatalı veya süresi dolmuş.")
+    via = "2fa"
+    if pyotp.TOTP(user.totp_secret).verify(body.code, valid_window=1):
+        pass
+    else:
+        # Not a valid TOTP - fall back to trying it as a recovery code.
+        remaining = security.consume_recovery_code(body.code, user.totp_recovery_codes or [])
+        if remaining is None:
+            log_audit(db, "login_failed", request=request, user_id=user.id, details={"reason": "bad_2fa_code"})
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kod hatalı veya süresi dolmuş.")
+        # Single-use: burn it before issuing the token, so a replay of the
+        # same code can't work even if this request is repeated.
+        user.totp_recovery_codes = remaining
+        db.commit()
+        via = "recovery_code"
+        log_audit(db, "recovery_code_used", request=request, user_id=user.id,
+                  details={"remaining": len(remaining)})
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    log_audit(db, "login_success", request=request, user_id=user.id, details={"via": "2fa"})
+    log_audit(db, "login_success", request=request, user_id=user.id, details={"via": via})
     return {
         "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
         "token_type": "bearer",
     }
 
 @router.get("/me", response_model=UserOut)
-def read_user_me(current_user: User = Depends(deps.get_current_user)):
+@limiter.limit("120/minute")
+def read_user_me(request: Request, current_user: User = Depends(deps.get_current_user)):
     """Get current user details."""
     return current_user
 
 @router.put("/me", response_model=UserOut)
+@limiter.limit("20/minute")
 def update_user_me(
+    request: Request,
     user_in: UserUpdate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
@@ -213,7 +234,8 @@ def update_user_me(
 
 
 @router.get("/me/export")
-def export_my_data(db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_user)):
+@limiter.limit("5/minute")
+def export_my_data(request: Request, db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_current_user)):
     """KVKK madde 11 kapsamındaki 'verilerimi indir' hakkı - kullanıcının
     kendi hesabına ait tüm verileri (profil + simüle trading hesapları +
     portföyler + notlar + alarmlar) tek bir JSON olarak döner."""
@@ -295,6 +317,7 @@ def export_my_data(db: Session = Depends(deps.get_db), current_user: User = Depe
 
 
 @router.post("/me/delete")
+@limiter.limit("5/minute")
 def delete_my_account(
     request: Request,
     body: DeleteAccountRequest,
@@ -325,7 +348,9 @@ def delete_my_account(
 
 
 @router.post("/2fa/setup", response_model=TwoFactorSetupResponse)
+@limiter.limit("10/minute")
 def setup_2fa(
+    request: Request,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -354,14 +379,20 @@ def setup_2fa(
     return {"secret": secret, "qr_code_base64": f"data:image/png;base64,{qr_base64}"}
 
 
-@router.post("/2fa/verify", response_model=UserOut)
+@router.post("/2fa/verify", response_model=TwoFactorVerifyResponse)
+@limiter.limit("10/minute")
 def verify_2fa(
+    request: Request,
     body: TwoFactorCodeRequest,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
     """Confirms possession of the authenticator by checking one real code
-    against the pending secret from /2fa/setup, then flips totp_enabled on."""
+    against the pending secret from /2fa/setup, then flips totp_enabled on
+    and issues the account's single-use recovery codes.
+
+    Those codes are returned here and nowhere else - only their hashes are
+    stored, so this response is the user's one chance to save them."""
     import pyotp
 
     if not current_user.totp_secret:
@@ -369,14 +400,41 @@ def verify_2fa(
     if not pyotp.TOTP(current_user.totp_secret).verify(body.code, valid_window=1):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kod hatalı veya süresi dolmuş.")
 
+    plaintext, hashed = security.generate_recovery_codes()
     current_user.totp_enabled = True
+    current_user.totp_recovery_codes = hashed
     db.commit()
-    db.refresh(current_user)
-    return current_user
+    return {"recovery_codes": plaintext}
+
+
+@router.post("/2fa/recovery-codes/regenerate", response_model=TwoFactorVerifyResponse)
+@limiter.limit("5/minute")
+def regenerate_recovery_codes(
+    request: Request,
+    body: TwoFactorCodeRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Issues a fresh set of recovery codes, invalidating all previous ones.
+    Requires a current authenticator code (same reasoning as /2fa/disable -
+    a stolen session alone shouldn't mint working second factors)."""
+    import pyotp
+
+    if not current_user.totp_enabled or not current_user.totp_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="2FA aktif değil.")
+    if not pyotp.TOTP(current_user.totp_secret).verify(body.code, valid_window=1):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kod hatalı veya süresi dolmuş.")
+
+    plaintext, hashed = security.generate_recovery_codes()
+    current_user.totp_recovery_codes = hashed
+    db.commit()
+    return {"recovery_codes": plaintext}
 
 
 @router.post("/2fa/disable", response_model=UserOut)
+@limiter.limit("10/minute")
 def disable_2fa(
+    request: Request,
     body: TwoFactorCodeRequest,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
@@ -393,6 +451,7 @@ def disable_2fa(
 
     current_user.totp_enabled = False
     current_user.totp_secret = None
+    current_user.totp_recovery_codes = None
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -449,7 +508,8 @@ def reset_password(request: Request, body: ResetPasswordRequest, db: Session = D
 
 
 @router.post("/verify-email", response_model=UserOut)
-def verify_email(body: VerifyEmailRequest, db: Session = Depends(deps.get_db)):
+@limiter.limit("10/minute")
+def verify_email(request: Request, body: VerifyEmailRequest, db: Session = Depends(deps.get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST, detail="Geçersiz veya süresi dolmuş doğrulama bağlantısı."
     )
