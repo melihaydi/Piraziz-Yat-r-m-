@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from app.api import deps
 from app.core.limiter import limiter
@@ -279,6 +279,26 @@ def compare_stocks(tickers: str, current_user: User = Depends(deps.get_current_u
     return {"stocks": results}
 
 
+def _resample_candles(candles: List[Dict[str, Any]], group_size: int) -> List[Dict[str, Any]]:
+    """Merge consecutive candles in groups of `group_size` into larger ones
+    (e.g. two 1h candles -> one 2h candle). Used for intervals the underlying
+    data provider doesn't support natively - see the "2h" handling above."""
+    resampled = []
+    for i in range(0, len(candles), group_size):
+        group = candles[i:i + group_size]
+        if not group:
+            continue
+        resampled.append({
+            "time": group[0]["time"],
+            "open": group[0]["open"],
+            "high": max(c["high"] for c in group),
+            "low": min(c["low"] for c in group),
+            "close": group[-1]["close"],
+            "volume": sum(c.get("volume", 0) for c in group),
+        })
+    return resampled
+
+
 @router.get("/chart/{symbol}")
 def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d"), current_user: User = Depends(deps.get_current_user)):
     """Get candlestick data along with EMA, SMA, VWAP, RSI, MACD, and Bollinger Bands plots."""
@@ -291,19 +311,29 @@ def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")
         "5m": "5m", "5 minute": "5m",
         "15m": "15m", "15 minute": "15m",
         "1h": "1h", "1 hour": "1h",
+        "2h": "2h", "2 hour": "2h",
         "4h": "4h", "4 hour": "4h",
         "1d": "1d", "daily": "1d",
         "1w": "1wk", "weekly": "1wk", "1wk": "1wk",
         "1mo": "1mo", "monthly": "1mo"
     }
-    
+
     normalized_interval = timeframe_map.get(interval, "1d")
-    
+
+    # borsapy's TradingView provider has no native "2h" resolution - passing
+    # it straight through would silently fall back to daily candles (its
+    # TIMEFRAMES.get(interval, "1D") default) without any error, which would
+    # mislabel daily data as 2-hour. Instead fetch real hourly candles and
+    # merge them pairwise into 2-hour candles ourselves.
     try:
-        candles = market_data_service.get_candles(symbol, normalized_interval)
+        if normalized_interval == "2h":
+            hourly_candles = market_data_service.get_candles(symbol, "1h")
+            candles = _resample_candles(hourly_candles, group_size=2)
+        else:
+            candles = market_data_service.get_candles(symbol, normalized_interval)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch candles: {str(e)}")
-        
+
     if not candles:
         # Generate simulated daily/hourly candles as a fallback (Request 1 & 4!)
         response.headers["X-Chart-Simulated"] = "true"
@@ -311,14 +341,15 @@ def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")
         import random
         candles = []
         base_price = 100.0
-        
+
         # Try to use live price if available
         quote = market_data_service.get_quote(symbol)
         if quote and quote.get("last"):
             base_price = quote.get("last")
-            
+
         now_ts = int(time.time())
-        step = 3600 if "h" in normalized_interval else 86400
+        step_map = {"1h": 3600, "2h": 7200, "4h": 14400}
+        step = step_map.get(normalized_interval, 86400 if "h" not in normalized_interval else 3600)
         for i in range(30):
             ts = now_ts - (30 - i) * step
             change = base_price * random.uniform(-0.015, 0.015)

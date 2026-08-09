@@ -18,6 +18,7 @@ import {
 import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
+import { CHART_TIMEFRAMES } from "@/lib/chartTimeframes"
 import { authFetch } from "@/lib/auth"
 
 export default function StockDetailPage() {
@@ -97,16 +98,7 @@ export default function StockDetailPage() {
   const [aiReport, setAiReport] = useState<any>(null)
   const [aiLoading, setAiLoading] = useState(true)
 
-  const timeframes = [
-    { label: "1 Dakika", value: "1m" },
-    { label: "5 Dakika", value: "5m" },
-    { label: "15 Dakika", value: "15m" },
-    { label: "1 Saat", value: "1h" },
-    { label: "4 Saat", value: "4h" },
-    { label: "Günlük", value: "1d" },
-    { label: "Haftalık", value: "1w" },
-    { label: "Aylık", value: "1mo" }
-  ]
+  const timeframes = CHART_TIMEFRAMES
 
   // 1. Fetch live stock info and AI score details (Request 7!)
   useEffect(() => {
@@ -392,7 +384,7 @@ export default function StockDetailPage() {
                         : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
                   >
-                    {tf.value.toUpperCase()}
+                    {tf.label}
                   </button>
                 ))}
               </div>

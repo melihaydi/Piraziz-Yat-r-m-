@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react"
 import TradingViewChart, { PendingOrderLine } from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
+import { CHART_TIMEFRAMES } from "@/lib/chartTimeframes"
 
 // TradingView's free "Advanced Chart" embed widget (used for gold/FX/crypto
 // in TradeChart.tsx) cannot display BIST-exchange symbols at all - TradingView
@@ -17,16 +18,7 @@ import { authFetch } from "@/lib/auth"
 // a BIST ticker or the XU030 index) Trade renders its OWN chart instead,
 // reusing the exact same component and live-data endpoint the Hisseler/
 // Screener page already relies on (real borsapy candle data, no new source).
-const TIMEFRAMES: { label: string; value: string }[] = [
-  { label: "1dk", value: "1m" },
-  { label: "5dk", value: "5m" },
-  { label: "15dk", value: "15m" },
-  { label: "1s", value: "1h" },
-  { label: "4s", value: "4h" },
-  { label: "Günlük", value: "1d" },
-  { label: "Haftalık", value: "1wk" },
-  { label: "Aylık", value: "1mo" },
-]
+const TIMEFRAMES = CHART_TIMEFRAMES
 
 interface TradeBistChartProps {
   symbol: string

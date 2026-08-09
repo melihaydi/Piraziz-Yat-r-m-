@@ -12,7 +12,7 @@ import {
   PriceScaleMode,
   IPriceLine,
 } from "lightweight-charts"
-import { Eye, EyeOff, Scan, TrendingUp, Minus, ArrowUpRight, Square, GitBranch, Type, Trash2, MousePointer2 } from "lucide-react"
+import { Eye, EyeOff, Scan, TrendingUp, Minus, ArrowUpRight, Square, GitBranch, Type, Trash2, MousePointer2, Download } from "lucide-react"
 import { DrawingManager, DrawingTool, Drawing } from "@/lib/chartDrawingTools"
 
 interface ChartDataPoint {
@@ -68,7 +68,29 @@ const CHART_BASE_OPTIONS = {
   },
   crosshair: {
     mode: 0, // CrosshairMode.Normal
+    vertLine: { color: "#52525b", labelBackgroundColor: "#3f3f46" },
+    horzLine: { color: "#52525b", labelBackgroundColor: "#3f3f46" },
   },
+}
+
+// Single source of truth for indicator colors - shared between the series
+// themselves, the toolbar toggle buttons (color dot) and the hover tooltip,
+// so a line's color always matches its label everywhere on screen. This
+// matters more now that up to 11 lines (SMA+EMA+VWAP+BB x3+RSI+bands x2+
+// MACD x3) can be on screen at once - color is the only way to tell them apart.
+const INDICATOR_COLORS = {
+  sma: "#3b82f6",
+  ema: "#eab308",
+  vwap: "#a855f7",
+  bb: "#ec4899",
+  rsi: "#f97316",
+  macd: "#60a5fa",
+  macdSignal: "#fb7185",
+}
+
+function fmtChartNum(value: number | null | undefined, decimals = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  return value.toLocaleString("tr-TR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
 function toLineData(data: ChartDataPoint[], key: keyof ChartDataPoint) {
@@ -97,16 +119,18 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
   const activeToolRef = useRef<DrawingTool>("none")
   const [drawingCount, setDrawingCount] = useState(0)
 
-  // Toggles for indicators
-  const [showSMA, setShowSMA] = useState(true)
+  // Toggles for indicators - all start OFF; the chart should only ever show
+  // an indicator the user explicitly turned on, never pre-enabled ones.
+  const [showSMA, setShowSMA] = useState(false)
   const [showEMA, setShowEMA] = useState(false)
-  const [showVWAP, setShowVWAP] = useState(true)
+  const [showVWAP, setShowVWAP] = useState(false)
   const [showBB, setShowBB] = useState(false)
 
   const [showRSI, setShowRSI] = useState(false)
   const [showMACD, setShowMACD] = useState(false)
 
   const [scaleMode, setScaleMode] = useState<ScaleMode>("linear")
+  const [hoverData, setHoverData] = useState<ChartDataPoint | null>(null)
 
   // Main chart + candlestick series - only rebuilt when the data itself
   // changes (new symbol/timeframe), not on indicator toggles. Previously
@@ -221,7 +245,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
     const chart = mainChartRef.current
     if (!chart) return
     if (showSMA) {
-      const s = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 2, title: "SMA 20" })
+      const s = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.sma, lineWidth: 2, title: "SMA 20" })
       s.setData(toLineData(data, "sma20") as any)
       smaSeriesRef.current = s
     }
@@ -237,7 +261,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
     const chart = mainChartRef.current
     if (!chart) return
     if (showEMA) {
-      const s = chart.addSeries(LineSeries, { color: "#eab308", lineWidth: 2, title: "EMA 20" })
+      const s = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.ema, lineWidth: 2, title: "EMA 20" })
       s.setData(toLineData(data, "ema20") as any)
       emaSeriesRef.current = s
     }
@@ -253,7 +277,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
     const chart = mainChartRef.current
     if (!chart) return
     if (showVWAP) {
-      const s = chart.addSeries(LineSeries, { color: "#a855f7", lineWidth: 2, title: "VWAP" })
+      const s = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.vwap, lineWidth: 2, title: "VWAP" })
       s.setData(toLineData(data, "vwap") as any)
       vwapSeriesRef.current = s
     }
@@ -269,9 +293,9 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
     const chart = mainChartRef.current
     if (!chart) return
     if (showBB) {
-      const upper = chart.addSeries(LineSeries, { color: "#ec4899", lineWidth: 1, lineStyle: 2, title: "BB Upper" })
-      const lower = chart.addSeries(LineSeries, { color: "#ec4899", lineWidth: 1, lineStyle: 2, title: "BB Lower" })
-      const mid = chart.addSeries(LineSeries, { color: "#ec4899", lineWidth: 1, title: "BB Mid" })
+      const upper = chart.addSeries(LineSeries, { color: "rgba(236, 72, 153, 0.55)", lineWidth: 1, lineStyle: 2, title: "BB Upper" })
+      const lower = chart.addSeries(LineSeries, { color: "rgba(236, 72, 153, 0.55)", lineWidth: 1, lineStyle: 2, title: "BB Lower" })
+      const mid = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.bb, lineWidth: 1, title: "BB Mid" })
       upper.setData(toLineData(data, "bb_upper") as any)
       lower.setData(toLineData(data, "bb_lower") as any)
       mid.setData(toLineData(data, "bb_mid") as any)
@@ -286,6 +310,31 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
       }
     }
   }, [showBB, data])
+
+  // Hover tooltip - shows OHLCV plus every currently-active indicator's
+  // value at the crosshair's bar (or the latest bar when the mouse isn't
+  // over the chart), so a user can read exact numbers instead of eyeballing
+  // where a line sits. Declared after the chart-creation effect above so
+  // mainChartRef.current is already populated when this one runs.
+  useEffect(() => {
+    const chart = mainChartRef.current
+    if (!chart || !data || data.length === 0) return
+
+    const handler = (param: any) => {
+      if (!param || !param.time) {
+        setHoverData(data[data.length - 1] ?? null)
+        return
+      }
+      const point = data.find(d => d.time === param.time)
+      setHoverData(point ?? data[data.length - 1] ?? null)
+    }
+    chart.subscribeCrosshairMove(handler)
+    setHoverData(data[data.length - 1] ?? null)
+
+    return () => {
+      try { chart.unsubscribeCrosshairMove(handler) } catch (e) {}
+    }
+  }, [data])
 
   // Scale mode (Linear / Log / %) - real lightweight-charts price scale
   // modes, applied to the already-created chart without rebuilding it.
@@ -312,7 +361,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
       height: 100,
     })
 
-    const rsiSeries = rsiChart.addSeries(LineSeries, { color: "#f97316", lineWidth: 2, title: "RSI (14)" })
+    const rsiSeries = rsiChart.addSeries(LineSeries, { color: INDICATOR_COLORS.rsi, lineWidth: 2, title: "RSI (14)" })
     rsiSeries.setData(toLineData(data, "rsi") as any)
 
     const rsi70 = rsiChart.addSeries(LineSeries, { color: "rgba(244, 63, 94, 0.4)", lineWidth: 1, lineStyle: 3 })
@@ -359,8 +408,8 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
       height: 120,
     })
 
-    const macdLine = macdChart.addSeries(LineSeries, { color: "#60a5fa", lineWidth: 1, title: "MACD" })
-    const signalLine = macdChart.addSeries(LineSeries, { color: "#fb7185", lineWidth: 1, title: "Signal" })
+    const macdLine = macdChart.addSeries(LineSeries, { color: INDICATOR_COLORS.macd, lineWidth: 1, title: "MACD" })
+    const signalLine = macdChart.addSeries(LineSeries, { color: INDICATOR_COLORS.macdSignal, lineWidth: 1, title: "Signal" })
     const histSeries = macdChart.addSeries(HistogramSeries, { title: "Hist" })
 
     macdLine.setData(toLineData(data, "macd") as any)
@@ -406,6 +455,18 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
     } catch (e) {}
   }
 
+  const handleDownloadChart = () => {
+    try {
+      const chart = mainChartRef.current
+      if (!chart) return
+      const canvas = chart.takeScreenshot()
+      const link = document.createElement("a")
+      link.href = canvas.toDataURL("image/png")
+      link.download = `${symbol}_grafik_${new Date().toISOString().slice(0, 10)}.png`
+      link.click()
+    } catch (e) {}
+  }
+
   const selectTool = (tool: DrawingTool) => {
     const next = activeToolRef.current === tool ? "none" : tool
     activeToolRef.current = next
@@ -444,6 +505,10 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
     { tool: "text", label: "Metin", icon: Type },
   ]
 
+  const indicatorDot = (color: string) => (
+    <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+  )
+
   return (
     <div className="space-y-4">
       {/* Chart Control Bar */}
@@ -451,26 +516,30 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setShowSMA(!showSMA)}
-            className={`px-2.5 py-1.5 rounded transition-all cursor-pointer ${showSMA ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showSMA ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
+            {indicatorDot(INDICATOR_COLORS.sma)}
             SMA 20
           </button>
           <button
             onClick={() => setShowEMA(!showEMA)}
-            className={`px-2.5 py-1.5 rounded transition-all cursor-pointer ${showEMA ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showEMA ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
+            {indicatorDot(INDICATOR_COLORS.ema)}
             EMA 20
           </button>
           <button
             onClick={() => setShowVWAP(!showVWAP)}
-            className={`px-2.5 py-1.5 rounded transition-all cursor-pointer ${showVWAP ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showVWAP ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
+            {indicatorDot(INDICATOR_COLORS.vwap)}
             VWAP
           </button>
           <button
             onClick={() => setShowBB(!showBB)}
-            className={`px-2.5 py-1.5 rounded transition-all cursor-pointer ${showBB ? "bg-pink-500/20 text-pink-400 border border-pink-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showBB ? "bg-pink-500/20 text-pink-400 border border-pink-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
+            {indicatorDot(INDICATOR_COLORS.bb)}
             Bollinger Bands
           </button>
         </div>
@@ -531,12 +600,49 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
 
       {/* Synchronized Multi-Pane Charts */}
       <div className="border border-border/50 rounded-xl overflow-hidden bg-zinc-900/40 p-4 space-y-2">
-        {/* Main Price Pane */}
-        <div
-          ref={chartContainerRef}
-          className="w-full relative"
-          style={{ cursor: activeTool !== "none" ? "crosshair" : undefined }}
-        />
+        {/* Main Price Pane - wrapped in its own relative container so the
+            hover tooltip can overlay it without lightweight-charts (which
+            takes ownership of chartContainerRef's children) ever seeing it. */}
+        <div className="w-full relative">
+          <div
+            ref={chartContainerRef}
+            className="w-full"
+            style={{ cursor: activeTool !== "none" ? "crosshair" : undefined }}
+          />
+
+          {hoverData && (
+            <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-col gap-1 rounded-lg border border-border/50 bg-zinc-950/85 backdrop-blur-sm px-2.5 py-2 text-[10px] font-bold leading-tight">
+              <div className="flex items-center gap-2.5 font-mono">
+                <span className="text-muted-foreground">A</span>
+                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.open)}</span>
+                <span className="text-muted-foreground">Y</span>
+                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.high)}</span>
+                <span className="text-muted-foreground">D</span>
+                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.low)}</span>
+                <span className="text-muted-foreground">K</span>
+                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.close)}</span>
+                <span className="text-muted-foreground ml-1">Hacim</span>
+                <span className="text-foreground">{fmtChartNum(hoverData.volume, 0)}</span>
+              </div>
+              {(showSMA || showEMA || showVWAP || showBB) && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono border-t border-border/40 pt-1">
+                  {showSMA && (
+                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.sma)} SMA {fmtChartNum(hoverData.sma20)}</span>
+                  )}
+                  {showEMA && (
+                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.ema)} EMA {fmtChartNum(hoverData.ema20)}</span>
+                  )}
+                  {showVWAP && (
+                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.vwap)} VWAP {fmtChartNum(hoverData.vwap)}</span>
+                  )}
+                  {showBB && (
+                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.bb)} BB {fmtChartNum(hoverData.bb_lower)}–{fmtChartNum(hoverData.bb_upper)}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* RSI Indicator Pane */}
         {showRSI && (
@@ -585,6 +691,14 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
           >
             <Scan className="h-3.5 w-3.5" />
             <span>Ortala</span>
+          </button>
+          <button
+            onClick={handleDownloadChart}
+            title="Grafiği PNG olarak indir"
+            className="flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-zinc-950/60 border border-border/40 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>İndir</span>
           </button>
         </div>
       </div>

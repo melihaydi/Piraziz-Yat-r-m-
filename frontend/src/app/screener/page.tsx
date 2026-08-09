@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
+import { CHART_TIMEFRAMES } from "@/lib/chartTimeframes"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
 
@@ -404,13 +405,7 @@ export default function ScreenerPage() {
     setShowOnlyFavorites(false)
   }
 
-  const timeframes = [
-    { label: "1D", value: "1d" },
-    { label: "1S", value: "1h" },
-    { label: "15D", value: "15m" },
-    { label: "5D", value: "5m" },
-    { label: "1H", value: "1w" }
-  ]
+  const timeframes = CHART_TIMEFRAMES
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
