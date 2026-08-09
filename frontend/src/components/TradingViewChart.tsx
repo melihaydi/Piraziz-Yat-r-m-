@@ -610,35 +610,19 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
             style={{ cursor: activeTool !== "none" ? "crosshair" : undefined }}
           />
 
-          {hoverData && (
-            <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-col gap-1 rounded-lg border border-border/50 bg-zinc-950/85 backdrop-blur-sm px-2.5 py-2 text-[10px] font-bold leading-tight">
-              <div className="flex items-center gap-2.5 font-mono">
-                <span className="text-muted-foreground">A</span>
-                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.open)}</span>
-                <span className="text-muted-foreground">Y</span>
-                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.high)}</span>
-                <span className="text-muted-foreground">D</span>
-                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.low)}</span>
-                <span className="text-muted-foreground">K</span>
-                <span className={hoverData.close >= hoverData.open ? "text-emerald-400" : "text-rose-500"}>{fmtChartNum(hoverData.close)}</span>
-                <span className="text-muted-foreground ml-1">Hacim</span>
-                <span className="text-foreground">{fmtChartNum(hoverData.volume, 0)}</span>
-              </div>
-              {(showSMA || showEMA || showVWAP || showBB) && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono border-t border-border/40 pt-1">
-                  {showSMA && (
-                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.sma)} SMA {fmtChartNum(hoverData.sma20)}</span>
-                  )}
-                  {showEMA && (
-                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.ema)} EMA {fmtChartNum(hoverData.ema20)}</span>
-                  )}
-                  {showVWAP && (
-                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.vwap)} VWAP {fmtChartNum(hoverData.vwap)}</span>
-                  )}
-                  {showBB && (
-                    <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.bb)} BB {fmtChartNum(hoverData.bb_lower)}–{fmtChartNum(hoverData.bb_upper)}</span>
-                  )}
-                </div>
+          {hoverData && (showSMA || showEMA || showVWAP || showBB) && (
+            <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/50 bg-zinc-950/85 backdrop-blur-sm px-2.5 py-1.5 text-[10px] font-bold font-mono leading-tight">
+              {showSMA && (
+                <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.sma)} SMA {fmtChartNum(hoverData.sma20)}</span>
+              )}
+              {showEMA && (
+                <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.ema)} EMA {fmtChartNum(hoverData.ema20)}</span>
+              )}
+              {showVWAP && (
+                <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.vwap)} VWAP {fmtChartNum(hoverData.vwap)}</span>
+              )}
+              {showBB && (
+                <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.bb)} BB {fmtChartNum(hoverData.bb_lower)}–{fmtChartNum(hoverData.bb_upper)}</span>
               )}
             </div>
           )}

@@ -218,6 +218,22 @@ export class DrawingManager {
   private previewDrawing: Drawing | null = null
   private previewPrimitive: DrawingPrimitive | null = null
 
+  // Drag-to-edit state (grab a selected drawing's anchor handle or body and
+  // reposition it) - the single biggest gap vs. a "real" charting terminal's
+  // drawing tools, where everything placed used to be permanent unless
+  // deleted and redrawn from scratch. Runs on native pointer events (not
+  // lightweight-charts' own subscribeClick/subscribeCrosshairMove) because
+  // those don't expose button-held state, which is required to tell a plain
+  // hover from an actual drag.
+  private el: HTMLElement
+  private isDragging = false
+  private dragDrawingId: string | null = null
+  private dragPointIndex: number | null = null // null = dragging the whole shape
+  private dragLast: { time: Time; price: number } | null = null
+  private pointerDownHandler: (e: PointerEvent) => void
+  private pointerMoveHandler: (e: PointerEvent) => void
+  private pointerUpHandler: (e: PointerEvent) => void
+
   constructor(chart: IChartApi, series: ISeriesApi<SeriesType>, onChange: (drawings: Drawing[]) => void = () => {}) {
     this.chart = chart
     this.series = series
@@ -230,6 +246,96 @@ export class DrawingManager {
       if (e.key === "Escape") this.cancelPending()
     }
     window.addEventListener("keydown", this.keyHandler)
+
+    this.el = this.chart.chartElement()
+    this.pointerDownHandler = (e: PointerEvent) => this.handlePointerDown(e)
+    this.pointerMoveHandler = (e: PointerEvent) => this.handlePointerMove(e)
+    this.pointerUpHandler = (e: PointerEvent) => this.handlePointerUp(e)
+    this.el.addEventListener("pointerdown", this.pointerDownHandler)
+    this.el.addEventListener("pointermove", this.pointerMoveHandler)
+    this.el.addEventListener("pointerup", this.pointerUpHandler)
+  }
+
+  private eventXY(e: PointerEvent): { x: number; y: number } {
+    const rect = this.el.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  private handlePointerDown(e: PointerEvent) {
+    if (this.activeTool !== "none" || !this.selectedId) return
+    const drawing = this.drawings.find(d => d.id === this.selectedId)
+    if (!drawing) return
+    const { x, y } = this.eventXY(e)
+
+    const anchorIndex = this.hitTestAnchor(drawing, x, y)
+    if (anchorIndex !== null) {
+      this.isDragging = true
+      this.dragDrawingId = drawing.id
+      this.dragPointIndex = anchorIndex
+      this.el.setPointerCapture(e.pointerId)
+      e.stopPropagation()
+      return
+    }
+    if (this.hitTestOne(drawing, x, y)) {
+      this.isDragging = true
+      this.dragDrawingId = drawing.id
+      this.dragPointIndex = null
+      // Whole-shape dragging translates points by the delta between
+      // consecutive moves, so the very first move needs a baseline to diff
+      // against - without setting it here, that first move would compute
+      // against a null dragLast and be silently dropped, making a fast
+      // single-move drag (or a coarse pointer) feel unresponsive.
+      const time = this.chart.timeScale().coordinateToTime(x)
+      const price = this.series.coordinateToPrice(y)
+      this.dragLast = time !== null && price !== null ? { time, price } : null
+      this.el.setPointerCapture(e.pointerId)
+      e.stopPropagation()
+    }
+  }
+
+  private handlePointerMove(e: PointerEvent) {
+    if (!this.isDragging || !this.dragDrawingId) {
+      // Hover feedback: show a grab cursor over a selected drawing's handle
+      // or body while nothing is being dragged, so it reads as draggable
+      // before the user commits to a click.
+      if (this.activeTool === "none" && this.selectedId) {
+        const drawing = this.drawings.find(d => d.id === this.selectedId)
+        const { x, y } = this.eventXY(e)
+        const draggable = drawing && (this.hitTestAnchor(drawing, x, y) !== null || this.hitTestOne(drawing, x, y))
+        this.el.style.cursor = draggable ? "grab" : ""
+      }
+      return
+    }
+    const { x, y } = this.eventXY(e)
+    const time = this.chart.timeScale().coordinateToTime(x)
+    const price = this.series.coordinateToPrice(y)
+    if (time === null || price === null) return
+    const drawing = this.drawings.find(d => d.id === this.dragDrawingId)
+    if (!drawing) return
+
+    if (this.dragPointIndex !== null) {
+      drawing.points[this.dragPointIndex] = { time, price }
+    } else if (this.dragLast) {
+      const priceDelta = price - this.dragLast.price
+      const timeDelta = (time as number) - (this.dragLast.time as number)
+      drawing.points = drawing.points.map(p => ({
+        time: ((p.time as number) + timeDelta) as Time,
+        price: p.price + priceDelta,
+      }))
+    }
+    this.dragLast = { time, price }
+    this.el.style.cursor = "grabbing"
+  }
+
+  private handlePointerUp(e: PointerEvent) {
+    if (!this.isDragging) return
+    this.isDragging = false
+    this.dragDrawingId = null
+    this.dragPointIndex = null
+    this.dragLast = null
+    this.el.style.cursor = ""
+    try { this.el.releasePointerCapture(e.pointerId) } catch (err) {}
+    this.onChange(this.drawings)
   }
 
   private needsTwoPoints(tool: DrawingTool): boolean {
@@ -319,26 +425,39 @@ export class DrawingManager {
     }
   }
 
-  private hitTest(x: number, y: number): string | null {
-    const threshold = 6
-    for (const d of this.drawings) {
-      const xy = d.points.map(p => toXY(this.chart, this.series, p))
-      if (xy.some(p => p.x === null || p.y === null)) continue
-      const pts = xy as { x: number; y: number }[]
+  private hitTestOne(d: Drawing, x: number, y: number, threshold = 6): boolean {
+    const xy = d.points.map(p => toXY(this.chart, this.series, p))
+    if (xy.some(p => p.x === null || p.y === null)) return false
+    const pts = xy as { x: number; y: number }[]
 
-      if (d.tool === "horizontal") {
-        if (Math.abs(pts[0].y - y) <= threshold) return d.id
-      } else if (d.tool === "trendline" || d.tool === "ray") {
-        const p2 = d.tool === "ray" ? { x: this.chart.timeScale().width(), y: pts[0].y + (pts[1].y - pts[0].y) } : pts[1]
-        if (distToSegment(x, y, pts[0].x, pts[0].y, p2.x, p2.y) <= threshold) return d.id
-      } else if (d.tool === "rectangle") {
-        const minX = Math.min(pts[0].x, pts[1].x), maxX = Math.max(pts[0].x, pts[1].x)
-        const minY = Math.min(pts[0].y, pts[1].y), maxY = Math.max(pts[0].y, pts[1].y)
-        if (x >= minX - threshold && x <= maxX + threshold && y >= minY - threshold && y <= maxY + threshold) return d.id
-      } else {
-        // fib / text - point-proximity to the anchor is close enough.
-        if (pts.some(p => Math.hypot(p.x - x, p.y - y) <= threshold + 4)) return d.id
-      }
+    if (d.tool === "horizontal") {
+      return Math.abs(pts[0].y - y) <= threshold
+    } else if (d.tool === "trendline" || d.tool === "ray") {
+      const p2 = d.tool === "ray" ? { x: this.chart.timeScale().width(), y: pts[0].y + (pts[1].y - pts[0].y) } : pts[1]
+      return distToSegment(x, y, pts[0].x, pts[0].y, p2.x, p2.y) <= threshold
+    } else if (d.tool === "rectangle") {
+      const minX = Math.min(pts[0].x, pts[1].x), maxX = Math.max(pts[0].x, pts[1].x)
+      const minY = Math.min(pts[0].y, pts[1].y), maxY = Math.max(pts[0].y, pts[1].y)
+      return x >= minX - threshold && x <= maxX + threshold && y >= minY - threshold && y <= maxY + threshold
+    }
+    // fib / text - point-proximity to the anchor is close enough.
+    return pts.some(p => Math.hypot(p.x - x, p.y - y) <= threshold + 4)
+  }
+
+  private hitTest(x: number, y: number): string | null {
+    for (const d of this.drawings) {
+      if (this.hitTestOne(d, x, y)) return d.id
+    }
+    return null
+  }
+
+  /** Finds the anchor point of `d` nearest (x, y), if within `threshold` px. */
+  private hitTestAnchor(d: Drawing, x: number, y: number, threshold = 8): number | null {
+    const xy = d.points.map(p => toXY(this.chart, this.series, p))
+    for (let i = 0; i < xy.length; i++) {
+      const p = xy[i]
+      if (p.x === null || p.y === null) continue
+      if (Math.hypot(p.x - x, p.y - y) <= threshold) return i
     }
     return null
   }
@@ -397,6 +516,9 @@ export class DrawingManager {
     this.chart.unsubscribeClick(this.clickHandler)
     this.chart.unsubscribeCrosshairMove(this.moveHandler)
     window.removeEventListener("keydown", this.keyHandler)
+    this.el.removeEventListener("pointerdown", this.pointerDownHandler)
+    this.el.removeEventListener("pointermove", this.pointerMoveHandler)
+    this.el.removeEventListener("pointerup", this.pointerUpHandler)
     this.cancelPending()
     this.clearAll()
   }
