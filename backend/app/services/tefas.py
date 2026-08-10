@@ -74,16 +74,24 @@ BASE_FUNDS = {
     # succeeds (see its `name = series[0][2] or meta.get("name", ...)`), so
     # this doesn't need to be exact, just present so the code starts tracking it.
     "PRY": {"name": "PRY Fonu", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"},
-    # PNU/PGH/PA2 are Pusula Portföy sister funds held inside PBR's own
+    # PNU/PGH/PA2/PHN are Pusula Portföy sister funds held inside PBR's own
     # composition (see FUND_DETAILS_MAP["PBR"]) - tracked here so PBR's live
     # estimate can recurse into them / fall back to their real daily_return.
+    # Confirmed by the user (2026-08-10): PHN is a fund, not a stock -
+    # PBR's composition previously carried it as an unresolvable plain
+    # ticker for exactly that reason.
     "PNU": {"name": "Pusula Portföy İkinci Para Piyasası (TL) Fonu", "category": "Para Piyasası", "price": 10.0000, "category_tr": "Para Piyasası Fonu"},
     "PGH": {"name": "Pusula Portföy Güney Hisse Senedi Serbest (TL) Fon", "category": "Serbest Yoğun", "price": 10.0000, "category_tr": "Serbest Fon"},
     "PA2": {"name": "Pusula Portföy Altın Katılım Fonu", "category": "Katılım", "price": 10.0000, "category_tr": "Katılım / Hisse Senedi"},
-    # KVR/PFS are Atlas Portföy sister funds held inside DFI's own
-    # composition (see FUND_DETAILS_MAP["DFI"]), same rationale as PNU/PGH/PA2 above.
+    "PHN": {"name": "PHN Fonu", "category": "Değişken", "price": 10.0000, "category_tr": "Değişken Fon"},
+    # KVR/PFS/PSE/BAC are Atlas Portföy sister funds held inside DFI's own
+    # composition (see FUND_DETAILS_MAP["DFI"]), same rationale as
+    # PNU/PGH/PA2/PHN above - PSE/BAC confirmed as funds (not stocks) by
+    # the user (2026-08-10).
     "KVR": {"name": "Atlas Portföy Kısa Vadeli Katılım Serbest Fon", "category": "Katılım", "price": 10.0000, "category_tr": "Katılım / Hisse Senedi"},
     "PFS": {"name": "Atlas Portföy Fon Sepeti Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "PSE": {"name": "PSE Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "BAC": {"name": "BAC Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
     # HMV is a real, independent TEFAS fund (Hedef Portföy Yönetimi) that
     # also happens to be one of TLY's own disclosed holdings (see TLY's
     # assets_distribution below) - tracked here both so it's browsable on
@@ -109,8 +117,11 @@ FALLBACKS = {
     "PNU": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PGH": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PA2": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "PHN": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "KVR": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PFS": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "PSE": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "BAC": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "HMV": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
 }
 
@@ -171,10 +182,11 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             {"name": "TMPOL", "value": 2.0},
             {"name": "IZFAS", "value": 1.8},
             {"name": "TATEN", "value": 1.4},
-            # PRY/PHN/PA2 - Pusula Portföy fund codes like PKZ/PCS above, but
-            # (unlike those two) not yet in FUND_DETAILS_MAP with their own
-            # composition to recurse into, so these are left unresolved in
-            # the live estimate for now rather than guessed at.
+            # PRY/PHN/PA2 - Pusula Portföy fund codes, confirmed by the user
+            # (not stocks). None has its own known composition in
+            # FUND_DETAILS_MAP to recurse into, so each resolves via its own
+            # real TEFAS daily_return instead (see BASE_FUNDS/FALLBACKS and
+            # get_live_estimated_return's BASE_FUNDS fallback step).
             {"name": "PRY", "value": 0.9},
             {"name": "DAPGM", "value": 0.5},
             {"name": "PHN", "value": 0.4},
@@ -193,8 +205,9 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             # Bank deposit holding - fixed daily-return path below (0.12%/day, per the user).
             {"name": "MEVDUAT", "value": 25.9},
             {"name": "ABG", "value": 23.0},
-            # PSE/BAC - not yet in FUND_DETAILS_MAP/the known stock universe,
-            # left unresolved same as PRY/PHN/PA2 in PBR above.
+            # PSE/BAC - Atlas Portföy fund codes, confirmed by the user (not
+            # stocks) - same daily_return fallback resolution as PRY/PHN/PA2
+            # in PBR above.
             {"name": "PSE", "value": 5.3},
             {"name": "ISKPL", "value": 3.3},
             {"name": "BAC", "value": 1.1},
