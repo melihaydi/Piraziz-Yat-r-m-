@@ -9,6 +9,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import List
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,13 @@ from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.services.tefas import tefas_service
 
 logger = logging.getLogger(__name__)
+
+# The container's system clock runs UTC, not Turkey time - a naive
+# datetime.now() compared against a literal hour=19/minute=45 target fired
+# this at 19:45 UTC (22:45 TR) instead of the intended 19:45 TR, 15 minutes
+# after TefasService's own (equally mistimed, see tefas.py) daily refresh.
+# See market_data.py's _BIST_TZ for the same pattern used correctly elsewhere.
+_TR_TZ = ZoneInfo("Europe/Istanbul")
 
 # Same funds the "Popüler Fonlar" feature tracks (see POPULAR_LIVE_FUNDS in
 # app/api/v1/endpoints/funds.py) - kept as a separate constant here rather
@@ -44,7 +52,7 @@ class FundEstimateSnapshotService:
     def _run_snapshot(self) -> None:
         db: Session = SessionLocal()
         try:
-            today = datetime.now().date()
+            today = datetime.now(_TR_TZ).date()
 
             # TEFAS doesn't publish NAVs on weekends (no trading day), so
             # get_fund()'s daily_return on a Saturday/Sunday is just
@@ -105,7 +113,7 @@ class FundEstimateSnapshotService:
         date isn't in the historical series yet, get_dated_return_pct
         returns None and that row is simply left untouched until a later run
         has real data for it."""
-        cutoff = datetime.now().date() - timedelta(days=5)
+        cutoff = datetime.now(_TR_TZ).date() - timedelta(days=5)
         candidates = db.query(FundEstimateSnapshot).filter(
             FundEstimateSnapshot.fund_code.in_(TRACKED_FUND_CODES),
             FundEstimateSnapshot.snapshot_date >= cutoff,
@@ -149,12 +157,12 @@ class FundEstimateSnapshotService:
 
         def loop():
             time.sleep(startup_delay_seconds)
-            now = datetime.now()
+            now = datetime.now(_TR_TZ)
             target_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if now >= target_today:
                 self._run_snapshot()
             while True:
-                now = datetime.now()
+                now = datetime.now(_TR_TZ)
                 target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if target <= now:
                     target += timedelta(days=1)

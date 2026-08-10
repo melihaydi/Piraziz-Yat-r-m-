@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,12 @@ from app.db.session import SessionLocal
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 
 logger = logging.getLogger(__name__)
+
+# The container's system clock runs UTC, not Turkey time - a naive
+# datetime.now() compared against a literal hour=20 target fired this at
+# 20:00 UTC (23:00 TR) instead of the intended post-close 20:00 TR. See
+# market_data.py's _BIST_TZ for the same pattern used correctly elsewhere.
+_TR_TZ = ZoneInfo("Europe/Istanbul")
 
 
 class PortfolioSnapshotService:
@@ -40,7 +47,7 @@ class PortfolioSnapshotService:
 
         db: Session = SessionLocal()
         try:
-            today = datetime.now().date()
+            today = datetime.now(_TR_TZ).date()
 
             assets_by_user: Dict[int, List[PortfolioAsset]] = {}
             for p in db.query(Portfolio).all():
@@ -105,7 +112,7 @@ class PortfolioSnapshotService:
             time.sleep(startup_delay_seconds)
             self._run_snapshot_for_all_users()
             while True:
-                now = datetime.now()
+                now = datetime.now(_TR_TZ)
                 target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if target <= now:
                     target += timedelta(days=1)

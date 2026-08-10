@@ -713,7 +713,15 @@ class TefasService:
         def history_loop():
             self._build_history_sync(count=20)
             while True:
-                now = datetime.datetime.now()
+                # TR-aware, not datetime.datetime.now() - the container's
+                # system clock runs UTC, so a naive now() compared against a
+                # literal hour=19/minute=30 fired this at 19:30 UTC (22:30
+                # TR), a full 3 hours after the intended after-close time.
+                # Confirmed live: this is why the fund estimate-accuracy
+                # backfill (fund_estimate_snapshot.py, timed 15 min after
+                # this) and the accuracy numbers it depends on kept showing
+                # up hours later than a user checking in the evening expected.
+                now = datetime.datetime.now(_TR_TZ)
                 target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 if target <= now:
                     target += timedelta(days=1)

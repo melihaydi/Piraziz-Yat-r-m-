@@ -40,7 +40,7 @@ import pandas as pd
 import borsapy
 
 from app.core.redis import cache_service
-from app.services.market_data import market_data_service
+from app.services.market_data import market_data_service, _is_bist_session_open
 
 logger = logging.getLogger(__name__)
 
@@ -1306,11 +1306,26 @@ class StrategyEngine:
 
         def loop():
             while True:
-                try:
-                    self._run_scan()
-                    logger.info(f"Strategy engine: scanned {len(BIST30_TICKERS)} BIST30 symbols.")
-                except Exception as e:
-                    logger.error(f"Strategy engine scan loop error: {e}")
+                # Skip the re-scan entirely outside BIST's 09:30-18:15
+                # session (weeknights, weekends) - the exchange isn't
+                # producing new candles then, so a fresh 30-symbol borsapy
+                # batch every 3 minutes was pure waste (up to ~9k wasted
+                # requests overnight, ~14k over a weekend) and a real
+                # contributor to the TradingView 429s that show up right
+                # after a deploy restart's cold-start burst. The market_data
+                # websocket path already had this same session gate (see
+                # _is_bist_session_open's own docstring); the scan loop here
+                # never did, since it runs through borsapy's separate REST
+                # path (see this module's docstring) which that gate never
+                # touched. The last real scan (from just before close) stays
+                # served as-is while closed - nothing has changed since, so
+                # there's no data loss, just no pointless re-fetching.
+                if _is_bist_session_open():
+                    try:
+                        self._run_scan()
+                        logger.info(f"Strategy engine: scanned {len(BIST30_TICKERS)} BIST30 symbols.")
+                    except Exception as e:
+                        logger.error(f"Strategy engine scan loop error: {e}")
                 time.sleep(self.REFRESH_INTERVAL_SECONDS)
 
         threading.Thread(target=loop, daemon=True).start()
