@@ -473,10 +473,17 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <Link
             href="/trade"
             title="Trade"
-            className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs font-bold hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-colors cursor-pointer"
+            aria-label="Trade"
+            // Must stay visible at every width: Trade was removed from the
+            // Sidebar entirely, so this is now the ONLY way into the module.
+            // An earlier `hidden sm:inline-flex` here made it unreachable on
+            // phones (the Android app is a shell around this same web app,
+            // so that took Trade away on mobile completely). Icon-only below
+            // sm to keep the crowded mobile header from wrapping.
+            className="inline-flex shrink-0 items-center gap-1.5 h-9 w-9 sm:w-auto justify-center sm:px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs font-bold hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-colors cursor-pointer"
           >
-            <CandlestickChart className="h-3.5 w-3.5" />
-            Trade
+            <CandlestickChart className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+            <span className="hidden sm:inline">Trade</span>
           </Link>
         )}
 
