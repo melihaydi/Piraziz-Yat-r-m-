@@ -272,6 +272,11 @@ export class DrawingManager {
       this.isDragging = true
       this.dragDrawingId = drawing.id
       this.dragPointIndex = anchorIndex
+      // Same "chart pans underneath the gesture" fix as setActiveTool - a
+      // drag-to-edit starts with activeTool === "none" (pan/zoom still on),
+      // so it has to be turned off here too, not just while a placement
+      // tool is selected.
+      this.chart.applyOptions({ handleScroll: false, handleScale: false })
       this.el.setPointerCapture(e.pointerId)
       e.stopPropagation()
       return
@@ -288,6 +293,7 @@ export class DrawingManager {
       const time = this.chart.timeScale().coordinateToTime(x)
       const price = this.series.coordinateToPrice(y)
       this.dragLast = time !== null && price !== null ? { time, price } : null
+      this.chart.applyOptions({ handleScroll: false, handleScale: false })
       this.el.setPointerCapture(e.pointerId)
       e.stopPropagation()
     }
@@ -334,6 +340,11 @@ export class DrawingManager {
     this.dragPointIndex = null
     this.dragLast = null
     this.el.style.cursor = ""
+    // Safe to unconditionally restore here (unlike setActiveTool's
+    // conditional version) - a drag-to-edit can only ever start while
+    // activeTool === "none", so there's no placement tool that could still
+    // need pan/zoom disabled underneath it.
+    this.chart.applyOptions({ handleScroll: true, handleScale: true })
     try { this.el.releasePointerCapture(e.pointerId) } catch (err) {}
     this.onChange(this.drawings)
   }
@@ -346,6 +357,16 @@ export class DrawingManager {
     this.cancelPending()
     this.activeTool = tool
     this.selectedId = null
+    // The chart's own default pan/zoom-on-drag was still active underneath
+    // every placement click and every drag-to-edit gesture - a mouse that
+    // moves even slightly between a click's down and up (or any real drag)
+    // panned the visible time range mid-placement, so the point recorded at
+    // mouseup landed under a candle the user was no longer pointing at. This
+    // is what made trendlines/etc. look "randomly" misplaced. Disabling
+    // pan/zoom for the whole time a tool is active (and separately, for the
+    // whole time a drag-to-edit is in progress - see handlePointerDown/Up)
+    // removes that moving target.
+    this.chart.applyOptions({ handleScroll: tool === "none", handleScale: tool === "none" })
   }
 
   private cancelPending() {

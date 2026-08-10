@@ -14,6 +14,14 @@ import { authFetch } from "@/lib/auth"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
 
+function formatDateWithWeekday(isoDate: string): string {
+  const d = new Date(isoDate)
+  if (Number.isNaN(d.getTime())) return isoDate
+  const datePart = d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" })
+  const weekday = d.toLocaleDateString("tr-TR", { weekday: "long" })
+  return `${datePart} (${weekday})`
+}
+
 function buildComparisonChartData(funds: any[]) {
   const withCandles = funds.filter((f) => Array.isArray(f.candles) && f.candles.length > 0)
   if (withCandles.length === 0) return []
@@ -531,7 +539,7 @@ export default function FundsPage() {
                         const tier = row.error_pct != null ? accuracyTier(Math.abs(row.error_pct)) : null
                         return (
                           <tr key={`${row.fund_code}-${row.date}`} className="border-b border-border/20">
-                            <td className="py-1.5 pr-4 font-mono text-muted-foreground">{row.date}</td>
+                            <td className="py-1.5 pr-4 font-mono text-muted-foreground whitespace-nowrap">{formatDateWithWeekday(row.date)}</td>
                             <td className="py-1.5 pr-4 font-bold">{row.fund_code}</td>
                             <td className={`py-1.5 pr-4 text-right font-mono ${row.estimated_change_pct == null ? "text-muted-foreground" : row.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                               {row.estimated_change_pct == null ? "—" : `${row.estimated_change_pct >= 0 ? "+" : ""}${row.estimated_change_pct.toFixed(2)}%`}
