@@ -181,6 +181,16 @@ jobs:
           npm ci
 
       - name: Build Electron installer
+        # frontend/.env.local is gitignored (it's local-dev-only) and no
+        # .env.production is committed, so without this, `next build` here
+        # bakes NEXT_PUBLIC_API_URL's unset fallback ("http://localhost:8000",
+        # see frontend/src/lib/config.ts) into the packaged exe's client
+        # bundle - every CI-built installer would silently point at the
+        # end user's own machine instead of the real backend. This is a
+        # public, client-exposed value already (baked into JS shipped to the
+        # browser/exe), not a secret, so it's safe to set directly here.
+        env:
+          NEXT_PUBLIC_API_URL: https://92-5-160-231.sslip.io
         run: |
           cd frontend
           npm run dist
