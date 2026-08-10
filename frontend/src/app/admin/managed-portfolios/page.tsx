@@ -1,11 +1,21 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus } from "lucide-react"
+import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { authFetch } from "@/lib/auth"
+
+// Quick-pick shortlist so picking a frequently-managed user doesn't mean
+// scanning a full email dropdown every time - persisted per-browser (this
+// is an admin convenience, not account data, so localStorage is enough).
+// Seeded once with ugurcankk0@gmail.com per explicit request; after that
+// first seed, admins manage their own pins via the star toggle below and
+// this default never re-applies (so unpinning them later sticks).
+const PINNED_USERS_KEY = "bip_managed_portfolio_pinned_users"
+const PINNED_USERS_SEEDED_KEY = "bip_managed_portfolio_pinned_seeded"
+const DEFAULT_PINNED_EMAIL = "ugurcankk0@gmail.com"
 
 interface AdminUser {
   id: number
@@ -39,6 +49,7 @@ interface ManagedPortfolio {
   portfolio_id: number
   portfolio_name: string
   assets: ManagedAsset[]
+  cash_balance: number
   total_cost: number
   total_value: number
   total_profit: number
@@ -63,6 +74,10 @@ export default function ManagedPortfoliosPage() {
   const [editingAssetId, setEditingAssetId] = useState<number | null>(null)
   const [editShares, setEditShares] = useState("")
   const [editCost, setEditCost] = useState("")
+  const [cashAmount, setCashAmount] = useState("")
+  const [cashBusy, setCashBusy] = useState(false)
+
+  const [pinnedIds, setPinnedIds] = useState<number[]>([])
 
   useEffect(() => {
     // Own access guard (this page is reached directly from the sidebar, not
@@ -79,11 +94,58 @@ export default function ManagedPortfoliosPage() {
         }
         return authFetch("/admin/users")
           .then(res => (res.ok ? res.json() : []))
-          .then(setUsers)
+          .then((loadedUsers: AdminUser[]) => {
+            setUsers(loadedUsers)
+
+            let pinned: number[] = []
+            try {
+              const raw = localStorage.getItem(PINNED_USERS_KEY)
+              pinned = raw ? JSON.parse(raw) : []
+            } catch (e) {
+              pinned = []
+            }
+
+            // One-time default seed so the requested user shows up as a
+            // quick-pick immediately, without the admin having to find and
+            // star them manually first. Only runs once ever (tracked by its
+            // own key) so unpinning later doesn't get silently undone by a
+            // page reload re-seeding it.
+            let alreadySeeded = false
+            try {
+              alreadySeeded = localStorage.getItem(PINNED_USERS_SEEDED_KEY) === "1"
+            } catch (e) {
+              alreadySeeded = false
+            }
+            if (!alreadySeeded) {
+              const defaultUser = loadedUsers.find(u => u.email.toLowerCase() === DEFAULT_PINNED_EMAIL)
+              if (defaultUser && !pinned.includes(defaultUser.id)) {
+                pinned = [...pinned, defaultUser.id]
+              }
+              try {
+                localStorage.setItem(PINNED_USERS_SEEDED_KEY, "1")
+                localStorage.setItem(PINNED_USERS_KEY, JSON.stringify(pinned))
+              } catch (e) {
+                // Storage unavailable - the seed just won't persist across reloads.
+              }
+            }
+            setPinnedIds(pinned)
+          })
       })
       .catch(() => setForbidden(true))
       .finally(() => setCheckingAccess(false))
   }, [])
+
+  const togglePinned = (userId: number) => {
+    setPinnedIds(prev => {
+      const next = prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+      try {
+        localStorage.setItem(PINNED_USERS_KEY, JSON.stringify(next))
+      } catch (e) {
+        // Not persisted this session, but the toggle still works visually.
+      }
+      return next
+    })
+  }
 
   const loadManagedPortfolio = async (userId: number) => {
     setManagedLoading(true)
@@ -109,6 +171,7 @@ export default function ManagedPortfoliosPage() {
     setNewAssetTicker("")
     setNewAssetShares("")
     setNewAssetCost("")
+    setCashAmount("")
     if (id) loadManagedPortfolio(id)
   }
 
@@ -139,6 +202,34 @@ export default function ManagedPortfoliosPage() {
       setManagedError("Sunucuya ulaşılamadı.")
     } finally {
       setManagedBusy(false)
+    }
+  }
+
+  // sign: +1 for "Ekle" (deposit), -1 for "Çıkar" (withdraw) - the admin
+  // always types a positive number, this decides its direction, so a typo
+  // in the sign can't silently flip a deposit into a withdrawal.
+  const adjustCash = async (sign: 1 | -1) => {
+    const parsed = parseFloat(cashAmount)
+    if (!managedUserId || !cashAmount || !Number.isFinite(parsed) || parsed <= 0) return
+    setCashBusy(true)
+    setManagedError(null)
+    try {
+      const res = await authFetch(`/admin/managed-portfolios/${managedUserId}/cash`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: sign * parsed }),
+      })
+      if (res.ok) {
+        setCashAmount("")
+        await loadManagedPortfolio(managedUserId)
+      } else {
+        const body = await res.json().catch(() => null)
+        setManagedError(body?.detail || "Nakit güncellenemedi.")
+      }
+    } catch (e) {
+      setManagedError("Sunucuya ulaşılamadı.")
+    } finally {
+      setCashBusy(false)
     }
   }
 
@@ -239,16 +330,68 @@ export default function ManagedPortfoliosPage() {
             </div>
           )}
 
-          <select
-            value={managedUserId}
-            onChange={e => onManagedUserChange(e.target.value)}
-            className="h-9 w-full max-w-sm rounded-md border border-input bg-secondary/50 px-3 text-xs font-semibold focus-visible:outline-none cursor-pointer"
-          >
-            <option value="">Kullanıcı seçin...</option>
-            {users.map(u => (
-              <option key={u.id} value={u.id}>{u.full_name ? `${u.full_name} (${u.email})` : u.email}</option>
-            ))}
-          </select>
+          {/* Quick-pick chips for pinned (starred) users - shows just a name,
+              never the email, so picking a frequently-managed user doesn't
+              mean reading through everyone's address every time. Falls back
+              to the part before "@" when there's no full_name on file. */}
+          {pinnedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {pinnedIds
+                .map(id => users.find(u => u.id === id))
+                .filter((u): u is AdminUser => !!u)
+                .map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => onManagedUserChange(String(u.id))}
+                    className={`inline-flex items-center gap-1.5 h-8 pl-3 pr-2 rounded-full border text-xs font-bold cursor-pointer transition-colors ${
+                      managedUserId === u.id
+                        ? "border-primary/40 bg-primary/15 text-primary"
+                        : "border-border/60 bg-secondary/30 text-foreground hover:bg-secondary/50"
+                    }`}
+                  >
+                    <Star className="h-3 w-3 fill-current" />
+                    {u.full_name || u.email.split("@")[0]}
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      onClick={e => { e.stopPropagation(); togglePinned(u.id) }}
+                      title="Kayıtlılardan kaldır"
+                      className="text-muted-foreground/60 hover:text-rose-400 ml-0.5 cursor-pointer"
+                    >
+                      ✕
+                    </span>
+                  </button>
+                ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <select
+              value={managedUserId}
+              onChange={e => onManagedUserChange(e.target.value)}
+              className="h-9 w-full max-w-sm rounded-md border border-input bg-secondary/50 px-3 text-xs font-semibold focus-visible:outline-none cursor-pointer"
+            >
+              <option value="">Kullanıcı seçin...</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.full_name ? `${u.full_name} (${u.email})` : u.email}</option>
+              ))}
+            </select>
+            {managedUserId !== "" && (
+              <button
+                type="button"
+                onClick={() => togglePinned(managedUserId as number)}
+                title={pinnedIds.includes(managedUserId as number) ? "Kayıtlılardan kaldır" : "Hızlı erişime ekle"}
+                className={`inline-flex items-center justify-center h-9 w-9 rounded-md border cursor-pointer transition-colors shrink-0 ${
+                  pinnedIds.includes(managedUserId as number)
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                    : "border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Star className={`h-4 w-4 ${pinnedIds.includes(managedUserId as number) ? "fill-current" : ""}`} />
+              </button>
+            )}
+          </div>
 
           {managedLoading ? (
             <div className="py-6 flex justify-center">
@@ -256,7 +399,7 @@ export default function ManagedPortfoliosPage() {
             </div>
           ) : managedPortfolio ? (
             <div className="space-y-3">
-              {managedPortfolio.assets.length > 0 && (
+              {(managedPortfolio.assets.length > 0 || managedPortfolio.cash_balance > 0) && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
                     <span className="text-[10px] font-bold uppercase text-muted-foreground">Toplam Pozisyon</span>
@@ -280,6 +423,44 @@ export default function ManagedPortfoliosPage() {
                   </div>
                 </div>
               )}
+
+              {/* Cash module - deliberately NOT another row in the assets
+                  table below (see Portfolio.cash_balance's docstring: cash
+                  has no ticker/price to look up, unlike every row in that
+                  table). Ekle deposits, Çıkar withdraws/corrects; both take
+                  the same positive amount typed above them. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
+                <Wallet className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Nakit</span>
+                <span className="text-sm font-extrabold font-mono text-foreground mr-1">{tl(managedPortfolio.cash_balance)}</span>
+                <input
+                  type="number"
+                  value={cashAmount}
+                  onChange={e => setCashAmount(e.target.value)}
+                  placeholder="Tutar (₺)"
+                  className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
+                />
+                <Button
+                  type="button"
+                  onClick={() => adjustCash(1)}
+                  disabled={cashBusy || !cashAmount}
+                  title="Nakit ekle"
+                  className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Ekle
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => adjustCash(-1)}
+                  disabled={cashBusy || !cashAmount}
+                  title="Nakit çıkar"
+                  className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+                >
+                  <Minus className="h-3.5 w-3.5 mr-1" />
+                  Çıkar
+                </Button>
+              </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">

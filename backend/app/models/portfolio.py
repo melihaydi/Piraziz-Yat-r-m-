@@ -7,6 +7,14 @@ class Portfolio(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
+    # Uninvested cash sitting in the portfolio - deliberately NOT a
+    # PortfolioAsset row (that table's ticker column is a real FK into
+    # `company`, and cash has no price to look up/fluctuate; see
+    # admin.py's managed-portfolio cash endpoint for why get_quote() on an
+    # arbitrary ticker like "NAKIT" would silently serve a fake ₺150
+    # fallback price instead of failing loudly). Managed by an admin via
+    # the Yönetilen Portföyler page for now.
+    cash_balance = Column(Float, nullable=False, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

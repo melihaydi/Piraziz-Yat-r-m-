@@ -46,6 +46,7 @@ class PortfolioResponse(PortfolioBase):
     id: int
     user_id: int
     assets: List[PortfolioAssetResponse] = []
+    cash_balance: Optional[float] = 0.0
     total_cost: Optional[float] = 0.0
     total_value: Optional[float] = 0.0
     total_profit: Optional[float] = 0.0

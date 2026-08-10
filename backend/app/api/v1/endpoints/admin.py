@@ -226,6 +226,14 @@ class ManagedAssetIn(BaseModel):
     average_cost: float
 
 
+class ManagedCashAdjustIn(BaseModel):
+    # Signed delta, not an absolute balance - positive deposits, negative
+    # withdraws/corrects. Mirrors trade_service.deposit_funds's shape
+    # conceptually, but that one is deposit-only; an admin correcting
+    # another user's real portfolio needs to walk a mistaken entry back too.
+    amount: float
+
+
 def _asset_dict(asset: PortfolioAsset) -> dict:
     return {
         "id": asset.id,
@@ -285,6 +293,14 @@ def get_managed_portfolio(
         total_cost += metrics["cost_value"]
         total_value += metrics["total_value"]
 
+    # Cash folds 1:1 into both total_cost and total_value (never just one
+    # side) - it has no profit/loss of its own, so adding it equally to
+    # both keeps total_profit exactly what the priced holdings made/lost,
+    # while still correctly diluting profit_percentage as a real blended
+    # portfolio return would (₺10 profit on ₺100 stock + ₺100 idle cash is
+    # a 5% portfolio return, not 10%).
+    total_cost += portfolio.cash_balance
+    total_value += portfolio.cash_balance
     total_profit = total_value - total_cost
 
     return {
@@ -294,11 +310,57 @@ def get_managed_portfolio(
         "portfolio_id": portfolio.id,
         "portfolio_name": portfolio.name,
         "assets": assets,
+        "cash_balance": portfolio.cash_balance,
         "total_cost": total_cost,
         "total_value": total_value,
         "total_profit": total_profit,
         "profit_percentage": (total_profit / total_cost * 100) if total_cost > 0 else 0.0,
     }
+
+
+@router.post("/managed-portfolios/{user_id}/cash")
+@limiter.limit("30/minute")
+def adjust_managed_cash(
+    request: Request,
+    user_id: int,
+    payload: ManagedCashAdjustIn,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Deposits (positive amount) or withdraws/corrects (negative amount)
+    cash held in the target user's portfolio - NOT a priced holding (see
+    Portfolio.cash_balance's docstring for why this can't just be another
+    managed asset row). Superuser only, audit-logged."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+    if payload.amount == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutar sıfır olamaz.")
+
+    portfolio = db.query(Portfolio).filter(Portfolio.user_id == user_id).first()
+    if not portfolio:
+        portfolio = Portfolio(user_id=user_id, name="Ana Portföy")
+        db.add(portfolio)
+        db.commit()
+        db.refresh(portfolio)
+
+    new_balance = portfolio.cash_balance + payload.amount
+    if new_balance < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Yetersiz nakit: mevcut bakiye ₺{portfolio.cash_balance:.2f}, "
+                   f"₺{-payload.amount:.2f} çıkarılamaz.",
+        )
+    portfolio.cash_balance = new_balance
+    db.commit()
+    db.refresh(portfolio)
+
+    log_audit(db, "managed_portfolio_cash_adjusted", request=request, user_id=admin.id, resource_type="portfolio",
+              resource_id=portfolio.id, details={
+                  "target_user_id": user_id, "target_email": target.email,
+                  "amount": payload.amount, "new_balance": portfolio.cash_balance,
+              })
+    return {"cash_balance": portfolio.cash_balance}
 
 
 @router.post("/managed-portfolios/{user_id}/assets", status_code=status.HTTP_201_CREATED)
