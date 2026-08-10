@@ -65,7 +65,25 @@ def get_current_premium_user(current_user: User = Depends(get_current_user)) -> 
     """Dependency to verify premium user status."""
     if current_user.role == "free":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için Premium üyelik gereklidir."
         )
     return current_user
+
+# Only these two tiers get live (undelayed) market data - free/starter/pro all
+# get the same 15-minute-delayed feed. This is a stricter boundary than
+# get_current_premium_user's ("free" is the only tier blocked there) - kept
+# separate on purpose rather than reusing that dependency's cutoff, since the
+# live-data boundary was explicitly specified as "premium and institutional
+# only", not "anything above free".
+LIVE_DATA_ROLES = {"premium", "institutional"}
+DELAYED_DATA_MINUTES = 15
+
+
+def get_data_delay_minutes(current_user: User = Depends(get_current_user)) -> int:
+    """0 for premium/institutional (live data), DELAYED_DATA_MINUTES for
+    everyone else (free/starter/pro) - applied everywhere real-time BIST
+    data is served: screener quotes/charts, funds/fund estimates, and Trade
+    module order pricing (see trade_service.get_live_price's delay_minutes
+    param)."""
+    return 0 if current_user.role in LIVE_DATA_ROLES else DELAYED_DATA_MINUTES

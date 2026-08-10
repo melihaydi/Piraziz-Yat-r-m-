@@ -58,7 +58,7 @@ def test_role_change_writes_audit_row_with_old_and_new_role(client, db, admin_he
 
 
 def test_order_placement_writes_audit_row(client, db, plain_headers, monkeypatch):
-    monkeypatch.setattr(trade_service, "get_live_price", lambda instrument_type, symbol: 100.0)
+    monkeypatch.setattr(trade_service, "get_live_price", lambda instrument_type, symbol, delay_minutes=0: 100.0)
 
     client.post("/api/v1/trade/account", json={"broker": "midas", "starting_balance": 100000}, headers=plain_headers)
     res = client.post(

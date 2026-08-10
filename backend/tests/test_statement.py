@@ -26,7 +26,7 @@ def test_statement_returns_a_valid_pdf_with_no_orders(client, auth_headers):
 
 
 def test_statement_includes_placed_order(client, auth_headers, monkeypatch):
-    monkeypatch.setattr(trade_service, "get_live_price", lambda instrument_type, symbol: 100.0)
+    monkeypatch.setattr(trade_service, "get_live_price", lambda instrument_type, symbol, delay_minutes=0: 100.0)
 
     client.post("/api/v1/trade/account", json={"broker": "midas", "starting_balance": 100000}, headers=auth_headers)
 
@@ -51,7 +51,7 @@ def test_statement_includes_placed_order(client, auth_headers, monkeypatch):
 
 
 def test_statement_date_filter_excludes_out_of_range_content(client, auth_headers, monkeypatch):
-    monkeypatch.setattr(trade_service, "get_live_price", lambda instrument_type, symbol: 100.0)
+    monkeypatch.setattr(trade_service, "get_live_price", lambda instrument_type, symbol, delay_minutes=0: 100.0)
 
     client.post("/api/v1/trade/account", json={"broker": "midas", "starting_balance": 100000}, headers=auth_headers)
     client.post(

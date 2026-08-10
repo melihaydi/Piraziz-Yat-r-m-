@@ -46,7 +46,7 @@ def test_stock_and_fund_holdings_weighted_by_current_value(client, auth_headers)
     _add_asset(client, auth_headers, portfolio_id, "THYAO", 10.0, 300.0)
     _add_asset(client, auth_headers, portfolio_id, "PHE", 100.0, 3.50)
 
-    def fake_fetch_live_price(ticker):
+    def fake_fetch_live_price(ticker, delay_minutes=0):
         return {"THYAO": 320.0, "PHE": 4.0}[ticker.upper()]
 
     fake_estimate = {"estimated_change_pct": 2.0, "resolved_weight_pct": 80.0, "holdings": []}

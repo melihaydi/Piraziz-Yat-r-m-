@@ -19,16 +19,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-def _fetch_live_price(ticker: str) -> Optional[float]:
-    """Fetch a single ticker's live price - a fund NAV (3-char codes) or a
-    BIST stock quote. Split out of calculate_asset_metrics so callers with
-    several assets (get_user_portfolios) can fetch them all concurrently
-    instead of one blocking network/cache call per asset in sequence."""
+def _fetch_live_price(ticker: str, delay_minutes: int = 0) -> Optional[float]:
+    """Fetch a single ticker's price - a fund NAV (3-char codes, TEFAS's own
+    once-daily published price, not gated by delay_minutes since it's
+    already not "live" in that sense) or a BIST stock quote (gated - see
+    deps.get_data_delay_minutes). Split out of calculate_asset_metrics so
+    callers with several assets (get_user_portfolios) can fetch them all
+    concurrently instead of one blocking network/cache call per asset in
+    sequence."""
     ticker = ticker.upper()
     if len(ticker) == 3:
         fund = tefas_service.get_fund(ticker)
         return fund["price"] if fund else None
-    quote = market_data_service.get_quote(ticker)
+    quote = market_data_service.get_delayed_quote(ticker, delay_minutes) if delay_minutes > 0 else market_data_service.get_quote(ticker)
     return quote.get("last") if quote else None
 
 # Below this trust bar, a fund's own recursive estimate is mostly-empty
@@ -37,7 +40,7 @@ def _fetch_live_price(ticker: str) -> Optional[float]:
 # and tefas.py's own recursion use, kept consistent across all three.
 _MIN_TRUSTED_RESOLVED_PCT = 20.0
 
-def _fund_estimated_daily_change_pct(ticker: str) -> Optional[float]:
+def _fund_estimated_daily_change_pct(ticker: str, delay_minutes: int = 0) -> Optional[float]:
     """The live intraday estimate for a fund holding (same idea as the
     funds page's "Popüler Fonlar"), returned ONLY as a separate figure -
     NEVER folded into current_price/total_value/total_profit, which must
@@ -48,29 +51,29 @@ def _fund_estimated_daily_change_pct(ticker: str) -> Optional[float]:
     trustworthy enough (same threshold used elsewhere)."""
     if len(ticker) != 3:
         return None
-    estimate = tefas_service.get_live_estimated_return(ticker)
+    estimate = tefas_service.get_live_estimated_return(ticker, delay_minutes=delay_minutes)
     if estimate is None or estimate["resolved_weight_pct"] < _MIN_TRUSTED_RESOLVED_PCT:
         return None
     return estimate["estimated_change_pct"]
 
-def _stock_daily_change_pct(ticker: str) -> Optional[float]:
+def _stock_daily_change_pct(ticker: str, delay_minutes: int = 0) -> Optional[float]:
     """Real daily %change (since yesterday's official close) for a STOCK
     holding, straight from its live quote - unlike the fund estimate above,
     this is real data, not modeled. None for funds or unrecognized tickers."""
     if len(ticker) == 3 or not market_data_service.is_known_ticker(ticker):
         return None
-    quote = market_data_service.get_quote(ticker)
+    quote = market_data_service.get_delayed_quote(ticker, delay_minutes) if delay_minutes > 0 else market_data_service.get_quote(ticker)
     return quote.get("change_percent") if quote else None
 
-def _daily_change(ticker: str) -> tuple:
+def _daily_change(ticker: str, delay_minutes: int = 0) -> tuple:
     """Unified daily-change lookup for the Portföy Varlıkları table: real
     for a stock, an estimate for a fund (see the two helpers above -
     NEVER mixed into current_price/total_value either way). Returns
     (change_pct, is_estimate)."""
     if len(ticker) == 3:
-        pct = _fund_estimated_daily_change_pct(ticker)
+        pct = _fund_estimated_daily_change_pct(ticker, delay_minutes)
         return pct, pct is not None
-    return _stock_daily_change_pct(ticker), False
+    return _stock_daily_change_pct(ticker, delay_minutes), False
 
 def _fund_official_daily_change_pct(ticker: str) -> Optional[float]:
     """Real, OFFICIALLY PUBLISHED TEFAS daily return for a fund holding -
@@ -80,25 +83,27 @@ def _fund_official_daily_change_pct(ticker: str) -> Optional[float]:
     itself against. Used only for the portfolio-wide "Bugün" headline gain -
     per explicit request, that figure must be real settled data, not an
     estimate, even though the estimate is fine as a clearly-labeled per-row
-    number elsewhere in the assets table."""
+    number elsewhere in the assets table. Not delay-gated: TEFAS only
+    publishes this once a day, so it's already not "live" in the sense the
+    delay restriction is about."""
     if len(ticker) != 3:
         return None
     fund = tefas_service.get_fund(ticker)
     return fund.get("daily_return") if fund else None
 
-def _official_daily_change_pct(ticker: str) -> Optional[float]:
+def _official_daily_change_pct(ticker: str, delay_minutes: int = 0) -> Optional[float]:
     """Unified OFFICIAL daily %change - real live quote for a stock, real
     published TEFAS daily_return for a fund. Never an estimate."""
     if len(ticker) == 3:
         return _fund_official_daily_change_pct(ticker)
-    return _stock_daily_change_pct(ticker)
+    return _stock_daily_change_pct(ticker, delay_minutes)
 
-def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None) -> dict:
+def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None, delay_minutes: int = 0) -> dict:
     """Helper to compute real-time value and profit metrics for an asset.
     Pass a pre-fetched `live_price` (see _fetch_live_price) to skip the
     network/cache lookup this would otherwise do itself."""
     if live_price is None:
-        live_price = _fetch_live_price(asset.ticker)
+        live_price = _fetch_live_price(asset.ticker, delay_minutes)
 
     if live_price is None or live_price == 0:
         live_price = asset.average_cost
@@ -125,19 +130,22 @@ def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] =
 @router.get("/", response_model=List[PortfolioResponse])
 def get_user_portfolios(
     db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
-    """Retrieve all portfolios for the current user, calculating real-time valuations."""
+    """Retrieve all portfolios for the current user, calculating valuations -
+    live for premium/institutional, 15-minute-delayed otherwise (see
+    deps.get_data_delay_minutes)."""
     portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
 
-    # Fetch every distinct ticker's live price once, concurrently, instead of
+    # Fetch every distinct ticker's price once, concurrently, instead of
     # once per asset in sequence across every portfolio (each lookup is a
     # blocking TEFAS/market-data call).
     all_tickers = sorted({asset.ticker.upper() for p in portfolios for asset in p.assets})
     price_by_ticker = {}
     if all_tickers:
         with ThreadPoolExecutor(max_workers=min(len(all_tickers), 8)) as pool:
-            for ticker, price in zip(all_tickers, pool.map(_fetch_live_price, all_tickers)):
+            for ticker, price in zip(all_tickers, pool.map(lambda t: _fetch_live_price(t, delay), all_tickers)):
                 price_by_ticker[ticker] = price
 
     # Each holding's daily %change - real for a stock (live quote), an
@@ -145,10 +153,10 @@ def get_user_portfolios(
     # total_value above (those stay the real, officially published NAV -
     # see _fund_estimated_daily_change_pct's docstring for why). Done per
     # distinct ticker, same reasoning as the price batch above.
-    daily_change_by_ticker = {ticker: _daily_change(ticker) for ticker in all_tickers}
+    daily_change_by_ticker = {ticker: _daily_change(ticker, delay) for ticker in all_tickers}
     # Separate OFFICIAL-only version (no fund estimate) for the portfolio-
     # wide "Bugün" headline gain - see _official_daily_change_pct's docstring.
-    official_daily_change_by_ticker = {ticker: _official_daily_change_pct(ticker) for ticker in all_tickers}
+    official_daily_change_by_ticker = {ticker: _official_daily_change_pct(ticker, delay) for ticker in all_tickers}
 
     response_list = []
     for p in portfolios:
@@ -278,7 +286,8 @@ def get_portfolio_analytics(
 @router.get("/live-estimate")
 def get_portfolio_live_estimate(
     db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Estimated INTRADAY % change for the user's whole portfolio (combined
     across every portfolio they own, like /analytics) - the same idea as
@@ -304,7 +313,7 @@ def get_portfolio_live_estimate(
 
     tickers = sorted({a.ticker.upper() for a in all_assets})
     with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
-        price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
+        price_by_ticker = dict(zip(tickers, pool.map(lambda t: _fetch_live_price(t, delay), tickers)))
 
     holdings_out = []
     total_value = 0.0
@@ -321,7 +330,7 @@ def get_portfolio_live_estimate(
         holding_type = "unresolved"
 
         if len(ticker) == 3:
-            live_est = tefas_service.get_live_estimated_return(ticker)
+            live_est = tefas_service.get_live_estimated_return(ticker, delay_minutes=delay)
             if live_est is not None and live_est["resolved_weight_pct"] >= _MIN_TRUSTED_RESOLVED_PCT:
                 change_pct = live_est["estimated_change_pct"]
                 holding_type = "fund_live"
@@ -331,7 +340,10 @@ def get_portfolio_live_estimate(
                     change_pct = fund.get("daily_return")
                     holding_type = "fund_daily"
         else:
-            quote = market_data_service.get_quote(ticker) if market_data_service.is_known_ticker(ticker) else None
+            is_known = market_data_service.is_known_ticker(ticker)
+            quote = None
+            if is_known:
+                quote = market_data_service.get_delayed_quote(ticker, delay) if delay > 0 else market_data_service.get_quote(ticker)
             if quote and quote.get("change_percent") is not None:
                 change_pct = float(quote["change_percent"])
                 holding_type = "stock"

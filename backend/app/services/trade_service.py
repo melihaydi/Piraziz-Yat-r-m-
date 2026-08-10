@@ -98,19 +98,27 @@ def _quote_symbol(underlying: str) -> str:
     return _QUOTE_SYMBOL_OVERRIDES.get(underlying, underlying)
 
 
-def get_live_price(instrument_type: str, symbol: str) -> float:
-    """Live price straight from the existing TradingView websocket cache -
-    no new data source, exactly as instructed."""
+def get_live_price(instrument_type: str, symbol: str, delay_minutes: int = 0) -> float:
+    """Price straight from the existing TradingView websocket cache - no new
+    data source, exactly as instructed. `delay_minutes` (see
+    deps.get_data_delay_minutes) routes free/starter/pro tiers through
+    market_data_service.get_delayed_quote() instead of the live one, so a
+    non-premium user's order fills - not just what they see on screen -
+    execute at the same delayed price everywhere in the app."""
     lookup = _quote_symbol(_underlying_symbol(instrument_type, symbol))
-    quote = market_data_service.get_quote(lookup)
+    quote = (
+        market_data_service.get_delayed_quote(lookup, delay_minutes)
+        if delay_minutes > 0 else market_data_service.get_quote(lookup)
+    )
     if not quote:
         return 0.0
     last = quote.get("last")
     return float(last) if last else 0.0
 
 
-def _quote_or_zero(symbol: str) -> Dict[str, Any]:
-    q = market_data_service.get_quote(_quote_symbol(symbol))
+def _quote_or_zero(symbol: str, delay_minutes: int = 0) -> Dict[str, Any]:
+    lookup = _quote_symbol(symbol)
+    q = market_data_service.get_delayed_quote(lookup, delay_minutes) if delay_minutes > 0 else market_data_service.get_quote(lookup)
     return q or {}
 
 
@@ -239,10 +247,10 @@ def _bid_ask(q: Dict[str, Any], last: float) -> tuple[float, float]:
     return round(last - spread, 4), round(last + spread, 4)
 
 
-def get_watchlist() -> List[Dict[str, Any]]:
+def get_watchlist(delay_minutes: int = 0) -> List[Dict[str, Any]]:
     items = []
     for ticker in BIST30_TICKERS:
-        q = _quote_or_zero(ticker)
+        q = _quote_or_zero(ticker, delay_minutes)
         last = float(q.get("last") or 0.0)
         bid, ask = _bid_ask(q, last)
         items.append({
@@ -256,10 +264,10 @@ def get_watchlist() -> List[Dict[str, Any]]:
     return items
 
 
-def get_viop_watchlist() -> List[Dict[str, Any]]:
+def get_viop_watchlist(delay_minutes: int = 0) -> List[Dict[str, Any]]:
     items = []
     for c in VIOP_CONTRACTS:
-        q = _quote_or_zero(c["underlying_symbol"])
+        q = _quote_or_zero(c["underlying_symbol"], delay_minutes)
         last = float(q.get("last") or 0.0)
         bid, ask = _bid_ask(q, last)
         items.append({
@@ -274,7 +282,7 @@ def get_viop_watchlist() -> List[Dict[str, Any]]:
     return items
 
 
-def _fetch_prices_concurrently(positions: List[TradePosition]) -> List[float]:
+def _fetch_prices_concurrently(positions: List[TradePosition], delay_minutes: int = 0) -> List[float]:
     """Fetch every position's live price at once instead of one at a time -
     each is an independent lookup against the market-data cache, so this
     also avoids serial latency stacking up when an account has several open
@@ -283,7 +291,7 @@ def _fetch_prices_concurrently(positions: List[TradePosition]) -> List[float]:
     if not positions:
         return []
     with ThreadPoolExecutor(max_workers=min(len(positions), 8)) as pool:
-        return list(pool.map(lambda p: get_live_price(p.instrument_type, p.symbol), positions))
+        return list(pool.map(lambda p: get_live_price(p.instrument_type, p.symbol, delay_minutes), positions))
 
 
 def _position_dict(pos: TradePosition, price: Optional[float] = None) -> Dict[str, Any]:
@@ -329,12 +337,14 @@ def _position_dict(pos: TradePosition, price: Optional[float] = None) -> Dict[st
     }
 
 
-def get_positions(db: Session, account: TradeAccount, instrument_type: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_positions(
+    db: Session, account: TradeAccount, instrument_type: Optional[str] = None, delay_minutes: int = 0
+) -> List[Dict[str, Any]]:
     q = db.query(TradePosition).filter(TradePosition.account_id == account.id)
     if instrument_type:
         q = q.filter(TradePosition.instrument_type == instrument_type)
     positions = q.all()
-    prices = _fetch_prices_concurrently(positions)
+    prices = _fetch_prices_concurrently(positions, delay_minutes)
     return [_position_dict(p, price) for p, price in zip(positions, prices)]
 
 
@@ -370,11 +380,11 @@ def account_summary_dict(account: TradeAccount) -> Dict[str, Any]:
     }
 
 
-def serialize_account(db: Session, account: TradeAccount) -> Dict[str, Any]:
-    _check_pending_orders(db, account)
+def serialize_account(db: Session, account: TradeAccount, delay_minutes: int = 0) -> Dict[str, Any]:
+    _check_pending_orders(db, account, delay_minutes)
 
     positions = db.query(TradePosition).filter(TradePosition.account_id == account.id).all()
-    prices = _fetch_prices_concurrently(positions)
+    prices = _fetch_prices_concurrently(positions, delay_minutes)
     pos_dicts = [_position_dict(p, price) for p, price in zip(positions, prices)]
 
     stock_value = sum(p["position_value"] for p in pos_dicts if p["instrument_type"] == "stock")
@@ -597,7 +607,7 @@ def _fill_pending_order(db: Session, account: TradeAccount, order: TradePendingO
     db.commit()
 
 
-def _check_pending_orders(db: Session, account: TradeAccount) -> None:
+def _check_pending_orders(db: Session, account: TradeAccount, delay_minutes: int = 0) -> None:
     """Checked opportunistically every time the account is polled (see
     serialize_account).
 
@@ -625,7 +635,7 @@ def _check_pending_orders(db: Session, account: TradeAccount) -> None:
     db.query(TradeAccount).filter(TradeAccount.id == account.id).with_for_update().first()
 
     for order in pending:
-        price = get_live_price(order.instrument_type, order.symbol)
+        price = get_live_price(order.instrument_type, order.symbol, delay_minutes)
         if price <= 0:
             continue
 
@@ -677,7 +687,7 @@ def get_pending_orders(
     return [_pending_order_dict(o) for o in orders]
 
 
-def cancel_pending_order(db: Session, account: TradeAccount, order_id: int) -> Dict[str, Any]:
+def cancel_pending_order(db: Session, account: TradeAccount, order_id: int, delay_minutes: int = 0) -> Dict[str, Any]:
     order = db.query(TradePendingOrder).filter(
         TradePendingOrder.id == order_id,
         TradePendingOrder.account_id == account.id,
@@ -690,12 +700,13 @@ def cancel_pending_order(db: Session, account: TradeAccount, order_id: int) -> D
     order.status = "CANCELLED"
     db.commit()
     db.refresh(account)
-    return serialize_account(db, account)
+    return serialize_account(db, account, delay_minutes)
 
 
 def place_order(
     db: Session, account: TradeAccount, instrument_type: str, symbol: str, side: str, lot: float,
     order_type: str = "MARKET", limit_price: Optional[float] = None, stop_price: Optional[float] = None,
+    delay_minutes: int = 0,
 ) -> Dict[str, Any]:
     symbol = symbol.upper()
 
@@ -721,7 +732,7 @@ def place_order(
             raise TradeError("Stop fiyatı sıfırdan büyük olmalı.")
         return _create_pending_order(db, account, instrument_type, symbol, side, lot, order_type, limit_price, stop_price)
 
-    price = get_live_price(instrument_type, symbol)
+    price = get_live_price(instrument_type, symbol, delay_minutes)
     if price <= 0:
         raise TradeError("Anlık fiyat alınamadı, lütfen birkaç saniye sonra tekrar deneyin.")
 
@@ -736,7 +747,7 @@ def place_order(
     db.commit()
     db.refresh(account)
 
-    return serialize_account(db, account)
+    return serialize_account(db, account, delay_minutes)
 
 
 def get_history(db: Session, account: TradeAccount, limit: int = 100) -> List[Dict[str, Any]]:

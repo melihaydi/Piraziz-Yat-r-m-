@@ -751,7 +751,9 @@ class TefasService:
                 return {**f, **details}
         return None
 
-    def get_live_estimated_return(self, code: str, _visited: Optional[set] = None) -> Optional[Dict[str, Any]]:
+    def get_live_estimated_return(
+        self, code: str, _visited: Optional[set] = None, delay_minutes: int = 0
+    ) -> Optional[Dict[str, Any]]:
         """Estimated INTRADAY % change for a fund, computed from its known
         holdings' live prices - TEFAS itself only publishes one NAV per day,
         so this is the only way to show something resembling a live number
@@ -815,7 +817,7 @@ class TefasService:
             # beats a mostly-empty recursive one.
             MIN_TRUSTED_RESOLVED_PCT = 20.0
             if ticker in FUND_DETAILS_MAP and ticker not in _visited:
-                sub = self.get_live_estimated_return(ticker, _visited)
+                sub = self.get_live_estimated_return(ticker, _visited, delay_minutes)
                 if sub is not None and sub["resolved_weight_pct"] >= MIN_TRUSTED_RESOLVED_PCT:
                     change = sub["estimated_change_pct"]
                     holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "fund"})
@@ -844,7 +846,12 @@ class TefasService:
             # inflate resolved_weight_pct - the known-ticker universe must be
             # checked first instead.
             is_known_ticker = ticker in _KNOWN_STOCK_TICKERS
-            quote = market_data_service.get_quote(ticker) if is_known_ticker else None
+            if not is_known_ticker:
+                quote = None
+            elif delay_minutes > 0:
+                quote = market_data_service.get_delayed_quote(ticker, delay_minutes)
+            else:
+                quote = market_data_service.get_quote(ticker)
             change_pct = quote.get("change_percent") if quote else None
             if change_pct is not None and abs(float(change_pct)) <= MAX_PLAUSIBLE_CHANGE_PCT:
                 change = float(change_pct)

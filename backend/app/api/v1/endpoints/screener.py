@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -142,6 +143,29 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
     )
 
 
+def _delay_adjust_price_fields(response: ScreenerStockResponse, delay_minutes: int) -> ScreenerStockResponse:
+    """Overwrites just the price-moving fields (price/change/change_percent/
+    bid/ask) with a 15-minutes-old equivalent for free/starter/pro tiers
+    (see deps.get_data_delay_minutes) - AI score/PE/EPS/market cap are left
+    as computed, since those are slower-moving fundamentals, not the "canlı
+    veri" (live data) the delay restriction is actually about. Applied AFTER
+    the shared 2s response cache lookup rather than baked into it, so the
+    same cached list keeps serving live data to premium/institutional users
+    without needing a second parallel cache."""
+    if delay_minutes <= 0:
+        return response
+    delayed = market_data_service.get_delayed_quote(response.ticker, delay_minutes)
+    if not delayed.get("is_delayed"):
+        return response
+    updated = response.model_copy()
+    updated.price = delayed.get("last") or updated.price
+    updated.change = delayed.get("change") if delayed.get("change") is not None else updated.change
+    updated.change_percent = delayed.get("change_percent") if delayed.get("change_percent") is not None else updated.change_percent
+    updated.bid = delayed.get("bid") or updated.bid
+    updated.ask = delayed.get("ask") or updated.ask
+    return updated
+
+
 _SCREENER_LIST_CACHE_KEY = "screener:all"
 # Every connected user polls this endpoint every 2s (see screener/page.tsx)
 # and sees the exact same shared BIST list - unlike every other hot endpoint
@@ -155,11 +179,21 @@ _SCREENER_LIST_CACHE_TTL_SECONDS = 2
 
 @router.get("/", response_model=List[ScreenerStockResponse])
 @limiter.limit("120/minute")
-def get_screener_stocks(request: Request, current_user: User = Depends(deps.get_current_user)):
-    """Retrieve all BIST 500 stocks with live TradingView quote fields and calculated AI scores."""
+def get_screener_stocks(
+    request: Request, current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
+    """Retrieve all BIST 500 stocks with quote fields and calculated AI
+    scores - live for premium/institutional, 15-minute-delayed for everyone
+    else (see deps.get_data_delay_minutes)."""
     from app.core.redis import cache_service
 
-    cached = cache_service.get_json(_SCREENER_LIST_CACHE_KEY)
+    # Delayed and live responses are cached separately (both on the same 2s
+    # TTL) so every free/starter/pro user sharing a poll window still
+    # collapses into one delay computation, same as the existing live-cache
+    # collapsing every premium user's poll into one live computation.
+    cache_key = _SCREENER_LIST_CACHE_KEY if delay <= 0 else f"{_SCREENER_LIST_CACHE_KEY}:delayed"
+    cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
 
@@ -168,14 +202,19 @@ def get_screener_stocks(request: Request, current_user: User = Depends(deps.get_
         _build_stock_response(item["ticker"], item["name"], cached_quotes.get(item["ticker"]))
         for item in market_data_service.tickers
     ]
+    if delay > 0:
+        result = [_delay_adjust_price_fields(r, delay) for r in result]
     result_dicts = [r.model_dump() for r in result]
-    cache_service.set_json(_SCREENER_LIST_CACHE_KEY, result_dicts, expire_seconds=_SCREENER_LIST_CACHE_TTL_SECONDS)
+    cache_service.set_json(cache_key, result_dicts, expire_seconds=_SCREENER_LIST_CACHE_TTL_SECONDS)
     return result
 
 
 @router.get("/detail/{ticker}", response_model=ScreenerStockResponse)
 @limiter.limit("120/minute")
-def get_screener_stock_detail(request: Request, ticker: str, current_user: User = Depends(deps.get_current_user)):
+def get_screener_stock_detail(
+    request: Request, ticker: str, current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
     """Single-ticker equivalent of GET / - used by the stock detail page,
     which previously fetched and scored the entire BIST list just to pick
     one row back out of it client-side."""
@@ -183,7 +222,8 @@ def get_screener_stock_detail(request: Request, ticker: str, current_user: User 
     match = next((item for item in market_data_service.tickers if item["ticker"] == ticker), None)
     name = match["name"] if match else f"{ticker} Ticaret AŞ"
     quote = market_data_service.get_all_quotes().get(ticker)
-    return _build_stock_response(ticker, name, quote)
+    response = _build_stock_response(ticker, name, quote)
+    return _delay_adjust_price_fields(response, delay)
 
 def _period_return_pct(closes: List[float], bars: int) -> Optional[float]:
     if len(closes) < 2:
@@ -300,7 +340,11 @@ def _resample_candles(candles: List[Dict[str, Any]], group_size: int) -> List[Di
 
 
 @router.get("/chart/{symbol}")
-def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d"), current_user: User = Depends(deps.get_current_user)):
+def get_stock_chart(
+    symbol: str, response: Response, interval: str = Query("1d"),
+    current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
     """Get candlestick data along with EMA, SMA, VWAP, RSI, MACD, and Bollinger Bands plots."""
     symbol = symbol.upper()
     interval = interval.lower()
@@ -402,18 +446,30 @@ def get_stock_chart(symbol: str, response: Response, interval: str = Query("1d")
             "bb_upper": bb_upper[i] if i < len(bb_upper) else None,
             "bb_lower": bb_lower[i] if i < len(bb_lower) else None
         })
+    if delay > 0:
+        # Indicators above are computed over the FULL fetched history so
+        # SMA/RSI/etc. stay accurate for the bars that remain visible - only
+        # the output window itself is trimmed, dropping bars newer than the
+        # delay cutoff (same rule as market_data_service.get_delayed_candles,
+        # applied here since the indicator calc above needs the untrimmed
+        # candles first).
+        cutoff = time.time() - delay * 60
+        response_candles = [c for c in response_candles if c["time"] <= cutoff]
     response.headers.setdefault("X-Chart-Simulated", "false")
     return response_candles
 
 @router.get("/market-summary")
 @limiter.limit("120/minute")
-def get_market_summary(request: Request, current_user: User = Depends(deps.get_current_user)):
+def get_market_summary(
+    request: Request, current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
     """Calculate and return dynamic Bloomberg-style market tickers, sentiment, and sector performances using live quotes."""
     cached_quotes = market_data_service.get_all_quotes()
-    
+
     # Unified helper to get live index/parity/commodity prices with defaults
     def get_market_quote(symbol: str, default_p: float, default_c: float) -> dict:
-        q = market_data_service.get_quote(symbol)
+        q = market_data_service.get_delayed_quote(symbol, delay) if delay > 0 else market_data_service.get_quote(symbol)
         if q and q.get("last") is not None:
             return {
                 "price": float(q.get("last")),

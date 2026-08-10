@@ -644,5 +644,56 @@ class MarketDataService:
 
         return candles or []
 
+    def get_delayed_quote(self, symbol: str, delay_minutes: int) -> Dict[str, Any]:
+        """Same shape as get_quote(), but with the price fields backdated to
+        `delay_minutes` ago using 1-minute candle history - used to serve
+        free/starter/pro tiers a legally-flavored "15 minutes delayed" quote
+        instead of the live one (see deps.get_data_delay_minutes). There's no
+        separate historical-quote store in this app, so the delayed price is
+        derived from the same 1m candle cache the chart already uses, which
+        is timestamped and already streaming for any actively-viewed symbol.
+        Falls back to the live quote if not enough 1m history exists yet
+        (e.g. right after this symbol's first subscription) - a
+        briefly-fresher-than-promised price beats showing nothing."""
+        live = self.get_quote(symbol)
+        if delay_minutes <= 0:
+            return live
+        candles = self.get_candles(symbol, "1m", wait=False)
+        if not candles:
+            return live
+        cutoff = time.time() - delay_minutes * 60
+        eligible = [c for c in candles if c["time"] <= cutoff]
+        if not eligible:
+            return live
+        prev_close = live.get("prev_close")
+        if not prev_close:
+            # Can't safely derive a delayed change_percent without a real
+            # anchor - serving the live quote as-is is honest, whereas
+            # falling back to delayed_close itself would silently produce a
+            # fabricated 0% change instead of the real delayed movement.
+            return live
+        delayed_close = float(eligible[-1]["close"])
+        delayed = dict(live)
+        delayed["last"] = delayed_close
+        delayed["bid"] = delayed_close
+        delayed["ask"] = delayed_close
+        delayed["change"] = round(delayed_close - prev_close, 4)
+        delayed["change_percent"] = round((delayed_close - prev_close) / prev_close * 100, 2)
+        delayed["is_delayed"] = True
+        delayed["delay_minutes"] = delay_minutes
+        return delayed
+
+    def get_delayed_candles(
+        self, symbol: str, interval: str, delay_minutes: int, count: Optional[int] = None,
+        wait: bool = True, subscribe: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """get_candles(), with any bar newer than `delay_minutes` ago dropped
+        - same delayed-tier gate as get_delayed_quote(), applied to charts."""
+        candles = self.get_candles(symbol, interval, count=count, wait=wait, subscribe=subscribe)
+        if delay_minutes <= 0:
+            return candles
+        cutoff = time.time() - delay_minutes * 60
+        return [c for c in candles if c["time"] <= cutoff]
+
 # Global singleton instance
 market_data_service = MarketDataService()

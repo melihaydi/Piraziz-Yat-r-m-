@@ -17,7 +17,7 @@ def fixed_price(monkeypatch):
     value, instead of hitting the real TradingView cache."""
     price = {"value": 100.0}
 
-    def _get_live_price(instrument_type, symbol):
+    def _get_live_price(instrument_type, symbol, delay_minutes=0):
         return price["value"]
 
     def _get_quote(symbol):

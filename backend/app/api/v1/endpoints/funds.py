@@ -73,18 +73,22 @@ def _with_impact_pct(holdings: List[dict]) -> List[dict]:
 
 @router.get("/popular/live-estimate")
 @limiter.limit("120/minute")
-def get_popular_funds_live_estimate(request: Request, current_user: User = Depends(deps.get_current_user)):
+def get_popular_funds_live_estimate(
+    request: Request, current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
     """Estimated INTRADAY % change for the "Popüler Fonlar" funds, computed
     from their last known holdings' live prices - see
     TefasService.get_live_estimated_return's docstring for exactly what this
     is and isn't (an estimate from disclosed composition x live prices, not
     a real intraday NAV recalculation; TEFAS itself only publishes one NAV
-    per fund per day)."""
+    per fund per day). Free/starter/pro tiers get this computed from
+    15-minute-delayed stock quotes instead (see deps.get_data_delay_minutes)."""
     chg = _get_live_index_change()
     results = []
     for code in POPULAR_LIVE_FUNDS:
         fund = tefas_service.get_fund(code, chg)
-        estimate = tefas_service.get_live_estimated_return(code)
+        estimate = tefas_service.get_live_estimated_return(code, delay_minutes=delay)
         if not fund or not estimate:
             continue
         results.append({

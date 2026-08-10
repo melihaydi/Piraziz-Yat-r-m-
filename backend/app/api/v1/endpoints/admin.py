@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -7,6 +8,7 @@ from app.core.audit import log_audit
 from app.core.limiter import limiter
 from app.core.email import send_email
 from app.models.audit_log import AuditLog
+from app.models.portfolio import Portfolio, PortfolioAsset
 from app.models.support_ticket import SupportTicket
 from app.models.user import User
 from app.schemas.support import SupportTicketAdminResponse, SupportTicketUpdate
@@ -203,3 +205,178 @@ def update_support_ticket(
         status=ticket.status, admin_reply=ticket.admin_reply, created_at=ticket.created_at,
         updated_at=ticket.updated_at, user_email=ticket.user.email,
     )
+
+
+# --- Yönetilen Portföyler (managed portfolios) -----------------------------
+# Lets an admin record stock/fund holdings directly into another user's
+# portfolio (e.g. a friend who signed up but wants the admin to enter what
+# was actually bought on their behalf) WITHOUT logging into that user's
+# account. Deliberately reuses the same Portfolio/PortfolioAsset model the
+# self-service "Portföyüm" page writes to (see portfolio.py) - an admin-added
+# holding shows up for the target user exactly like one they entered
+# themselves, just attributed via the audit log instead of self-service.
+# No live pricing here on purpose: this is a data-entry surface, not a
+# monitoring one - the target user's own Portföyüm page already shows live
+# valuation for whatever gets recorded here.
+
+class ManagedAssetIn(BaseModel):
+    ticker: str
+    shares: float
+    average_cost: float
+
+
+def _asset_dict(asset: PortfolioAsset) -> dict:
+    return {
+        "id": asset.id,
+        "portfolio_id": asset.portfolio_id,
+        "ticker": asset.ticker,
+        "shares": asset.shares,
+        "average_cost": asset.average_cost,
+        "created_at": asset.created_at,
+        "updated_at": asset.updated_at,
+    }
+
+
+@router.get("/managed-portfolios/{user_id}")
+@limiter.limit("60/minute")
+def get_managed_portfolio(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """The target user's portfolio and its holdings - auto-creates an "Ana
+    Portföy" for them if they don't have one yet (same default-portfolio
+    convenience the self-service flow assumes), so the admin can start
+    entering holdings immediately without a separate "create portfolio"
+    step. Superuser only."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+
+    portfolio = db.query(Portfolio).filter(Portfolio.user_id == user_id).first()
+    if not portfolio:
+        portfolio = Portfolio(user_id=user_id, name="Ana Portföy")
+        db.add(portfolio)
+        db.commit()
+        db.refresh(portfolio)
+
+    return {
+        "user_id": target.id,
+        "user_email": target.email,
+        "user_name": target.full_name,
+        "portfolio_id": portfolio.id,
+        "portfolio_name": portfolio.name,
+        "assets": [_asset_dict(a) for a in portfolio.assets],
+    }
+
+
+@router.post("/managed-portfolios/{user_id}/assets", status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
+def add_managed_asset(
+    request: Request,
+    user_id: int,
+    asset_in: ManagedAssetIn,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Adds a holding to the target user's portfolio, or folds it into an
+    existing position at a weighted average cost if that ticker is already
+    held - identical merge logic to the self-service add-asset endpoint
+    (see portfolio.py's add_asset_to_portfolio). Superuser only, audit-logged
+    since this is one user's money being entered by someone else."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+
+    portfolio = db.query(Portfolio).filter(Portfolio.user_id == user_id).first()
+    if not portfolio:
+        portfolio = Portfolio(user_id=user_id, name="Ana Portföy")
+        db.add(portfolio)
+        db.commit()
+        db.refresh(portfolio)
+
+    ticker_upper = asset_in.ticker.upper()
+    existing = db.query(PortfolioAsset).filter(
+        PortfolioAsset.portfolio_id == portfolio.id,
+        PortfolioAsset.ticker == ticker_upper,
+    ).first()
+
+    if existing:
+        total_shares = existing.shares + asset_in.shares
+        if total_shares > 0:
+            existing.average_cost = (
+                (existing.shares * existing.average_cost) + (asset_in.shares * asset_in.average_cost)
+            ) / total_shares
+            existing.shares = total_shares
+        db.commit()
+        db.refresh(existing)
+        asset = existing
+    else:
+        asset = PortfolioAsset(
+            portfolio_id=portfolio.id, ticker=ticker_upper,
+            shares=asset_in.shares, average_cost=asset_in.average_cost,
+        )
+        db.add(asset)
+        db.commit()
+        db.refresh(asset)
+
+    log_audit(db, "managed_portfolio_asset_added", request=request, user_id=admin.id, resource_type="portfolio_asset",
+              resource_id=asset.id, details={
+                  "target_user_id": user_id, "target_email": target.email,
+                  "ticker": ticker_upper, "shares": asset_in.shares, "average_cost": asset_in.average_cost,
+              })
+    return _asset_dict(asset)
+
+
+@router.put("/managed-portfolios/assets/{asset_id}")
+@limiter.limit("30/minute")
+def update_managed_asset(
+    request: Request,
+    asset_id: int,
+    payload: ManagedAssetIn,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Overwrites a managed holding's shares/average cost outright (unlike
+    the add endpoint, no weighted-average merge - this is a direct
+    correction). Superuser only, audit-logged."""
+    asset = db.query(PortfolioAsset).join(Portfolio).filter(PortfolioAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Varlık bulunamadı.")
+    target = db.query(User).filter(User.id == asset.portfolio.user_id).first()
+
+    asset.shares = payload.shares
+    asset.average_cost = payload.average_cost
+    db.commit()
+    db.refresh(asset)
+
+    log_audit(db, "managed_portfolio_asset_updated", request=request, user_id=admin.id, resource_type="portfolio_asset",
+              resource_id=asset.id, details={
+                  "target_user_id": asset.portfolio.user_id, "target_email": target.email if target else None,
+                  "ticker": asset.ticker, "shares": payload.shares, "average_cost": payload.average_cost,
+              })
+    return _asset_dict(asset)
+
+
+@router.delete("/managed-portfolios/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
+def delete_managed_asset(
+    request: Request,
+    asset_id: int,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Removes a holding from a managed portfolio. Superuser only, audit-logged."""
+    asset = db.query(PortfolioAsset).join(Portfolio).filter(PortfolioAsset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Varlık bulunamadı.")
+
+    target_user_id = asset.portfolio.user_id
+    ticker = asset.ticker
+    db.delete(asset)
+    db.commit()
+
+    log_audit(db, "managed_portfolio_asset_removed", request=request, user_id=admin.id, resource_type="portfolio_asset",
+              resource_id=asset_id, details={"target_user_id": target_user_id, "ticker": ticker})
+    return None

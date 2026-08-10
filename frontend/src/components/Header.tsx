@@ -561,6 +561,25 @@ export default function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
 
+        {/* Live vs delayed data indicator - only premium/institutional get
+            real-time BIST data everywhere (Tarama, Fonlar, Hisse Detay, Ana
+            Sayfa, Trade); every other tier sees a 15-minute-delayed feed
+            (see backend deps.get_data_delay_minutes). Shown here so it's
+            never ambiguous which one is currently active. */}
+        <span
+          title={role === "premium" || role === "institutional"
+            ? "Anlık, gecikmesiz BIST verisi görüntülüyorsunuz."
+            : "Fiyatlar ve grafikler 15 dakika gecikmeli gösteriliyor. Anlık veri için Premium'a yükseltin."}
+          className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${
+            role === "premium" || role === "institutional"
+              ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+              : "text-amber-400 border-amber-500/30 bg-amber-500/10"
+          }`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${role === "premium" || role === "institutional" ? "bg-emerald-400" : "bg-amber-400"}`} />
+          {role === "premium" || role === "institutional" ? "Canlı Veri" : "15 Dk Gecikmeli"}
+        </span>
+
         {/* User Badge */}
         <Link
           href="/settings"

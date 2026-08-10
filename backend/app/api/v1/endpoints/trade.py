@@ -77,6 +77,7 @@ def create_additional_account(
     payload: AccountCreate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Opens another parallel paper-trading account (e.g. one per strategy) -
     unlike the old single-account model, this always succeeds rather than
@@ -87,7 +88,7 @@ def create_additional_account(
         )
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    return trade_service.serialize_account(db, account)
+    return trade_service.serialize_account(db, account, delay)
 
 
 @router.put("/accounts/{account_id}")
@@ -130,6 +131,7 @@ def get_account(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Returns null if the user hasn't been through broker onboarding yet -
     the frontend uses this to decide whether to show the broker picker."""
@@ -137,7 +139,7 @@ def get_account(
         else trade_service.get_account(db, current_user.id)
     if not account:
         return None
-    return trade_service.serialize_account(db, account)
+    return trade_service.serialize_account(db, account, delay)
 
 
 @router.post("/account")
@@ -145,6 +147,7 @@ def create_account(
     payload: AccountCreate,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     try:
         account = trade_service.create_account(
@@ -152,7 +155,7 @@ def create_account(
         )
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    return trade_service.serialize_account(db, account)
+    return trade_service.serialize_account(db, account, delay)
 
 
 @router.put("/account/broker")
@@ -161,6 +164,7 @@ def update_broker(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Change the broker card later without resetting balance/positions -
     both brokers run the identical simulated system, so this is cosmetic."""
@@ -169,7 +173,7 @@ def update_broker(
         account = trade_service.change_broker(db, account, payload.broker)
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    return trade_service.serialize_account(db, account)
+    return trade_service.serialize_account(db, account, delay)
 
 
 @router.post("/account/deposit")
@@ -180,6 +184,7 @@ def deposit(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Adds funds to the simulated cash balance (paper trading - no real
     money moves)."""
@@ -188,7 +193,7 @@ def deposit(
         account = trade_service.deposit_funds(db, account, payload.amount)
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    return trade_service.serialize_account(db, account)
+    return trade_service.serialize_account(db, account, delay)
 
 
 @router.post("/account/reset")
@@ -199,25 +204,28 @@ def reset_account(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Deliberate full restart - wipes positions/history and reseeds cash."""
     account = _require_account(db, current_user, account_id)
     account = trade_service.reset_account(db, account, payload.starting_balance)
     if payload.broker:
         account = trade_service.change_broker(db, account, payload.broker)
-    return trade_service.serialize_account(db, account)
+    return trade_service.serialize_account(db, account, delay)
 
 
 @router.get("/watchlist")
-def get_watchlist():
-    """Live BIST30 quotes for the Trade module's stock watchlist."""
-    return trade_service.get_watchlist()
+def get_watchlist(delay: int = Depends(deps.get_data_delay_minutes)):
+    """BIST30 quotes for the Trade module's stock watchlist - live for
+    premium/institutional, 15-minute-delayed otherwise."""
+    return trade_service.get_watchlist(delay)
 
 
 @router.get("/viop-contracts")
-def get_viop_contracts():
-    """Live quotes for the VİOP tab's tracked contracts."""
-    return trade_service.get_viop_watchlist()
+def get_viop_contracts(delay: int = Depends(deps.get_data_delay_minutes)):
+    """Quotes for the VİOP tab's tracked contracts - same delay rule as
+    /watchlist."""
+    return trade_service.get_viop_watchlist(delay)
 
 
 @router.get("/positions")
@@ -226,9 +234,10 @@ def get_positions(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     account = _require_account(db, current_user, account_id)
-    return trade_service.get_positions(db, account, instrument_type)
+    return trade_service.get_positions(db, account, instrument_type, delay)
 
 
 @router.post("/order")
@@ -239,12 +248,13 @@ def place_order(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     account = _require_account(db, current_user, account_id)
     try:
         result = trade_service.place_order(
             db, account, payload.instrument_type, payload.symbol, payload.side, payload.lot,
-            payload.order_type, payload.limit_price, payload.stop_price,
+            payload.order_type, payload.limit_price, payload.stop_price, delay,
         )
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -277,10 +287,11 @@ def cancel_pending_order(
     account_id: Optional[int] = None,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
 ):
     account = _require_account(db, current_user, account_id)
     try:
-        result = trade_service.cancel_pending_order(db, account, order_id)
+        result = trade_service.cancel_pending_order(db, account, order_id, delay)
     except TradeError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     log_audit(db, "order_cancelled", request=request, user_id=current_user.id, resource_type="order",
