@@ -872,6 +872,44 @@ class TefasService:
             "holdings": holdings_out,
         }
 
+    def get_dated_return_pct(self, code: str, target_date: "datetime.date") -> Optional[float]:
+        """A fund's REAL day-over-day % return for one specific past trading
+        day, computed from the dated historical NAV series (_history_cache -
+        each candle keyed to a real calendar date, not "whatever daily_return
+        currently says"). Used to backfill FundEstimateSnapshot's
+        actual_change_pct a day or two after the fact (see
+        fund_estimate_snapshot.py) - unlike get_fund()['daily_return'],
+        which is a ROLLING "latest close vs the close before it" figure that
+        moves on to represent a LATER day once time passes, a dated lookup
+        stays correct for that specific day no matter when it's read.
+
+        This matters most across a weekend: TEFAS's own settlement can lag a
+        Friday's NAV past that same evening, so a same-evening snapshot of
+        daily_return sometimes captures a not-yet-final figure. By the
+        following Monday (or later), the historical series has had time to
+        settle, so re-deriving Friday's return from it here is what actually
+        fixes that instead of trusting the same-evening figure permanently.
+
+        Returns None if the date (or the trading day immediately before it)
+        isn't in the cached history yet - the caller should just retry on a
+        later run rather than treat that as a real "unknown return"."""
+        code = code.upper()
+        with self._lock:
+            candles = list(self._history_cache.get(code) or [])
+        if not candles:
+            return None
+
+        target_ts = int(datetime.datetime(target_date.year, target_date.month, target_date.day, 18, 0).timestamp())
+        idx = next((i for i, c in enumerate(candles) if c["time"] == target_ts), None)
+        if idx is None or idx == 0:
+            return None
+
+        prev_close = candles[idx - 1]["close"]
+        target_close = candles[idx]["close"]
+        if not prev_close:
+            return None
+        return round((target_close - prev_close) / prev_close * 100, 2)
+
     def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> tuple[List[Dict[str, Any]], bool]:
         """
         Return (candles, is_simulated) historical NAV data for a mutual fund's chart.

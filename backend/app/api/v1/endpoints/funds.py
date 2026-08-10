@@ -127,6 +127,14 @@ def get_popular_funds_estimate_history(days: int = 30, db: Session = Depends(dep
         FundEstimateSnapshot.snapshot_date.desc(), FundEstimateSnapshot.fund_code
     ).all()
 
+    # Filters out any Saturday/Sunday rows recorded before the snapshot job
+    # itself was fixed to skip weekends (see FundEstimateSnapshotService.
+    # _run_snapshot) - TEFAS never publishes a real daily_return on those
+    # days, so an old weekend row's actual_change_pct is just Friday's
+    # figure repeated, not a real day-of comparison. Filtered here rather
+    # than deleted from the table, so the raw history stays intact.
+    rows = [r for r in rows if r.snapshot_date.weekday() < 5]
+
     return {
         "snapshots": [
             {
