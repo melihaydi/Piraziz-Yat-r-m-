@@ -1,84 +1,118 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from typing import List
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.core.config import settings
+from app.core.limiter import limiter
+from app.models.subscription import Subscription
 from app.models.user import User
-from app.schemas.subscription import CheckoutSessionCreate, CheckoutSessionResponse, WebhookPayload
+from app.schemas.subscription import CheckoutRequest, CheckoutResponse, SubscriptionOut
+from app.services import payment_service
+from app.services.payment_service import PaymentError
 
 router = APIRouter()
 
-@router.post("/checkout", response_model=CheckoutSessionResponse)
-def create_checkout_session(
-    checkout_in: CheckoutSessionCreate,
-    current_user: User = Depends(deps.get_current_user)
+
+@router.get("/plans")
+def list_plans():
+    """Placeholder prices, not a researched pricing decision - see
+    payment_service.py's module docstring."""
+    return {
+        "plans": [
+            {"role": role, "price_try": price, "period_days": payment_service.PLAN_PERIOD_DAYS}
+            for role, price in payment_service.PLAN_PRICES_TRY.items()
+        ],
+        "configured": payment_service.is_configured(),
+    }
+
+
+@router.post("/checkout", response_model=CheckoutResponse)
+@limiter.limit("10/minute")
+def checkout(
+    request: Request,
+    payload: CheckoutRequest,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
 ):
-    """Simulate creation of a payment checkout session (Stripe / Iyzico)."""
-    mock_session_id = f"sess_mock_{current_user.id}_{checkout_in.tier}"
-    mock_checkout_url = f"https://checkout.stripe.com/pay/{mock_session_id}"
-    
-    return CheckoutSessionResponse(
-        checkout_url=mock_checkout_url,
-        session_id=mock_session_id
+    """Starts a real iyzico Checkout Form payment - see payment_service.py
+    for why the role upgrade only ever happens from the /callback
+    confirmation below, never from this response directly."""
+    ip = request.client.host if request.client else None
+    try:
+        payment_page_url = payment_service.initialize_checkout(
+            db, current_user, payload.role,
+            {
+                "identity_number": payload.identity_number,
+                "city": payload.city,
+                "address": payload.address,
+                "gsm_number": payload.gsm_number,
+                "ip": ip,
+            },
+        )
+    except PaymentError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return {"payment_page_url": payment_page_url}
+
+
+@router.post("/callback")
+@limiter.limit("60/minute")
+def payment_callback(request: Request, token: str = Form(...), db: Session = Depends(deps.get_db)):
+    """iyzico redirects the buyer's browser here (POST, form-encoded) after
+    they complete or cancel payment - see payment_service.confirm_payment
+    for why the `token` itself isn't trusted, only the server-to-server
+    retrieve() call it triggers. Redirects back into the app either way."""
+    try:
+        sub = payment_service.confirm_payment(db, token, request=request)
+    except PaymentError:
+        sub = None
+    outcome = "success" if (sub and sub.status == "paid") else "failed"
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}/settings?payment={outcome}",
+        status_code=status.HTTP_302_FOUND,
     )
 
-@router.post("/webhook", status_code=status.HTTP_200_OK)
-def payment_webhook(
-    payload: WebhookPayload,
+
+@router.get("/history", response_model=List[SubscriptionOut])
+def payment_history(
     db: Session = Depends(deps.get_db),
-    x_webhook_secret: Optional[str] = Header(default=None),
+    current_user: User = Depends(deps.get_current_user),
 ):
-    """Receive async payment success webhooks to upgrade user tier.
-
-    Requires a shared secret (STRIPE_WEBHOOK_SECRET) matching the
-    X-Webhook-Secret header. There's no real payment gateway wired up yet
-    (checkout is mocked above), so this previously had zero verification -
-    anyone could POST {"user_id": <any>, "tier": "institutional", ...} here
-    directly and upgrade any account for free. Fails closed: if the secret
-    isn't configured, every call is rejected rather than trusted.
-    """
-    if not settings.STRIPE_WEBHOOK_SECRET or x_webhook_secret != settings.STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing webhook secret",
+    rows = (
+        db.query(Subscription)
+        .filter(Subscription.user_id == current_user.id)
+        .order_by(Subscription.created_at.desc())
+        .all()
+    )
+    return [
+        SubscriptionOut(
+            id=r.id, role=r.role, amount_try=r.amount_try, period_days=r.period_days,
+            status=r.status, expires_at=r.expires_at.isoformat() if r.expires_at else None,
+            created_at=r.created_at.isoformat() if r.created_at else "",
         )
+        for r in rows
+    ]
 
-    if payload.event_type != "payment_intent.succeeded":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported event type"
-        )
-        
-    user = db.query(User).filter(User.id == payload.user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    # Upgrade role
-    user.role = payload.tier
-    db.commit()
-    return {"status": "success", "message": f"User upgraded to {payload.tier}"}
 
 @router.post("/cancel")
 def cancel_subscription(
     db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    current_user: User = Depends(deps.get_current_user),
 ):
-    """Cancel subscription, reverting user tier back to free."""
+    """Immediately reverts to the free tier and marks any still-`paid`
+    Subscription rows as canceled, so the daily expiry sweep (see
+    subscription_expiry.py) doesn't also try to act on them later. This is
+    NOT a refund and doesn't credit back remaining paid days - a one-time
+    Checkout Form payment (not an auto-renewing subscription) has nothing
+    to "stop charging"; this only exists so a user isn't stuck on a paid
+    tier they no longer want to see/use."""
     if current_user.role == "free":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is already on the free tier"
-        )
-        
-    current_user.role = "free"
-    db.commit()
-    return {"status": "success", "message": "Subscription cancelled successfully."}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Zaten ücretsiz üyeliktesiniz.")
 
-@router.get("/test-premium")
-def test_premium_route(current_user: User = Depends(deps.get_current_premium_user)):
-    """Test endpoint that only premium users can access."""
-    return {"message": f"Welcome premium user {current_user.email}"}
+    current_user.role = "free"
+    db.query(Subscription).filter(
+        Subscription.user_id == current_user.id, Subscription.status == "paid"
+    ).update({"status": "canceled"})
+    db.commit()
+    return {"status": "success", "message": "Üyelik iptal edildi, ücretsiz plana geçtiniz."}

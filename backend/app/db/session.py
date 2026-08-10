@@ -34,6 +34,7 @@ if DATABASE_URL.startswith("sqlite"):
         from app.models.portfolio import Portfolio, PortfolioAsset
         from app.models.alert import Alert
         from app.models.trade import TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot
+        from app.models.subscription import Subscription
         from sqlalchemy import inspect, text
 
         # One-off structural migration: trade_account.user_id used to be

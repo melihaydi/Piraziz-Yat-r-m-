@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import {
-  User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Sparkles, Image as ImageIcon,
+  User, Shield, HelpCircle, Mail, Phone, Lock, CheckCircle2, Image as ImageIcon,
   Database, KeyRound, Fingerprint, RefreshCw, ScrollText, BadgeCheck, ShieldCheck, MessageCircle,
   Smartphone, XCircle, LogOut, Download, Monitor, Bell, BellOff
 } from "lucide-react"
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/Input"
 import { authFetch, fetchCurrentUser, logout, resendVerification } from "@/lib/auth"
 import { isPushSupported, getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from "@/lib/push"
 import { API_BASE_URL } from "@/lib/config"
+import PlanCard from "@/components/settings/PlanCard"
 
 function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; onChanged: () => void }) {
   const [step, setStep] = useState<"idle" | "setup" | "disable" | "codes" | "regenerate">("idle")
@@ -393,6 +394,22 @@ export default function SettingsPage() {
   const [isEmailVerified, setIsEmailVerified] = useState(true)
   const [emailDeliveryEnabled, setEmailDeliveryEnabled] = useState(false)
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle")
+  const [role, setRole] = useState("free")
+  // Set by /subscription/callback's redirect (see subscription.py) after
+  // the buyer returns from iyzico's hosted checkout page - "success" or
+  // "failed", read once on mount, not tied to any other state here.
+  const [paymentResult, setPaymentResult] = useState<"success" | "failed" | null>(null)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const value = new URLSearchParams(window.location.search).get("payment")
+    if (value === "success" || value === "failed") {
+      setPaymentResult(value)
+      const url = new URL(window.location.href)
+      url.searchParams.delete("payment")
+      window.history.replaceState({}, "", url.toString())
+    }
+  }, [])
 
   const refreshProfile = () => {
     fetchCurrentUser().then(user => {
@@ -402,6 +419,7 @@ export default function SettingsPage() {
       setTotpEnabled(!!user.totp_enabled)
       setIsEmailVerified(!!user.is_email_verified)
       setEmailDeliveryEnabled(!!user.email_delivery_enabled)
+      if (user.role) setRole(user.role)
     })
   }
 
@@ -628,6 +646,25 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* Set once from ?payment=success|failed after iyzico's checkout
+          redirects back here (see subscription.py's /callback) - the query
+          param itself is stripped on mount so a page refresh doesn't keep
+          re-showing it. */}
+      {paymentResult && (
+        <div className={`rounded-xl border px-4 py-3 flex items-center gap-2.5 text-xs font-semibold ${
+          paymentResult === "success"
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+            : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+        }`}>
+          {paymentResult === "success" ? (
+            <>Ödemeniz alındı, üyeliğiniz güncellendi.</>
+          ) : (
+            <>Ödeme tamamlanamadı. Lütfen tekrar deneyin.</>
+          )}
+          <button onClick={() => setPaymentResult(null)} className="ml-auto opacity-70 hover:opacity-100 cursor-pointer">✕</button>
+        </div>
+      )}
+
       {/* Only shown when the user can actually do something about it. With
           no SMTP credentials configured server-side the resend button's
           mail silently no-ops, so the banner just nagged permanently with
@@ -697,18 +734,7 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          {/* Premium Status Card */}
-          <Card glass={true} className="bg-gradient-to-br from-card to-emerald-950/10 border-emerald-500/20">
-            <CardContent className="pt-6 text-center space-y-3">
-              <div className="inline-flex p-2.5 bg-emerald-500/10 rounded-full text-emerald-400 border border-emerald-500/20">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <h3 className="font-extrabold text-sm text-foreground">Premium Lisans Aktif</h3>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Piraziz Yatırım gerçek zamanlı BIST30 & TEFAS fon veri akış lisansınız aktiftir.
-              </p>
-            </CardContent>
-          </Card>
+          <PlanCard currentRole={role} onUpgraded={refreshProfile} />
         </div>
 
         {/* Right Side: Tab Forms */}

@@ -32,10 +32,15 @@ class Settings(BaseSettings):
     TWELVE_DATA_API_KEY: Optional[str] = None
     EVDS_API_KEY: Optional[str] = None
 
-    # Payments
+    # Payments - a bare hostname, NOT a full URL: iyzipay's SDK passes this
+    # straight into http.client.HTTPSConnection(host), which rejects a
+    # "https://" prefix (fails DNS resolution on the literal string
+    # "https://..."). Confirmed against iyzipay==1.0.46's IyzipayResource.
+    # connect(). Switch to "api.iyzipay.com" once ready to take real
+    # payments (see payment_service.py's module docstring).
     IYZICO_API_KEY: Optional[str] = None
     IYZICO_SECRET_KEY: Optional[str] = None
-    IYZICO_BASE_URL: str = "https://sandbox-api.iyzipay.com"
+    IYZICO_BASE_URL: str = "sandbox-api.iyzipay.com"
     STRIPE_API_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
 
@@ -63,6 +68,13 @@ class Settings(BaseSettings):
     # reset, email verification, etc.). Defaults to the live Netlify
     # deployment; override in .env for a custom domain.
     FRONTEND_URL: str = "https://pirazizyatirim.netlify.app"
+
+    # This backend's OWN public URL - needed for iyzico's checkoutForm
+    # callbackUrl (iyzico redirects the buyer's browser back here after
+    # payment, as a POST with a `token` - see payment_service.py). Must be
+    # a real, internet-reachable HTTPS URL, not localhost, even in a
+    # sandbox test.
+    BACKEND_PUBLIC_URL: str = "https://92-5-160-231.sslip.io"
 
     # Web Push (VAPID) - generated once for this app (see core/push.py),
     # baked in as a working default so browser push works out of the box

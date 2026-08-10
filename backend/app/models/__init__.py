@@ -12,6 +12,7 @@ from app.models.news_article import NewsArticle
 from app.models.audit_log import AuditLog
 from app.models.push_subscription import PushSubscription
 from app.models.support_ticket import SupportTicket
+from app.models.subscription import Subscription
 
 __all__ = [
     "Base",

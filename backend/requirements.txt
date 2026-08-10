@@ -39,3 +39,4 @@ sentry-sdk[fastapi]==2.19.2
 # installed - confirmed live, this crashed the app on startup the moment
 # SENTRY_DSN got set. jinja2 itself is pure-Python with no heavy deps.
 jinja2==3.1.5
+iyzipay==1.0.46
