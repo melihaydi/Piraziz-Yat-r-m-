@@ -15,9 +15,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <Comp
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
+          // active:scale gives every button a physical press response; the
+          // ring is offset off the button so focus stays visible against
+          // the dark surfaces this app uses everywhere.
+          "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
           // Variants
-          variant === "default" && "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+          variant === "default" && "bg-gradient-to-b from-primary to-primary/85 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:brightness-110",
           variant === "destructive" && "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
           variant === "outline" && "border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground",
           variant === "secondary" && "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",

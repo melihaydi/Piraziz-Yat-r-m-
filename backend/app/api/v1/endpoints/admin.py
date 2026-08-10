@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.api.v1.endpoints.portfolio import calculate_asset_metrics, _daily_change
 from app.core.audit import log_audit
 from app.core.limiter import limiter
 from app.core.email import send_email
@@ -261,13 +262,42 @@ def get_managed_portfolio(
         db.commit()
         db.refresh(portfolio)
 
+    # Live valuation reuses portfolio.py's own helpers rather than
+    # recomputing any of it here, so an admin viewing a managed portfolio
+    # sees exactly the figures its owner sees - including the fund intraday
+    # estimate kept strictly separate from the official NAV (see
+    # _fund_estimated_daily_change_pct's docstring for why that separation
+    # matters). Admins are not delay-gated (delay_minutes=0): this is an
+    # operational view for someone entering trades on the user's behalf.
+    assets = []
+    total_cost = 0.0
+    total_value = 0.0
+    for asset in portfolio.assets:
+        metrics = calculate_asset_metrics(asset)
+        daily_change_pct, is_estimate = _daily_change(asset.ticker.upper())
+        metrics["daily_change_pct"] = daily_change_pct
+        metrics["daily_change_is_estimate"] = is_estimate
+        metrics["daily_gain_value"] = (
+            metrics["total_value"] * daily_change_pct / 100 if daily_change_pct is not None else None
+        )
+        metrics["cost_value"] = asset.shares * asset.average_cost
+        assets.append(metrics)
+        total_cost += metrics["cost_value"]
+        total_value += metrics["total_value"]
+
+    total_profit = total_value - total_cost
+
     return {
         "user_id": target.id,
         "user_email": target.email,
         "user_name": target.full_name,
         "portfolio_id": portfolio.id,
         "portfolio_name": portfolio.name,
-        "assets": [_asset_dict(a) for a in portfolio.assets],
+        "assets": assets,
+        "total_cost": total_cost,
+        "total_value": total_value,
+        "total_profit": total_profit,
+        "profit_percentage": (total_profit / total_cost * 100) if total_cost > 0 else 0.0,
     }
 
 

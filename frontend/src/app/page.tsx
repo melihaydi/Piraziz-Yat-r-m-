@@ -25,7 +25,9 @@ import {
   AlertTriangle,
   HelpCircle,
   Coins,
-  Zap
+  Zap,
+  Newspaper,
+  ExternalLink
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -68,6 +70,11 @@ export default function Home() {
   // Popüler Fonlar - Anlık Getiri (same live estimate as /funds page)
   const [popularFunds, setPopularFunds] = useState<any[]>([])
   const [loadingPopularFunds, setLoadingPopularFunds] = useState(true)
+
+  // A short economy-news strip under the funds card - just the newest few
+  // headlines from the same /news feed the full Ekonomi Haberleri page uses.
+  const [newsFeed, setNewsFeed] = useState<any[]>([])
+  const [loadingNewsFeed, setLoadingNewsFeed] = useState(true)
 
   // Favorites States
   const [favoriteStocks, setFavoriteStocks] = useState<any[]>([])
@@ -129,6 +136,16 @@ export default function Home() {
         .finally(() => setLoadingPopularFunds(false))
     }
 
+    const fetchNewsFeed = () => {
+      authFetch(`/news/`)
+        .then(res => (res.ok ? res.json() : []))
+        .then(data => {
+          if (Array.isArray(data)) setNewsFeed(data.slice(0, 5))
+        })
+        .catch(err => console.error("Failed to load news feed:", err))
+        .finally(() => setLoadingNewsFeed(false))
+    }
+
     // 4. Fetch details for favorites (Request 12 & 16!)
     const loadFavorites = async () => {
       const favStocksStr = localStorage.getItem("favorites_stocks")
@@ -172,6 +189,7 @@ export default function Home() {
     // Initial fetch
     fetchMarketSummary()
     fetchPopularFunds()
+    fetchNewsFeed()
     loadFavorites()
 
     // Market summary reads from an in-memory cache on the backend (no extra
@@ -357,6 +375,60 @@ export default function Home() {
                       </div>
                     )
                   })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Ekonomi haberleri akışı - just the newest few headlines, sitting
+              directly under the funds card. The full list lives at /news. */}
+          <Card glass={true} className="border-purple-500/20">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-lg flex items-center">
+                  <Newspaper className="h-5 w-5 mr-2 text-purple-400" />
+                  Ekonomi Haberleri
+                </CardTitle>
+                <button
+                  onClick={() => router.push("/news")}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-purple-400 hover:text-purple-300 transition-colors cursor-pointer shrink-0"
+                >
+                  Tümü
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {loadingNewsFeed ? (
+                <div className="space-y-2 py-1">
+                  <Skeleton className="h-11 w-full rounded-lg" />
+                  <Skeleton className="h-11 w-full rounded-lg" />
+                  <Skeleton className="h-11 w-full rounded-lg" />
+                </div>
+              ) : newsFeed.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground py-4">Şu an haber akışı alınamadı.</p>
+              ) : (
+                <div className="divide-y divide-border/40 -mx-2">
+                  {newsFeed.map((n, i) => (
+                    <a
+                      key={`${n.link}-${i}`}
+                      href={n.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start justify-between gap-3 px-2 py-2.5 hover:bg-secondary/25 rounded-lg transition-colors group"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wide">{n.source}</span>
+                        <p className="text-xs font-semibold text-foreground leading-snug line-clamp-2 mt-0.5 group-hover:text-purple-200 transition-colors">
+                          {n.title}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-[10px] text-muted-foreground">{n.pub_date}</span>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    </a>
+                  ))}
                 </div>
               )}
             </CardContent>

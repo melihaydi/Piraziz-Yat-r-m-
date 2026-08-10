@@ -391,6 +391,7 @@ export default function SettingsPage() {
   const [authSubmitting, setAuthSubmitting] = useState(false)
   const [totpEnabled, setTotpEnabled] = useState(false)
   const [isEmailVerified, setIsEmailVerified] = useState(true)
+  const [emailDeliveryEnabled, setEmailDeliveryEnabled] = useState(false)
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle")
 
   const refreshProfile = () => {
@@ -400,6 +401,7 @@ export default function SettingsPage() {
       setUsername(user.full_name?.trim() || user.email?.split("@")[0] || "")
       setTotpEnabled(!!user.totp_enabled)
       setIsEmailVerified(!!user.is_email_verified)
+      setEmailDeliveryEnabled(!!user.email_delivery_enabled)
     })
   }
 
@@ -626,11 +628,18 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {!isEmailVerified && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
-          <div className="flex items-center gap-2 text-amber-300/90">
+      {/* Only shown when the user can actually do something about it. With
+          no SMTP credentials configured server-side the resend button's
+          mail silently no-ops, so the banner just nagged permanently with
+          no way to clear it - hiding it there is the honest behavior. */}
+      {!isEmailVerified && emailDeliveryEnabled && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+          <div className="flex items-center gap-2 text-amber-300">
             <Mail className="h-4 w-4 shrink-0" />
-            <span className="text-xs font-semibold">E-posta adresini henüz doğrulamadın.</span>
+            <span className="text-sm font-semibold">
+              E-posta adresiniz henüz doğrulanmadı.{" "}
+              <span className="font-normal text-amber-300/80">Hesabınızı kurtarabilmek için doğrulamanız önerilir.</span>
+            </span>
           </div>
           <Button
             type="button"

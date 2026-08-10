@@ -19,6 +19,17 @@ interface ManagedAsset {
   ticker: string
   shares: number
   average_cost: number
+  cost_value: number
+  current_price: number
+  total_value: number
+  total_profit: number
+  profit_percentage: number
+  daily_change_pct: number | null
+  /** True when daily_change_pct is a fund's modeled intraday estimate
+   * rather than a settled figure - rendered in orange to match how the
+   * user's own portfolio page distinguishes the two. */
+  daily_change_is_estimate: boolean
+  daily_gain_value: number | null
 }
 
 interface ManagedPortfolio {
@@ -28,7 +39,13 @@ interface ManagedPortfolio {
   portfolio_id: number
   portfolio_name: string
   assets: ManagedAsset[]
+  total_cost: number
+  total_value: number
+  total_profit: number
+  profit_percentage: number
 }
+
+const tl = (n: number) => `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export default function ManagedPortfoliosPage() {
   const [checkingAccess, setCheckingAccess] = useState(true)
@@ -239,19 +256,47 @@ export default function ManagedPortfoliosPage() {
             </div>
           ) : managedPortfolio ? (
             <div className="space-y-3">
+              {managedPortfolio.assets.length > 0 && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground">Toplam Pozisyon</span>
+                    <p className="text-base font-extrabold font-mono text-foreground">{tl(managedPortfolio.total_value)}</p>
+                  </div>
+                  <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground">Toplam Maliyet</span>
+                    <p className="text-base font-extrabold font-mono text-foreground">{tl(managedPortfolio.total_cost)}</p>
+                  </div>
+                  <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground">Kâr / Zarar</span>
+                    <p className={`text-base font-extrabold font-mono ${managedPortfolio.total_profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      {managedPortfolio.total_profit >= 0 ? "+" : ""}{tl(managedPortfolio.total_profit)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground">Getiri</span>
+                    <p className={`text-base font-extrabold font-mono ${managedPortfolio.profit_percentage >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      {managedPortfolio.profit_percentage >= 0 ? "+" : ""}{managedPortfolio.profit_percentage.toFixed(2)}%
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead>
                     <tr className="border-b border-border/60 text-muted-foreground font-semibold h-9">
                       <th className="px-2">Sembol</th>
                       <th className="px-2 text-right">Adet</th>
-                      <th className="px-2 text-right">Maliyet</th>
+                      <th className="px-2 text-right">Ort. Maliyet</th>
+                      <th className="px-2 text-right">Güncel Fiyat</th>
+                      <th className="px-2 text-right">Pozisyon</th>
+                      <th className="px-2 text-right">Kâr / Zarar</th>
                       <th className="px-2 text-right">İşlemler</th>
                     </tr>
                   </thead>
                   <tbody>
                     {managedPortfolio.assets.length === 0 && (
-                      <tr><td colSpan={4} className="text-center text-muted-foreground py-4">Bu kullanıcının portföyünde henüz varlık yok.</td></tr>
+                      <tr><td colSpan={7} className="text-center text-muted-foreground py-4">Bu kullanıcının portföyünde henüz varlık yok.</td></tr>
                     )}
                     {managedPortfolio.assets.map(asset => (
                       <tr key={asset.id} className="border-b border-border/20 h-11">
@@ -274,7 +319,7 @@ export default function ManagedPortfoliosPage() {
                                 className="w-20 h-7 rounded border border-input bg-zinc-900/60 px-1.5 text-right text-xs"
                               />
                             </td>
-                            <td className="px-2 text-right space-x-1.5">
+                            <td colSpan={3} className="px-2 text-right space-x-1.5">
                               <button
                                 onClick={() => saveEditAsset(asset)}
                                 disabled={managedBusy}
@@ -294,6 +339,45 @@ export default function ManagedPortfoliosPage() {
                           <>
                             <td className="px-2 text-right font-mono">{asset.shares}</td>
                             <td className="px-2 text-right font-mono">₺{asset.average_cost.toFixed(2)}</td>
+                            <td className="px-2 text-right font-mono">
+                              <div className="flex flex-col items-end">
+                                <span>₺{asset.current_price.toFixed(2)}</span>
+                                {asset.daily_change_pct != null && (
+                                  <span className={`text-[10px] font-bold ${
+                                    asset.daily_change_is_estimate
+                                      ? "text-orange-400"
+                                      : asset.daily_change_pct >= 0 ? "text-cyan-400" : "text-rose-400"
+                                  }`}>
+                                    {asset.daily_change_is_estimate ? "~" : ""}
+                                    {asset.daily_change_pct >= 0 ? "+" : ""}{asset.daily_change_pct.toFixed(2)}%
+                                    {asset.daily_change_is_estimate ? " tahmini" : ""}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 text-right font-mono font-bold">
+                              <div className="flex flex-col items-end">
+                                <span>{tl(asset.total_value)}</span>
+                                <span className="text-[10px] font-normal text-muted-foreground">
+                                  maliyet {tl(asset.cost_value)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-2 text-right font-mono font-bold">
+                              <div className="flex flex-col items-end">
+                                <span className={asset.total_profit >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                                  {asset.total_profit >= 0 ? "+" : ""}{tl(asset.total_profit)}
+                                </span>
+                                <span className={`text-[10px] ${asset.total_profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                  {asset.profit_percentage >= 0 ? "+" : ""}{asset.profit_percentage.toFixed(2)}%
+                                </span>
+                                {asset.daily_gain_value != null && asset.daily_change_is_estimate && (
+                                  <span className="text-[10px] font-bold text-orange-400">
+                                    bugün ~{asset.daily_gain_value >= 0 ? "+" : ""}{tl(asset.daily_gain_value)}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-2 text-right space-x-1.5">
                               <button
                                 onClick={() => startEditAsset(asset)}

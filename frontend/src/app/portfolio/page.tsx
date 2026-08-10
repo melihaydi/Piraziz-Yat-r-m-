@@ -746,8 +746,8 @@ export default function PortfolioPage() {
             </div>
             <p className="text-[10px] text-emerald-500/80 mt-1 font-semibold">Tüm zamanların en yüksek seviyesinde</p>
             {liveEstimate?.estimated_daily_gain_value != null && (
-              <p className={`inline-flex items-center gap-1 text-[10px] font-semibold mt-1.5 ${liveEstimate.estimated_daily_gain_value >= 0 ? "text-amber-400" : "text-amber-500"}`}>
-                <Zap className="h-2.5 w-2.5 shrink-0" />
+              <p className="inline-flex items-center gap-1 text-xs font-bold mt-2 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/25 text-orange-400">
+                <Zap className="h-3 w-3 shrink-0" />
                 Bugün (tahmini): {liveEstimate.estimated_daily_gain_value >= 0 ? "+" : ""}
                 ₺{liveEstimate.estimated_daily_gain_value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 {" "}({liveEstimate.estimated_change_pct >= 0 ? "+" : ""}{liveEstimate.estimated_change_pct.toFixed(2)}%)
@@ -830,7 +830,7 @@ export default function PortfolioPage() {
             ) : (
               <>
                 <div className="flex items-baseline gap-3 mb-4">
-                  <span className={`text-3xl font-extrabold font-mono ${liveEstimate.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <span className="text-3xl font-extrabold font-mono text-orange-400">
                     {liveEstimate.estimated_change_pct >= 0 ? "+" : ""}{liveEstimate.estimated_change_pct.toFixed(2)}%
                   </span>
                   <span className="text-xs text-muted-foreground font-medium">
@@ -948,8 +948,8 @@ export default function PortfolioPage() {
                               <div className="flex flex-col items-end">
                                 <span>₺{(item.current_price || item.average_cost).toFixed(2)}</span>
                                 {item.daily_change_pct != null && item.daily_change_is_estimate && (
-                                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold ${item.daily_change_pct >= 0 ? "text-amber-400" : "text-amber-500"}`}>
-                                    <Zap className="h-2.5 w-2.5 shrink-0" />
+                                  <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-orange-400">
+                                    <Zap className="h-3 w-3 shrink-0" />
                                     ~{item.daily_change_pct >= 0 ? "+" : ""}{item.daily_change_pct.toFixed(2)}% tahmini
                                   </span>
                                 )}
@@ -969,14 +969,26 @@ export default function PortfolioPage() {
                                     Toplam {profit >= 0 ? "+" : ""}{profitPct.toFixed(1)}%
                                   </span>
                                 </div>
-                                {/* Günlük (today only) - real for a stock, tahmini for a fund */}
+                                {/* Günlük (today only) - real for a stock, tahmini for a fund.
+                                    Estimated figures are rendered entirely in orange (both the
+                                    TL amount and the %) rather than the usual green/red gain
+                                    colors, so an estimate is never mistaken for a settled
+                                    figure at a glance. The +/- sign still carries direction. */}
                                 {item.daily_gain_value != null && (
                                   <div className="flex flex-col items-end border-t border-border/30 pt-1">
-                                    <span className={`text-[10px] font-semibold inline-flex items-center gap-0.5 ${item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"}`}>
-                                      {item.daily_change_is_estimate && <Zap className="h-2.5 w-2.5 shrink-0" />}
+                                    <span className={`text-xs font-bold inline-flex items-center gap-0.5 ${
+                                      item.daily_change_is_estimate
+                                        ? "text-orange-400"
+                                        : item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"
+                                    }`}>
+                                      {item.daily_change_is_estimate && <Zap className="h-3 w-3 shrink-0" />}
                                       {item.daily_gain_value >= 0 ? "+" : ""}₺{item.daily_gain_value.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
                                     </span>
-                                    <span className={`text-[9px] ${item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"}`}>
+                                    <span className={`text-[11px] font-semibold ${
+                                      item.daily_change_is_estimate
+                                        ? "text-orange-400"
+                                        : item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"
+                                    }`}>
                                       Günlük{item.daily_change_is_estimate ? " (tahmini)" : ""} {item.daily_change_pct >= 0 ? "+" : ""}{item.daily_change_pct.toFixed(2)}%
                                     </span>
                                   </div>

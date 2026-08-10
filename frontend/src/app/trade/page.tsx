@@ -2,7 +2,7 @@
 
 import React, { useState } from "react"
 import Link from "next/link"
-import { Settings, BarChart3, Loader2, Maximize2, Minimize2, PanelLeftOpen, ArrowLeft } from "lucide-react"
+import { Settings, BarChart3, Loader2, Maximize2, Minimize2, PanelLeftOpen, ArrowLeft, Lock } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
 import InstrumentTabs from "@/components/trade/InstrumentTabs"
 import AccountSummaryBar from "@/components/trade/AccountSummaryBar"
@@ -25,10 +25,29 @@ import AccountSettingsModal from "@/components/trade/AccountSettingsModal"
 const TV_WIDGET_CAPABLE = new Set(["XAUUSD", "XAUTRYG", "USDTRY", "EURTRY"])
 
 export default function TradePage() {
-  const { loading, account, activeTab, watchlist, viopWatchlist, selectedSymbol, pendingOrders } = useTrade()
+  const { loading, accessDenied, account, activeTab, watchlist, viopWatchlist, selectedSymbol, pendingOrders } = useTrade()
   const [showSettings, setShowSettings] = useState(false)
   const [watchlistCollapsed, setWatchlistCollapsed] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Free tier can't use Trade at all (see deps.get_current_premium_user on
+  // trade.py's router) - without this check the account/watchlist fetches
+  // all silently 403'd and the page below spun on the loading state forever
+  // with no explanation.
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 min-h-screen bg-[#101015] text-center px-6">
+        <Lock className="h-8 w-8 text-cyan-400" />
+        <span className="text-sm font-bold text-white">Trade modülü Premium üyelik gerektirir</span>
+        <span className="text-xs text-zinc-400 max-w-sm">
+          Bu bölüm ücretsiz üyelikte kullanılamıyor. Üyeliğinizi yükseltmek için Ayarlar sayfasını ziyaret edin.
+        </span>
+        <Link href="/settings" className="mt-2 text-xs font-bold text-cyan-400 hover:text-cyan-300 underline underline-offset-2">
+          Ayarlar&apos;a git
+        </Link>
+      </div>
+    )
+  }
 
   // No broker-selection step anymore - TradeContext auto-provisions an
   // account on first visit, so this covers both the initial load and that

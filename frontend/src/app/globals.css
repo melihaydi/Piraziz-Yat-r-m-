@@ -30,39 +30,45 @@
 }
 
 :root {
-  --background: 240 10% 3.9%;
+  /* Backgrounds carry a faint blue cast rather than pure neutral grey -
+     reads as deliberate on an OLED/dark screen instead of "unstyled black",
+     and gives the violet primary something to sit against. */
+  --background: 240 14% 4.5%;
   --foreground: 0 0% 98%;
-  
-  --card: 240 10% 5%;
+
+  --card: 240 12% 6.5%;
   --card-foreground: 0 0% 98%;
-  
-  --popover: 240 10% 4.9%;
+
+  --popover: 240 12% 6%;
   --popover-foreground: 0 0% 98%;
-  
-  --primary: 263.4 70% 50.4%; /* Electric Violet */
+
+  --primary: 263.4 76% 58%; /* Electric Violet */
   --primary-foreground: 210 20% 98%;
-  
-  --secondary: 240 3.7% 12.9%;
+
+  --secondary: 240 6% 14.5%;
   --secondary-foreground: 0 0% 98%;
-  
-  --muted: 240 3.7% 12.9%;
-  --muted-foreground: 240 5% 64.9%;
-  
-  --accent: 240 3.7% 15.9%;
+
+  --muted: 240 6% 14.5%;
+  /* Raised from 64.9% lightness: secondary text across this app is mostly
+     10-11px, and at the old value it failed to read on the dark card
+     background. This single token drives most of the app's small text. */
+  --muted-foreground: 240 6% 72%;
+
+  --accent: 240 6% 18%;
   --accent-foreground: 0 0% 98%;
-  
+
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 98%;
-  
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 263.4 70% 50.4%;
-  
-  --radius: 0.75rem;
-  
+
+  --border: 240 6% 18%;
+  --input: 240 6% 18%;
+  --ring: 263.4 76% 58%;
+
+  --radius: 0.875rem;
+
   /* BIP Accent Colors */
-  --bull: 142.1 76.2% 36.3%; /* Emerald Green */
-  --bear: 346.8 77.2% 49.8%; /* Rose Red */
+  --bull: 152 72% 45%; /* Emerald Green */
+  --bear: 346.8 82% 58%; /* Rose Red */
 }
 
 /* Custom Base Styles */
@@ -70,20 +76,85 @@ body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.011em;
 }
+
+/* Ambient aurora wash behind the whole app - fixed, non-interactive, and
+   very low opacity, so it reads as depth rather than decoration. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  /* Behind every painted box, including the app's unpositioned page content -
+     at z-index 0 this positioned pseudo-element would paint over it. */
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, hsl(263 76% 58% / 0.10), transparent 60%),
+    radial-gradient(50rem 35rem at 105% 8%, hsl(190 80% 50% / 0.07), transparent 60%);
+}
+
+/* Headings tighten up as they scale, the standard optical correction -
+   large type at default tracking reads loose and unfinished. */
+h1, h2, h3 {
+  letter-spacing: -0.028em;
+}
+
+/* Financial figures must use tabular (fixed-width) digits so columns of
+   numbers line up and a live-updating price doesn't jitter horizontally as
+   its digits change. Applies wherever the app already opts into font-mono. */
+.font-mono, table td, table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Small-text readability floor ---------------------------------------
+   This UI leans heavily on 8-11px arbitrary sizes (~300 usages). They were
+   too small to read comfortably, so each step is bumped ~1-1.5px here in
+   one place rather than editing every call site. Unlayered, so these win
+   over Tailwind's own layered utilities regardless of source order. */
+.text-\[8px\]  { font-size: 10px; line-height: 1.35; }
+.text-\[9px\]  { font-size: 10.5px; line-height: 1.4; }
+.text-\[10px\] { font-size: 11.5px; line-height: 1.45; }
+.text-\[11px\] { font-size: 12.5px; line-height: 1.45; }
 
 /* Custom Utilities for Glassmorphism & premium UI */
 .glass {
-  background: rgba(15, 15, 20, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)),
+    rgba(16, 16, 22, 0.72);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 28px -12px rgba(0, 0, 0, 0.7);
 }
 
 .glass-hover:hover {
-  background: rgba(25, 25, 35, 0.8);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(142, 68, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+    rgba(26, 26, 36, 0.82);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px 0 rgba(142, 68, 255, 0.14);
+}
+
+/* Cards rise slightly toward the pointer - the standard cue that a surface
+   is interactive. Kept to 2px so a grid of cards doesn't feel restless. */
+.lift {
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+              border-color 0.22s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 40px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lift, .lift:hover { transition: none; transform: none; }
+  .animate-ticker { animation: none; }
 }
 
 .text-gradient-purple {

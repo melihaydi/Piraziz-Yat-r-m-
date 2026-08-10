@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState, useCallback } from "react"
+import Link from "next/link"
 import {
   Bot, Loader2, Search, RefreshCw, ChevronDown, ChevronUp, TrendingUp, TrendingDown,
   ArrowUpCircle, ArrowDownCircle, Info, ShieldAlert, ArrowUpDown
@@ -197,10 +198,17 @@ export default function StrategyPage() {
   const [backtestSort, setBacktestSort] = useState<BacktestSortKey>("total_return_pct")
   const [expandedBt, setExpandedBt] = useState<string | null>(null)
 
+  // Free tier can't use Frantic Algoritmik Strateji at all (see
+  // deps.get_current_premium_user on strategy.py's router) - without this,
+  // a blocked user's scan just came back empty and the page read as "no
+  // signals right now" instead of explaining why.
+  const [accessDenied, setAccessDenied] = useState(false)
+
   const fetchScan = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true)
     try {
       const res = await authFetch("/strategy/scan")
+      if (res.status === 403) setAccessDenied(true)
       if (res.ok) {
         const data = await res.json()
         setSignals(data.signals || [])
@@ -320,6 +328,21 @@ export default function StrategyPage() {
       }
     })
   }, [backtestResults, backtestQuery, backtestSort])
+
+  if (accessDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-32 text-center">
+        <ShieldAlert className="h-8 w-8 text-amber-400" />
+        <span className="text-sm font-bold text-foreground">Frantic Algoritmik Strateji Premium üyelik gerektirir</span>
+        <span className="text-xs text-muted-foreground max-w-sm">
+          Bu bölüm ücretsiz üyelikte kullanılamıyor. Üyeliğinizi yükseltmek için Ayarlar sayfasını ziyaret edin.
+        </span>
+        <Link href="/settings" className="mt-2 text-xs font-bold text-amber-400 hover:text-amber-300 underline underline-offset-2">
+          Ayarlar&apos;a git
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

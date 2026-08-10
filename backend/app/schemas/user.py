@@ -29,4 +29,10 @@ class UserInDBBase(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 class UserOut(UserInDBBase):
-    pass
+    # Server-wide (not per-user): whether SMTP credentials are actually
+    # configured. Without it the UI can't tell a user who hasn't verified
+    # their address that verification is impossible right now - it would
+    # keep offering a "resend" button whose mail silently no-ops (see
+    # core.email.send_email), which is exactly what made that banner look
+    # permanently stuck. Not a leak: it says nothing about any account.
+    email_delivery_enabled: bool = False

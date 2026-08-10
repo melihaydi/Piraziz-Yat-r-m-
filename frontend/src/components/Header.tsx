@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck, User } from "lucide-react"
+import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck, User, CandlestickChart } from "lucide-react"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
@@ -463,11 +463,28 @@ export default function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
 
+        {/* Trade entry point - moved out of the left Sidebar (too many
+            top-level items there) into the global Header instead, since
+            Trade is reachable from every page. Free tier can't use the
+            module at all (trade.py's router requires get_current_premium_user),
+            so the link is hidden rather than shown greyed-out/dead. Keeps
+            Trade's own distinct cyan identity (see trade/page.tsx's chrome). */}
+        {role !== "free" && (
+          <Link
+            href="/trade"
+            title="Trade"
+            className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs font-bold hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-colors cursor-pointer"
+          >
+            <CandlestickChart className="h-3.5 w-3.5" />
+            Trade
+          </Link>
+        )}
+
         {/* Notifications (Glow animation from request 10!) */}
         <div className="relative">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative cursor-pointer group"
           >

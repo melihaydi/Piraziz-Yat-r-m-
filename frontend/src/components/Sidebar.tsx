@@ -53,13 +53,23 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   // Only superusers see the admin panel link - the backend enforces this
   // for real (every /admin/* endpoint requires is_superuser), this is just
   // UX so a regular user never sees a link to a page they'd get a 403 from.
+  // Same reasoning for role: free-tier users can't use Frantic Algoritmik
+  // Strateji at all (trade.py/strategy.py's routers now require
+  // get_current_premium_user) - hiding its own link here is the UX half of
+  // that same enforcement.
   const [isSuperuser, setIsSuperuser] = useState(false)
+  const [role, setRole] = useState("free")
   useEffect(() => {
     authFetch("/auth/me")
       .then(res => (res.ok ? res.json() : null))
-      .then(data => { if (data) setIsSuperuser(!!data.is_superuser) })
+      .then(data => {
+        if (!data) return
+        setIsSuperuser(!!data.is_superuser)
+        if (data.role) setRole(data.role)
+      })
       .catch(() => {})
   }, [])
+  const isFreeTier = role === "free"
 
   const menuItems = [
     {
@@ -78,29 +88,22 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       hoverClass: "text-muted-foreground hover:bg-blue-500/5 hover:text-blue-400",
       iconClass: "text-blue-400"
     },
-    {
-      name: "Trade",
-      href: "/trade",
-      icon: CandlestickChart,
-      // Deliberately distinct color theme from every other menu item - the
-      // Trade module is styled as its own professional brokerage terminal
-      // (see app/trade/*), so its sidebar entry should read as its own thing
-      // at a glance rather than blending into the app's usual palette.
-      activeClass: "bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_14px_rgba(34,211,238,0.15)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-cyan-500/5 hover:text-cyan-300",
-      iconClass: "text-cyan-300"
-    },
-    {
+    // Trade moved out of this list entirely per explicit request (the
+    // sidebar had too many top-level items) - it's a full-page brokerage
+    // terminal with its own internal nav anyway (see AppChrome's isTradeRoute
+    // special-case, which already skips this Sidebar for /trade routes), so
+    // it's now reached from a dedicated button in the Header instead.
+    ...(isFreeTier ? [] : [{
       name: "Frantic Algoritmik Strateji",
       href: "/strategy",
       icon: Bot,
-      // Also its own distinct theme (amber) - a live signal engine is a
+      // Its own distinct theme (amber) - a live signal engine is a
       // different kind of tool than the informational pages around it and
-      // should read as such at a glance, same reasoning as Trade above.
+      // should read as such at a glance.
       activeClass: "bg-amber-500/10 text-amber-300 border border-amber-400/30 shadow-[0_0_14px_rgba(245,158,11,0.15)] font-extrabold",
       hoverClass: "text-muted-foreground hover:bg-amber-500/5 hover:text-amber-300",
       iconClass: "text-amber-300"
-    },
+    }]),
     {
       name: "Fon Takip",
       href: "/funds",

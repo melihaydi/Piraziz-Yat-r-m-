@@ -2,7 +2,6 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { authFetch } from "@/lib/auth"
-import { API_BASE_URL } from "@/lib/config"
 
 export type InstrumentType = "stock" | "viop"
 export type Broker = "info_yatirim" | "midas"
@@ -110,6 +109,12 @@ interface OrderResult {
 
 interface TradeContextValue {
   loading: boolean
+  /** True once the backend has confirmed this account can't use Trade at
+   * all (free tier - see deps.get_current_premium_user on trade.py's
+   * router) - without this, a blocked user's account/watchlist fetches all
+   * silently returned empty/failed and the page just spun forever instead
+   * of explaining why nothing loaded. */
+  accessDenied: boolean
   account: TradeAccountData | null
   accounts: TradeAccountSummary[]
   activeAccountId: number | null
@@ -153,6 +158,12 @@ export function useTrade(): TradeContextValue {
 
 export function TradeProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
+  const [accessDenied, setAccessDenied] = useState(false)
+  // Mirrored into a ref so the bootstrap effect can check the just-set value
+  // synchronously right after refreshAccounts() resolves, without waiting
+  // for the next render (state updates are batched/async) - otherwise it'd
+  // still fire the doomed create-account call this same bootstrap pass.
+  const accessDeniedRef = useRef(false)
   const [account, setAccount] = useState<TradeAccountData | null>(null)
   const [accounts, setAccounts] = useState<TradeAccountSummary[]>([])
   const [activeAccountId, setActiveAccountId] = useState<number | null>(null)
@@ -177,6 +188,11 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   // with a ref instead of state so the fetch effect doesn't need it as a dep).
   const hasAutoSelected = useRef(false)
 
+  const markAccessDenied = useCallback(() => {
+    accessDeniedRef.current = true
+    setAccessDenied(true)
+  }, [])
+
   const withAccountParam = useCallback((path: string): string => {
     const id = activeAccountIdRef.current
     if (id == null) return path
@@ -196,6 +212,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   const refreshAccounts = useCallback(async (): Promise<TradeAccountSummary[]> => {
     try {
       const res = await authFetch("/trade/accounts")
+      if (res.status === 403) markAccessDenied()
       if (!res.ok) return []
       const data = await res.json()
       if (!Array.isArray(data)) return []
@@ -205,7 +222,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
       console.error("Failed to load trade accounts:", e)
       return []
     }
-  }, [])
+  }, [markAccessDenied])
 
   const refreshAccount = useCallback(async (): Promise<TradeAccountData | null> => {
     try {
@@ -340,7 +357,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
     let active = true
     const bootstrap = async () => {
       let list = await refreshAccounts()
-      if (active && list.length === 0) {
+      if (active && list.length === 0 && !accessDeniedRef.current) {
         await createAccount("midas", DEFAULT_STARTING_BALANCE)
         list = await refreshAccounts()
       }
@@ -376,11 +393,17 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   // Poll BIST30 watchlist every 2s (matches the rest of the app's live-poll
   // rate) - the backend serves this from the already-connected TradingView
   // websocket cache, so this doesn't add real network/API load.
+  //
+  // Uses authFetch, not a bare fetch() - /trade/watchlist takes a `delay`
+  // param whose own dependency (get_data_delay_minutes) requires a logged-in
+  // user to know which membership tier's delay to apply. An unauthenticated
+  // request here always 401'd, which is why stocks/VİOP silently never
+  // appeared in the watchlist regardless of the premium-only gating above.
   useEffect(() => {
     let active = true
     const fetchWatchlist = () => {
-      fetch(`${API_BASE_URL}/api/v1/trade/watchlist`)
-        .then(res => res.json())
+      authFetch("/trade/watchlist")
+        .then(res => (res.ok ? res.json() : []))
         .then(data => {
           if (!active || !Array.isArray(data)) return
           setWatchlist(data)
@@ -402,8 +425,8 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true
     const fetchViop = () => {
-      fetch(`${API_BASE_URL}/api/v1/trade/viop-contracts`)
-        .then(res => res.json())
+      authFetch("/trade/viop-contracts")
+        .then(res => (res.ok ? res.json() : []))
         .then(data => {
           if (active && Array.isArray(data)) setViopWatchlist(data)
         })
@@ -572,6 +595,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
 
   const value: TradeContextValue = {
     loading,
+    accessDenied,
     account,
     accounts,
     activeAccountId,

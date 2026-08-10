@@ -198,8 +198,11 @@ def login_verify_2fa(request: Request, body: TwoFactorLoginRequest, db: Session 
 @router.get("/me", response_model=UserOut)
 @limiter.limit("120/minute")
 def read_user_me(request: Request, current_user: User = Depends(deps.get_current_user)):
-    """Get current user details."""
-    return current_user
+    """Get current user details, plus whether this deployment can actually
+    send email at all (see UserOut.email_delivery_enabled)."""
+    return UserOut.model_validate(current_user).model_copy(
+        update={"email_delivery_enabled": bool(settings.SMTP_USER and settings.SMTP_PASSWORD)}
+    )
 
 @router.put("/me", response_model=UserOut)
 @limiter.limit("20/minute")

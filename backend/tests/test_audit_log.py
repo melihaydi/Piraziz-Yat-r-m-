@@ -62,7 +62,7 @@ def test_role_change_writes_audit_row_with_old_and_new_role(client, db, admin_he
     assert row is not None
     assert row.resource_id == str(target.id)
     assert row.details["old_role"] == "premium"
-    assert row.details["new_role"] == "premium"
+    assert row.details["new_role"] == "institutional"
 
 
 def test_order_placement_writes_audit_row(client, db, plain_headers, monkeypatch):

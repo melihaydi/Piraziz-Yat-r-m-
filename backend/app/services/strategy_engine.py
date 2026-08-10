@@ -59,16 +59,23 @@ MAX_RISK_PCT = 8.0        # signals whose stop distance exceeds this % of entry 
 TREND_SMA_PERIOD = 50     # trend-following filter: price vs a rising/falling SMA(50)
 STOP_ATR_MULT = 1.5       # minimum stop distance in ATRs (widened from 1.2 - see _decide_signal)
 
-# Direction trigger, per explicit instruction: the 7-period moving average
-# crossing above the 21-period moving average is a LONG entry, crossing
-# below is a SHORT entry - replaces the previous multi-factor gate
-# (structure+trend+breakout+momentum all agreeing at once), which the user
-# found produced signals too rarely. Live signals now run on 1h candles
-# (see _fetch_history_with_retry) specifically so this crossover actually
-# fires often enough to matter - the same 7/21 periods on daily bars would
-# still be nearly as infrequent as the old gate.
+# Direction is a weighted vote across MA7/MA21 crossover, market structure
+# (HH/HL vs LH/LL), the SMA50 trend filter, momentum, Ichimoku cloud
+# position, and candle pattern - see _decide_signal's vote tally. This
+# replaced an earlier version where the crossover alone decided direction
+# and everything else ran purely as decorative score/reasons text, which
+# could show e.g. a LONG call sitting right next to "Piyasa yapısı: Düşüş
+# (LH/LL)" with no way for that disagreement to actually matter. The
+# crossover still carries the most weight (MA_CROSS_VOTE_WEIGHT, below) so
+# signals keep firing on the same cadence as before a stricter all-must-
+# agree gate was tried here and reverted for producing signals too rarely -
+# but if enough of the rest disagree at once, the crossover call can now be
+# downgraded to NONE or flipped outright instead of being silently ignored.
+# Live signals still run on 1h candles (see _fetch_history_with_retry) so
+# the crossover itself fires often enough to matter.
 MA_FAST_PERIOD = 7
 MA_SLOW_PERIOD = 21
+MA_CROSS_VOTE_WEIGHT = 3  # outweighs any single other factor's ±1 vote
 
 # Hard ceiling on how long a full 30-symbol batch (scan or backtest) is
 # allowed to wait on in-flight network calls before giving up on whatever
@@ -472,11 +479,12 @@ def _decide_signal(
     scanner (_build_signal) and the backtest (_backtest_symbol) so the two
     can never silently diverge the way they used to - the backtest
     previously had its own hand-copied version of this logic. Direction is
-    a straight MA7/MA21 crossover on `df` (see MA_FAST_PERIOD/MA_SLOW_PERIOD)
-    - everything else computed in this function (structure, SMA trend,
-    momentum, stochastic, ichimoku, breakout, candle pattern) is
-    informational only now, feeding score/confidence/reasons for the UI,
-    not a gate on direction. The one intentional difference between live
+    a weighted vote across the MA7/MA21 crossover (weight 3) plus market
+    structure, the SMA50 trend filter, momentum, Ichimoku cloud position
+    and candle pattern (weight 1 each, signed by their own direction);
+    |net| >= 2 calls LONG/SHORT, anything closer is NONE. Stochastic and
+    breakout stay informational, feeding score/reasons only. The one
+    intentional difference between live
     and backtest stays external to this function: how momentum_ok_long/short
     get computed (live: TradingView's ta_signals rating; backtest: local
     RSI(14), since ta_signals has no historical/point-in-time API - see
@@ -554,36 +562,105 @@ def _decide_signal(
     if liquidity_note:
         reasons.append(liquidity_note)
 
-    # Direction trigger: MA7/MA21 crossover, per explicit instruction -
-    # replaces the previous multi-factor gate (structure + confirmed-retest
-    # breakout + SMA trend + momentum all required to agree at once), which
-    # produced signals too rarely for what's wanted here. This is a
-    # CONTINUOUS state (LONG whenever MA7 is currently above MA21, not just
-    # on the exact bar it crossed) rather than a one-bar-only event check -
-    # _run_scan's own "only log a new history entry when direction changes"
-    # already turns this into a crossover-EVENT log without needing a
-    # separate one-bar check here, and staying continuous is more robust to
-    # a scan not landing exactly on an hourly candle close.
+    # Direction: a weighted vote across every factor computed above, rather
+    # than the MA crossover deciding alone while the rest stayed decorative
+    # text. That older behavior is what let a "LONG" sit directly beneath
+    # "Piyasa yapısı: Düşüş (LH/LL)" in the UI - the contradiction was
+    # visible to the user but had no effect on the call.
     #
-    # Everything above (structure/trend/momentum/stochastic/ichimoku/
-    # breakout/pattern) still runs and still feeds the score/confidence/
-    # reasons shown in the UI - it's informational context now, not a gate,
-    # so a MA-crossover signal is never silently suppressed by it.
+    # The crossover is still the primary read (MA_CROSS_VOTE_WEIGHT=3 vs ±1
+    # for every other factor), so it wins any disagreement of one or two
+    # factors and signals keep firing at roughly the previous cadence. It
+    # takes a genuine consensus against it - three or more of {structure,
+    # SMA50 trend, momentum, Ichimoku, candle pattern} pointing the other
+    # way - to neutralize the call, and more than that to flip it. A strict
+    # all-must-agree gate was tried before this and reverted for firing far
+    # too rarely; this keeps that lesson while letting real disagreement count.
+    #
+    # The MA read is CONTINUOUS state (LONG whenever MA7 is currently above
+    # MA21, not only on the bar it crossed) - _run_scan's "only log history
+    # when direction changes" already turns that into a crossover-EVENT log,
+    # and staying continuous is robust to a scan not landing exactly on an
+    # hourly candle close.
+    votes = 0
+    vote_notes: List[str] = []
+
     ma_fast = df["Close"].rolling(MA_FAST_PERIOD).mean()
     ma_slow = df["Close"].rolling(MA_SLOW_PERIOD).mean()
     if len(ma_fast) >= 1 and not pd.isna(ma_fast.iloc[-1]) and not pd.isna(ma_slow.iloc[-1]):
         if ma_fast.iloc[-1] > ma_slow.iloc[-1]:
-            direction = "LONG"
-            score += 30
+            votes += MA_CROSS_VOTE_WEIGHT
             triggered.append(f"MA{MA_FAST_PERIOD}/MA{MA_SLOW_PERIOD} kesişimi: MA{MA_FAST_PERIOD} üzerinde (Long)")
         elif ma_fast.iloc[-1] < ma_slow.iloc[-1]:
-            direction = "SHORT"
-            score += 30
+            votes -= MA_CROSS_VOTE_WEIGHT
             triggered.append(f"MA{MA_FAST_PERIOD}/MA{MA_SLOW_PERIOD} kesişimi: MA{MA_FAST_PERIOD} altında (Short)")
         else:
             reasons.append(f"MA{MA_FAST_PERIOD}/MA{MA_SLOW_PERIOD} eşit, yön belirsiz")
     else:
         reasons.append(f"MA{MA_SLOW_PERIOD} için yeterli mum verisi yok")
+
+    if structure_bullish:
+        votes += 1
+        vote_notes.append("yapı Long")
+    elif structure_bearish:
+        votes -= 1
+        vote_notes.append("yapı Short")
+
+    if trend_up:
+        votes += 1
+        vote_notes.append("trend Long")
+    elif trend_down:
+        votes -= 1
+        vote_notes.append("trend Short")
+
+    if momentum_ok_long:
+        votes += 1
+        vote_notes.append("momentum Long")
+    elif momentum_ok_short:
+        votes -= 1
+        vote_notes.append("momentum Short")
+
+    if ichimoku:
+        if ichimoku["position"] == "Bulut Üzerinde":
+            votes += 1
+            vote_notes.append("Ichimoku Long")
+        elif ichimoku["position"] == "Bulut Altında":
+            votes -= 1
+            vote_notes.append("Ichimoku Short")
+
+    # Only the directional patterns vote - an inside-bar breakout or pin bar
+    # names its own side, an unmatched pattern (None) simply abstains.
+    if pattern:
+        if pattern in ("Yutan Boğa Mumu (Bullish Engulfing)", "Pin Bar (Çekiç - alt gölge)", "İç Bar Kırılımı (Yukarı)"):
+            votes += 1
+            vote_notes.append("mum formasyonu Long")
+        elif pattern in ("Yutan Ayı Mumu (Bearish Engulfing)", "Pin Bar (Kayan Yıldız - üst gölge)", "İç Bar Kırılımı (Aşağı)"):
+            votes -= 1
+            vote_notes.append("mum formasyonu Short")
+
+    if votes >= 2:
+        direction = "LONG"
+        score += 30
+    elif votes <= -2:
+        direction = "SHORT"
+        score += 30
+    else:
+        direction = "NONE"
+        reasons.append(
+            f"Faktörler birbirini dengeliyor (net oy: {votes:+d}) - net bir yön yok"
+            + (f" [{', '.join(vote_notes)}]" if vote_notes else "")
+        )
+
+    if direction != "NONE":
+        agree = "Long" if direction == "LONG" else "Short"
+        against = [n for n in vote_notes if not n.endswith(agree)]
+        if against:
+            # Surfaced explicitly so a user reading the signal can see which
+            # factors dissented, instead of having to spot the contradiction
+            # themselves in the triggered-conditions list.
+            reasons.append(f"Karşı yönde sinyal veren faktörler: {', '.join(against)}")
+            score = max(score - 5 * len(against), 0)
+        triggered.append(f"Çok faktörlü nihai yön: {direction} (net oy {votes:+d})")
 
     if direction == "SHORT":
         # Backtesting this engine (2026-07-28 revision) across all 30 BIST30
@@ -1312,3 +1389,17 @@ strategy_engine = StrategyEngine()
 #   penalty to SHORT signals and surfaces this finding in the signal's
 #   `reasons`, so the UI's confidence label honestly reflects the weaker
 #   backtested edge instead of overstating it.
+#
+# Direction model, revised again after the above:
+#   For a period, direction was decided by the MA7/MA21 crossover ALONE, with
+#   structure/trend/momentum/Ichimoku/pattern reduced to decorative score and
+#   `reasons` text. That produced visibly self-contradicting signals - a LONG
+#   call rendered directly beneath "Piyasa yapısı: Düşüş (LH/LL)" in the UI,
+#   with no mechanism for that disagreement to affect the call. Direction is
+#   now a weighted vote: MA crossover ±3, and structure / SMA50 trend /
+#   momentum / Ichimoku cloud / candle pattern ±1 each. |net| >= 2 calls
+#   LONG/SHORT; anything closer resolves to NONE. The crossover therefore
+#   still wins against one or two dissenting factors (preserving the firing
+#   cadence that the earlier all-must-agree gate destroyed), but a genuine
+#   3+ factor consensus against it can neutralize or flip the call.
+#   Dissenting factors are listed in `reasons` and cost 5 score points each.

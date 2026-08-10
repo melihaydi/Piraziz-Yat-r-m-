@@ -217,12 +217,11 @@ def test_decide_signal_short_gets_confidence_penalty_when_it_fires():
         assert decision["score"] <= 88
 
 
-def test_decide_signal_direction_is_ma7_ma21_crossover_not_momentum():
-    # Regression test for the MA7/MA21-crossover rewrite: direction must
-    # follow the moving-average relationship alone, even when the momentum
-    # flags (previously a required gate) say the opposite. A steadily
-    # rising series puts the faster (7) MA above the slower (21) MA - this
-    # must fire LONG regardless of momentum_ok_long/short.
+def test_decide_signal_ma_crossover_outweighs_a_single_dissenting_factor():
+    # The MA crossover carries weight 3 against ±1 for every other factor,
+    # so one factor disagreeing (here: momentum) can never overturn it. A
+    # steadily rising series puts the faster (7) MA above the slower (21),
+    # and structure/trend agree, so the net vote stays firmly LONG.
     n = 40
     closes = [100 + i * 1.5 for i in range(n)]
     highs = [c + 0.5 for c in closes]
@@ -261,6 +260,36 @@ def test_decide_signal_short_on_falling_ma_crossover():
         momentum_ok_long=True, momentum_ok_short=False, momentum_note="test",
     )
     assert decision["direction"] == "SHORT"
+
+
+def test_decide_signal_consensus_against_ma_cross_neutralizes_direction():
+    # The reported defect: a bullish MA7/MA21 crossover produced a "LONG"
+    # rendered directly beneath "Piyasa yapısı: Düşüş (LH/LL)" - the other
+    # factors were displayed but had no influence on the call. With the
+    # weighted vote, a crossover (+3) facing bearish structure, trend,
+    # momentum and Ichimoku (-4) nets -1, which is inside the neutral band.
+    n = 40
+    closes = [100 + i * 1.5 for i in range(n)]  # rising -> MA7 above MA21
+    highs = [c + 0.5 for c in closes]
+    lows = [c - 0.5 for c in closes]
+    df = _make_df(highs, lows, closes=closes)
+    swings = _find_swings(df)
+    price = float(df["Close"].iloc[-1])
+    levels = _cluster_levels(swings, price)
+    atr = _atr(df)
+
+    decision = _decide_signal(
+        df, price, swings,
+        # Structure/trend/momentum/Ichimoku all forced bearish against the
+        # bullish crossover. _trend_state reads `df` itself (rising -> "up"),
+        # so it contributes +1; that's why four dissenting inputs are needed
+        # here to reach the neutral band rather than three.
+        structure="Düşüş (LH/LL)", structure_tags=[], levels=levels, atr=atr,
+        pattern="Yutan Ayı Mumu (Bearish Engulfing)",
+        momentum_ok_long=False, momentum_ok_short=True, momentum_note="test",
+        ichimoku={"position": "Bulut Altında"},
+    )
+    assert decision["direction"] == "NONE"
 
 
 def test_decide_signal_poor_risk_reward_flags_but_does_not_cancel_direction():
