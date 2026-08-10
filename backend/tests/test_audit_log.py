@@ -17,8 +17,13 @@ def admin_headers(client, db):
 
 
 @pytest.fixture
-def plain_headers(client):
+def plain_headers(client, db):
     client.post("/api/v1/auth/register", json={"email": "auditplain@example.com", "password": "mypassword", "terms_accepted": True})
+    # Premium (not superuser) - trade.py's router now requires
+    # get_current_premium_user, and this fixture's user places a trade order
+    # in test_order_placement_writes_audit_row below.
+    db.query(User).filter(User.email == "auditplain@example.com").update({"role": "premium"})
+    db.commit()
     login = client.post("/api/v1/auth/login", data={"username": "auditplain@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -42,18 +47,21 @@ def test_failed_login_writes_audit_row_with_no_pnl_leak(client, db):
 
 
 def test_role_change_writes_audit_row_with_old_and_new_role(client, db, admin_headers, plain_headers):
+    # plain_headers' user starts on role="premium" (see that fixture - trade
+    # endpoints are premium-only now), so this exercises a premium ->
+    # institutional transition instead of the original free -> premium one.
     target = db.query(User).filter(User.email == "auditplain@example.com").first()
     res = client.put(
         f"/api/v1/admin/users/{target.id}/role",
         headers=admin_headers,
-        params={"role": "premium"},
+        params={"role": "institutional"},
     )
     assert res.status_code == 200
 
     row = db.query(AuditLog).filter(AuditLog.action == "role_change").first()
     assert row is not None
     assert row.resource_id == str(target.id)
-    assert row.details["old_role"] == "free"
+    assert row.details["old_role"] == "premium"
     assert row.details["new_role"] == "premium"
 
 

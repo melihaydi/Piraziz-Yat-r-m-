@@ -1,17 +1,26 @@
 import pytest
 
+from app.models.user import User
+
 
 @pytest.fixture(scope="function")
-def auth_headers(client):
+def auth_headers(client, db):
     client.post("/api/v1/auth/register", json={"email": "multiacct@example.com", "password": "mypassword", "terms_accepted": True})
+    # Trade is premium-only (see deps.get_current_premium_user on trade.py's
+    # router) - a freshly-registered user defaults to role="free", which
+    # would 403 on every call these tests make.
+    db.query(User).filter(User.email == "multiacct@example.com").update({"role": "premium"})
+    db.commit()
     login = client.post("/api/v1/auth/login", data={"username": "multiacct@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture(scope="function")
-def other_auth_headers(client):
+def other_auth_headers(client, db):
     client.post("/api/v1/auth/register", json={"email": "otheruser@example.com", "password": "mypassword", "terms_accepted": True})
+    db.query(User).filter(User.email == "otheruser@example.com").update({"role": "premium"})
+    db.commit()
     login = client.post("/api/v1/auth/login", data={"username": "otheruser@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

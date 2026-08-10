@@ -1,11 +1,16 @@
 import pytest
 
+from app.models.user import User
 from app.services import trade_service
 
 
 @pytest.fixture(scope="function")
-def auth_headers(client):
+def auth_headers(client, db):
     client.post("/api/v1/auth/register", json={"email": "statementuser@example.com", "password": "mypassword", "terms_accepted": True})
+    # Trade is premium-only (see deps.get_current_premium_user on trade.py's
+    # router) - every test in this file hits /api/v1/trade/*.
+    db.query(User).filter(User.email == "statementuser@example.com").update({"role": "premium"})
+    db.commit()
     login = client.post("/api/v1/auth/login", data={"username": "statementuser@example.com", "password": "mypassword"})
     token = login.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

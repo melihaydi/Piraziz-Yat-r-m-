@@ -210,11 +210,22 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
         {/* Navigation Links */}
         <nav className={cn("flex-1 py-6 space-y-1.5 overflow-y-auto overflow-x-hidden", isCollapsedNow ? "px-3" : "px-4")}>
-          {menuItems.map((item) => {
+          {(() => {
             // "/" needs an exact match (otherwise it'd match every route);
             // everything else uses startsWith so sub-routes like /trade/performance
             // or a fund detail page still keep their parent menu item highlighted.
-            const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
+            // Two entries can both be href-prefixes of the same pathname now
+            // that /admin has a child route with its own sidebar entry
+            // (/admin/managed-portfolios) - only the LONGEST matching href
+            // should light up, otherwise "Yönetim Paneli" and "Yönetilen
+            // Portföyler" both showed active at once on the child page.
+            const matchingHrefs = menuItems
+              .map(i => i.href)
+              .filter(href => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/")))
+            const activeHref = matchingHrefs.sort((a, b) => b.length - a.length)[0]
+
+            return menuItems.map((item) => {
+            const isActive = item.href === activeHref
             const Icon = item.icon
             return (
               <div key={item.name} className="relative group/navitem">
@@ -242,7 +253,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 )}
               </div>
             )
-          })}
+            })
+          })()}
         </nav>
 
         {/* Collapse/expand toggle - desktop only, mobile uses the drawer's own close button */}

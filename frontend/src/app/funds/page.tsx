@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
 import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History } from "lucide-react"
@@ -72,6 +72,24 @@ export default function FundsPage() {
   })
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(false)
+
+  // Clicking a fund card in the homepage's "Popüler Fonlar - Anlık Getiri"
+  // section (or anywhere else linking here with ?code=) landed on whatever
+  // scroll position the browser happened to restore for this route (Next.js
+  // doesn't always reset scroll on a query-param-only navigation) - often
+  // mid-page, past this section, near "Fon Tarama Kriterleri" - instead of
+  // showing the very section the user came from. Explicitly scrolling this
+  // section into view whenever the page was opened with a ?code= param
+  // fixes that regardless of whatever the browser's own scroll restoration
+  // decided to do.
+  const popularFundsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const hadCode = !!new URLSearchParams(window.location.search).get("code")
+    if (hadCode) {
+      popularFundsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [])
 
   // "Popüler Fonlar - Anlık Getiri": TEFAS only publishes one NAV per fund
   // per day, so this is an ESTIMATE built from each fund's last known
@@ -361,7 +379,7 @@ export default function FundsPage() {
       </div>
 
       {/* Popüler Fonlar - Anlık Getiri */}
-      <Card glass={true} className="border-amber-500/20">
+      <Card ref={popularFundsRef} glass={true} className="border-amber-500/20">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center">
             <Zap className="h-4 w-4 mr-2 text-amber-400" />

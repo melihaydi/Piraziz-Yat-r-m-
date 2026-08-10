@@ -9,7 +9,7 @@ from app.models.user import User
 from app.services.strategy_engine import strategy_engine, backtest_engine
 from app.services.market_data import market_data_service
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(deps.get_current_premium_user)])
 
 
 def _enrich_with_live_pnl(signal_dict: dict) -> dict:

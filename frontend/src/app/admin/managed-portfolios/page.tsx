@@ -1,8 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus } from "lucide-react"
+import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -32,8 +31,6 @@ interface ManagedPortfolio {
 }
 
 export default function ManagedPortfoliosPage() {
-  const router = useRouter()
-
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [forbidden, setForbidden] = useState(false)
 
@@ -200,14 +197,6 @@ export default function ManagedPortfoliosPage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Geri
-      </button>
-
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
           <Briefcase className="h-7 w-7 text-primary" />

@@ -12,7 +12,7 @@ from app.models.user import User
 from app.services import trade_service
 from app.services.trade_service import TradeError
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(deps.get_current_premium_user)])
 
 
 class AccountCreate(BaseModel):

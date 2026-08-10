@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react"
 import {
   Bot, Loader2, Search, RefreshCw, ChevronDown, ChevronUp, TrendingUp, TrendingDown,
-  ArrowUpCircle, ArrowDownCircle, Info, ShieldAlert
+  ArrowUpCircle, ArrowDownCircle, Info, ShieldAlert, ArrowUpDown
 } from "lucide-react"
 import { authFetch } from "@/lib/auth"
 import { TickerLogo } from "@/components/ui/TickerLogo"
@@ -85,8 +85,9 @@ interface SignalHistoryEntry {
 }
 
 type DirectionFilter = "ALL" | "LONG" | "SHORT"
-type SortKey = "score" | "ticker" | "change_percent" | "risk_reward"
+type SortKey = "score" | "ticker" | "change_percent" | "risk_reward" | "captured_pnl_pct"
 type BacktestSortKey = "total_return_pct" | "win_rate" | "ticker"
+type HistorySortKey = "timestamp" | "captured_pnl_pct"
 
 const fmt = (n: number | null, digits = 2) => (n === null || n === undefined ? "-" : n.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits }))
 
@@ -186,6 +187,7 @@ export default function StrategyPage() {
   const [historyLoading, setHistoryLoading] = useState(true)
   const [historyQuery, setHistoryQuery] = useState("")
   const [historyDirFilter, setHistoryDirFilter] = useState<DirectionFilter>("ALL")
+  const [historySortKey, setHistorySortKey] = useState<HistorySortKey>("timestamp")
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([])
   const [backtestLastUpdate, setBacktestLastUpdate] = useState<string | null>(null)
   const [backtestLoading, setBacktestLoading] = useState(false)
@@ -246,8 +248,13 @@ export default function StrategyPage() {
     const q = historyQuery.trim().toUpperCase()
     let list = history.filter(h => !q || h.ticker.includes(q) || h.name.toUpperCase().includes(q))
     if (historyDirFilter !== "ALL") list = list.filter(h => h.direction === historyDirFilter)
-    return list
-  }, [history, historyQuery, historyDirFilter])
+    return [...list].sort((a, b) => {
+      if (historySortKey === "captured_pnl_pct") {
+        return (b.captured_pnl_pct ?? -Infinity) - (a.captured_pnl_pct ?? -Infinity)
+      }
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    })
+  }, [history, historyQuery, historyDirFilter, historySortKey])
 
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase()
@@ -258,6 +265,7 @@ export default function StrategyPage() {
         case "ticker": return a.ticker.localeCompare(b.ticker)
         case "change_percent": return b.change_percent - a.change_percent
         case "risk_reward": return (b.risk_reward ?? -1) - (a.risk_reward ?? -1)
+        case "captured_pnl_pct": return (b.captured_pnl_pct ?? -Infinity) - (a.captured_pnl_pct ?? -Infinity)
         default: return b.score - a.score
       }
     })
@@ -323,7 +331,9 @@ export default function StrategyPage() {
           <div>
             <h1 className="text-xl font-black tracking-tight text-foreground">Frantic Algoritmik Strateji</h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              BIST30 için kurumsal tarz price-action taraması - piyasa yapısı, kırılım/retest, mum formasyonu ve momentum teyidiyle otomatik LONG/SHORT sinyalleri.
+              Piyasa yapısı, kırılım-retest dinamikleri, mum formasyonları ve momentum teyitlerini harmanlayan BIST30 tabanlı profesyonel sinyal motoru.
+
+3. Kompakt & Vurucu (Dashboard / Menü Açıklaması İçin)
             </p>
           </div>
         </div>
@@ -419,6 +429,7 @@ export default function StrategyPage() {
           <option value="ticker">Sırala: Sembol</option>
           <option value="change_percent">Sırala: Değişim %</option>
           <option value="risk_reward">Sırala: Risk/Ödül</option>
+          <option value="captured_pnl_pct">Sırala: Yakalanan K/Z</option>
         </select>
       </div>
 
@@ -447,7 +458,16 @@ export default function StrategyPage() {
                   <th className="px-4 text-right">Stop</th>
                   <th className="px-4 text-right">Hedef</th>
                   <th className="px-4 text-right">R:R</th>
-                  <th className="px-4 text-right">Yakalanan K/Z</th>
+                  <th
+                    className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${sortKey === "captured_pnl_pct" ? "text-amber-400" : ""}`}
+                    onClick={() => setSortKey("captured_pnl_pct")}
+                    title="Yüksekten düşüğe sırala"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Yakalanan K/Z
+                      <ArrowUpDown className="h-3 w-3" />
+                    </span>
+                  </th>
                   <th className="px-4 text-right">Son Güncelleme</th>
                   <th className="px-4"></th>
                 </tr>
@@ -682,7 +702,16 @@ export default function StrategyPage() {
                   <th className="px-4 text-right">Giriş</th>
                   <th className="px-4 text-right">Stop</th>
                   <th className="px-4 text-right">Hedef</th>
-                  <th className="px-4 text-right">Kâr/Zarar</th>
+                  <th
+                    className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${historySortKey === "captured_pnl_pct" ? "text-amber-400" : ""}`}
+                    onClick={() => setHistorySortKey(prev => prev === "captured_pnl_pct" ? "timestamp" : "captured_pnl_pct")}
+                    title="Yüksekten düşüğe sırala (tekrar tıkla: saate göre)"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Kâr/Zarar
+                      <ArrowUpDown className="h-3 w-3" />
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
