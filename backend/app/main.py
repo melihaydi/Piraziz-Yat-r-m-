@@ -11,6 +11,29 @@ from app.core.notify import send_telegram_alert
 
 logger = logging.getLogger(__name__)
 
+# Real error tracking - was unset (SENTRY_DSN=None) because no Sentry account
+# existed; unhandled_exception_handler below's log+Telegram alert was the
+# only fallback (see task list: "lightweight monitoring, no Sentry account").
+# Same shape as the SMTP/Telegram/push settings elsewhere in this app: a
+# no-op if the DSN isn't configured, so this is always safe to leave in.
+# Must run before FastAPI(...) below - sentry_sdk's FastapiIntegration
+# instruments the app at construction time, not after.
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.ENVIRONMENT,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        # PII (user email/IP on error events) would need explicit product/
+        # KVKK sign-off first - default this off rather than send it by
+        # accident the moment a DSN gets configured.
+        send_default_pii=False,
+    )
+
 app = FastAPI(
     title="BIST Intelligence Platform (BIP) API",
     description="AI-powered analysis and tracking platform for Borsa Istanbul (BIST)",
@@ -24,9 +47,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     # Without this, an unhandled exception in a route just becomes an
-    # opaque 500 with nothing logged anywhere - there's no Sentry (or
-    # equivalent) wired up yet, so this + the Telegram alert below is the
-    # only way a crash gets noticed instead of silently failing requests.
+    # opaque 500 with nothing logged anywhere. sentry_sdk's FastApiIntegration
+    # (see the init call above) already auto-captures this same exception to
+    # Sentry when SENTRY_DSN is set - this handler's log line + Telegram
+    # alert stay regardless, since Sentry is opt-in/may not be configured.
     logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
     send_telegram_alert(
         f"[BIP backend] Unhandled exception on {request.method} {request.url.path}: {exc}",

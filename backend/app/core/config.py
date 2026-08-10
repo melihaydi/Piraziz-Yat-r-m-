@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: Optional[str] = None
     DISCORD_WEBHOOK_URL: Optional[str] = None
 
+    # Error tracking - unset by default (no Sentry account existed when the
+    # lightweight Telegram-alert fallback in core/notify.py was built, see
+    # main.py's unhandled_exception_handler). Set SENTRY_DSN in .env to
+    # start sending real, deduplicated/stack-traced error reports there;
+    # the Telegram alert keeps firing alongside it either way, so no
+    # existing behavior is lost by turning this on.
+    SENTRY_DSN: Optional[str] = None
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+
     # Email
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

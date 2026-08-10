@@ -103,14 +103,29 @@ class PortfolioSnapshotService:
         the first second after container startup hits - confirmed live,
         this baked a wrong ₺1500 snapshot for a ₺3190 THYAO position before
         this delay was added. Waiting `startup_delay_seconds` before the
-        first (catch-up) run gives real quotes time to arrive first."""
+        first (catch-up) run gives real quotes time to arrive first.
+
+        The startup run only fires if today's target time has ALREADY
+        passed - it must NOT fire unconditionally on every restart. It
+        used to (unlike fund_estimate_snapshot.py's otherwise-identical
+        scheduler, which already had this guard), so any deploy before
+        20:00 - a normal occurrence - permanently locked in that day's
+        equity-curve point as whatever the portfolio was worth at deploy
+        time instead of the intended post-close value, since the
+        (user_id, snapshot_date) unique constraint then blocks the real
+        20:00 run from ever correcting it. Confirmed live: every single
+        day's row in the table was created by a restart, morning or
+        midday, never once by the actual 20:00 timer."""
         if self._scheduler_started:
             return
         self._scheduler_started = True
 
         def loop():
             time.sleep(startup_delay_seconds)
-            self._run_snapshot_for_all_users()
+            now = datetime.now(_TR_TZ)
+            target_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if now >= target_today:
+                self._run_snapshot_for_all_users()
             while True:
                 now = datetime.now(_TR_TZ)
                 target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
