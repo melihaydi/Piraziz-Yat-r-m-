@@ -4,7 +4,7 @@ export const metadata = { title: "Kullanım Koşulları - Piraziz Yatırım" }
 
 export default function TermsPage() {
   return (
-    <LegalPageShell title="Kullanım Koşulları" updatedAt="8 Ağustos 2026">
+    <LegalPageShell title="Kullanım Koşulları" updatedAt="10 Ağustos 2026">
       <h2>1. Taraflar ve Kapsam</h2>
       <p>
         Bu Kullanım Koşulları ("Koşullar"), Piraziz Yatırım ("Platform", "Uygulama", "Biz") tarafından
@@ -22,8 +22,9 @@ export default function TermsPage() {
         Kurulu ("SPK") tarafından yetkilendirilmiş bir yatırım hizmeti sunmamaktadır.
       </p>
 
-      <h2>3. Hesap Oluşturma</h2>
+      <h2>3. Hesap Oluşturma ve Yaş Şartı</h2>
       <ul>
+        <li>Platformu kullanabilmek için 18 yaşını doldurmuş ve fiil ehliyetine sahip olmanız gerekir.</li>
         <li>Kayıt sırasında verdiğiniz bilgilerin doğru ve güncel olmasından siz sorumlusunuz.</li>
         <li>Hesap güvenliğinizden (şifre, iki faktörlü doğrulama) siz sorumlusunuz.</li>
         <li>Bir hesabı yalnızca kendiniz için oluşturabilirsiniz; başkası adına hesap açamazsınız.</li>
@@ -64,12 +65,31 @@ export default function TermsPage() {
         durumunda hesabınızı askıya alma/sonlandırma hakkımız saklıdır.
       </p>
 
-      <h2>9. Değişiklikler</h2>
+      <h2>9. Mücbir Sebep</h2>
+      <p>
+        Doğal afet, savaş, siber saldırı, üçüncü taraf veri sağlayıcılarının (TradingView, TEFAS, KAP
+        vb.) kesintisi, altyapı sağlayıcılarında yaşanan kesinti veya makul kontrolümüz dışındaki
+        benzer olaylar nedeniyle hizmetin geçici olarak sunulamamasından sorumlu tutulamayız.
+      </p>
+
+      <h2>10. Bölünebilirlik</h2>
+      <p>
+        Bu Koşulların herhangi bir hükmünün yetkili bir mahkeme tarafından geçersiz veya uygulanamaz
+        bulunması, kalan hükümlerin geçerliliğini etkilemez.
+      </p>
+
+      <h2>11. Uygulanacak Hukuk ve Yetkili Mahkeme</h2>
+      <p>
+        Bu Koşullar Türkiye Cumhuriyeti kanunlarına tabidir. Bu Koşullardan doğabilecek uyuşmazlıklarda
+        İstanbul (Merkez) Mahkemeleri ve İcra Daireleri yetkilidir.
+      </p>
+
+      <h2>12. Değişiklikler</h2>
       <p>
         Bu Koşullar zaman zaman güncellenebilir. Önemli değişiklikler uygulama içinden duyurulur.
       </p>
 
-      <h2>10. İletişim</h2>
+      <h2>13. İletişim</h2>
       <p>Sorularınız için Ayarlar &gt; Yardım &amp; Destek üzerinden bize ulaşabilirsiniz.</p>
     </LegalPageShell>
   )
