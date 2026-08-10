@@ -43,23 +43,23 @@
     ]
   },
   "dependencies": {
-    "@capacitor/android": "^8.4.2",
+    "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.4.2",
-    "@radix-ui/react-dialog": "^1.1.20",
-    "@radix-ui/react-dropdown-menu": "^2.1.21",
-    "@radix-ui/react-slot": "^1.3.0",
-    "@radix-ui/react-tabs": "^1.1.18",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@radix-ui/react-slot": "^1.3.3",
+    "@radix-ui/react-tabs": "^1.1.21",
     "clsx": "^2.1.1",
     "lightweight-charts": "^5.2.0",
-    "lucide-react": "^1.25.0",
-    "next": "16.2.10",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "recharts": "^3.9.2",
+    "lucide-react": "^1.30.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.4.2",
+    "@capacitor/cli": "^8.5.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -67,7 +67,7 @@
     "electron": "^31.0.0",
     "electron-builder": "^26.15.3",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
