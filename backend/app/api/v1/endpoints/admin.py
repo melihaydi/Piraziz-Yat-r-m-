@@ -234,6 +234,12 @@ class ManagedCashAdjustIn(BaseModel):
     amount: float
 
 
+class ManagedViopMarginAdjustIn(BaseModel):
+    # Same signed-delta shape as ManagedCashAdjustIn - see that class's
+    # docstring.
+    amount: float
+
+
 def _asset_dict(asset: PortfolioAsset) -> dict:
     return {
         "id": asset.id,
@@ -293,14 +299,14 @@ def get_managed_portfolio(
         total_cost += metrics["cost_value"]
         total_value += metrics["total_value"]
 
-    # Cash folds 1:1 into both total_cost and total_value (never just one
-    # side) - it has no profit/loss of its own, so adding it equally to
-    # both keeps total_profit exactly what the priced holdings made/lost,
-    # while still correctly diluting profit_percentage as a real blended
-    # portfolio return would (₺10 profit on ₺100 stock + ₺100 idle cash is
-    # a 5% portfolio return, not 10%).
-    total_cost += portfolio.cash_balance
-    total_value += portfolio.cash_balance
+    # Cash and VİOP teminatı both fold 1:1 into total_cost and total_value
+    # (never just one side) - neither has profit/loss of its own, so adding
+    # them equally to both keeps total_profit exactly what the priced
+    # holdings made/lost, while still correctly diluting profit_percentage
+    # as a real blended portfolio return would (₺10 profit on ₺100 stock +
+    # ₺100 idle cash is a 5% portfolio return, not 10%).
+    total_cost += portfolio.cash_balance + portfolio.viop_margin
+    total_value += portfolio.cash_balance + portfolio.viop_margin
     total_profit = total_value - total_cost
 
     return {
@@ -311,6 +317,7 @@ def get_managed_portfolio(
         "portfolio_name": portfolio.name,
         "assets": assets,
         "cash_balance": portfolio.cash_balance,
+        "viop_margin": portfolio.viop_margin,
         "total_cost": total_cost,
         "total_value": total_value,
         "total_profit": total_profit,
@@ -361,6 +368,53 @@ def adjust_managed_cash(
                   "amount": payload.amount, "new_balance": portfolio.cash_balance,
               })
     return {"cash_balance": portfolio.cash_balance}
+
+
+@router.post("/managed-portfolios/{user_id}/viop-margin")
+@limiter.limit("30/minute")
+def adjust_managed_viop_margin(
+    request: Request,
+    user_id: int,
+    payload: ManagedViopMarginAdjustIn,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Deposits (positive amount) or withdraws/corrects (negative amount)
+    VİOP teminatı (futures/options margin) held in the target user's
+    portfolio - mirrors adjust_managed_cash above exactly, just tracked as
+    its own balance (Portfolio.viop_margin) since it's conceptually a
+    separate, blocked-for-collateral amount rather than free cash. Superuser
+    only, audit-logged."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+    if payload.amount == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutar sıfır olamaz.")
+
+    portfolio = db.query(Portfolio).filter(Portfolio.user_id == user_id).first()
+    if not portfolio:
+        portfolio = Portfolio(user_id=user_id, name="Ana Portföy")
+        db.add(portfolio)
+        db.commit()
+        db.refresh(portfolio)
+
+    new_balance = portfolio.viop_margin + payload.amount
+    if new_balance < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Yetersiz VİOP teminatı: mevcut bakiye ₺{portfolio.viop_margin:.2f}, "
+                   f"₺{-payload.amount:.2f} çıkarılamaz.",
+        )
+    portfolio.viop_margin = new_balance
+    db.commit()
+    db.refresh(portfolio)
+
+    log_audit(db, "managed_portfolio_viop_margin_adjusted", request=request, user_id=admin.id, resource_type="portfolio",
+              resource_id=portfolio.id, details={
+                  "target_user_id": user_id, "target_email": target.email,
+                  "amount": payload.amount, "new_balance": portfolio.viop_margin,
+              })
+    return {"viop_margin": portfolio.viop_margin}
 
 
 @router.post("/managed-portfolios/{user_id}/assets", status_code=status.HTTP_201_CREATED)

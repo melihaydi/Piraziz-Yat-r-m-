@@ -15,6 +15,13 @@ class Portfolio(Base):
     # fallback price instead of failing loudly). Managed by an admin via
     # the Yönetilen Portföyler page for now.
     cash_balance = Column(Float, nullable=False, default=0.0)
+    # VİOP (Vadeli İşlem ve Opsiyon Piyasası) teminatı - money set aside as
+    # collateral for futures/options positions, tracked separately from
+    # cash_balance because it's a distinct, admin-managed balance (not
+    # freely spendable cash), not because it behaves differently in the
+    # totals below - same reasoning as cash_balance's docstring: no ticker/
+    # price to look up, so it can't be a PortfolioAsset row either.
+    viop_margin = Column(Float, nullable=False, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

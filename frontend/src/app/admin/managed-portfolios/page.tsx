@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus } from "lucide-react"
+import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus, Landmark } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -50,6 +50,7 @@ interface ManagedPortfolio {
   portfolio_name: string
   assets: ManagedAsset[]
   cash_balance: number
+  viop_margin: number
   total_cost: number
   total_value: number
   total_profit: number
@@ -76,6 +77,8 @@ export default function ManagedPortfoliosPage() {
   const [editCost, setEditCost] = useState("")
   const [cashAmount, setCashAmount] = useState("")
   const [cashBusy, setCashBusy] = useState(false)
+  const [viopAmount, setViopAmount] = useState("")
+  const [viopBusy, setViopBusy] = useState(false)
 
   const [pinnedIds, setPinnedIds] = useState<number[]>([])
 
@@ -230,6 +233,32 @@ export default function ManagedPortfoliosPage() {
       setManagedError("Sunucuya ulaşılamadı.")
     } finally {
       setCashBusy(false)
+    }
+  }
+
+  // Same sign convention as adjustCash above.
+  const adjustViopMargin = async (sign: 1 | -1) => {
+    const parsed = parseFloat(viopAmount)
+    if (!managedUserId || !viopAmount || !Number.isFinite(parsed) || parsed <= 0) return
+    setViopBusy(true)
+    setManagedError(null)
+    try {
+      const res = await authFetch(`/admin/managed-portfolios/${managedUserId}/viop-margin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: sign * parsed }),
+      })
+      if (res.ok) {
+        setViopAmount("")
+        await loadManagedPortfolio(managedUserId)
+      } else {
+        const body = await res.json().catch(() => null)
+        setManagedError(body?.detail || "VİOP teminatı güncellenemedi.")
+      }
+    } catch (e) {
+      setManagedError("Sunucuya ulaşılamadı.")
+    } finally {
+      setViopBusy(false)
     }
   }
 
@@ -455,6 +484,43 @@ export default function ManagedPortfoliosPage() {
                   onClick={() => adjustCash(-1)}
                   disabled={cashBusy || !cashAmount}
                   title="Nakit çıkar"
+                  className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+                >
+                  <Minus className="h-3.5 w-3.5 mr-1" />
+                  Çıkar
+                </Button>
+              </div>
+
+              {/* VİOP teminatı module - mirrors the cash module above
+                  exactly (Portfolio.viop_margin's own docstring explains
+                  why it's a separate balance rather than another cash
+                  deposit or a priced asset row). */}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
+                <Landmark className="h-4 w-4 text-amber-400 shrink-0" />
+                <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">VİOP Teminatı</span>
+                <span className="text-sm font-extrabold font-mono text-foreground mr-1">{tl(managedPortfolio.viop_margin)}</span>
+                <input
+                  type="number"
+                  value={viopAmount}
+                  onChange={e => setViopAmount(e.target.value)}
+                  placeholder="Tutar (₺)"
+                  className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
+                />
+                <Button
+                  type="button"
+                  onClick={() => adjustViopMargin(1)}
+                  disabled={viopBusy || !viopAmount}
+                  title="Teminat ekle"
+                  className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Ekle
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => adjustViopMargin(-1)}
+                  disabled={viopBusy || !viopAmount}
+                  title="Teminat çıkar"
                   className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
                 >
                   <Minus className="h-3.5 w-3.5 mr-1" />

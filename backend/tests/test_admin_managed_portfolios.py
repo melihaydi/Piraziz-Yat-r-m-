@@ -196,3 +196,96 @@ def test_non_superuser_cannot_adjust_managed_cash(client, plain_headers, target_
         headers=plain_headers,
     )
     assert res.status_code == 403
+
+
+def test_managed_portfolio_starts_with_zero_viop_margin(client, admin_headers, target_user):
+    res = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    assert res.json()["viop_margin"] == 0.0
+
+
+def test_admin_can_deposit_viop_margin_into_managed_portfolio(client, admin_headers, target_user):
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": 2000.0},
+        headers=admin_headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["viop_margin"] == 2000.0
+
+    fetch = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    body = fetch.json()
+    assert body["viop_margin"] == 2000.0
+    # VİOP teminatı folds into both total_cost and total_value equally,
+    # same as cash - no assets yet, so both should be exactly the margin
+    # amount and profit must stay 0.
+    assert body["total_cost"] == 2000.0
+    assert body["total_value"] == 2000.0
+    assert body["total_profit"] == 0.0
+
+
+def test_viop_margin_and_cash_both_fold_into_totals_independently(client, admin_headers, target_user):
+    client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/cash",
+        json={"amount": 5000.0},
+        headers=admin_headers,
+    )
+    client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": 2000.0},
+        headers=admin_headers,
+    )
+    fetch = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    body = fetch.json()
+    assert body["cash_balance"] == 5000.0
+    assert body["viop_margin"] == 2000.0
+    assert body["total_value"] == 7000.0
+
+
+def test_admin_can_withdraw_viop_margin_with_negative_amount(client, admin_headers, target_user):
+    client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": 5000.0},
+        headers=admin_headers,
+    )
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": -2000.0},
+        headers=admin_headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["viop_margin"] == 3000.0
+
+
+def test_cannot_withdraw_more_viop_margin_than_available(client, admin_headers, target_user):
+    client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": 1000.0},
+        headers=admin_headers,
+    )
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": -5000.0},
+        headers=admin_headers,
+    )
+    assert res.status_code == 400
+
+    fetch = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    assert fetch.json()["viop_margin"] == 1000.0
+
+
+def test_zero_amount_viop_margin_adjustment_rejected(client, admin_headers, target_user):
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": 0.0},
+        headers=admin_headers,
+    )
+    assert res.status_code == 400
+
+
+def test_non_superuser_cannot_adjust_managed_viop_margin(client, plain_headers, target_user):
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
+        json={"amount": 1000.0},
+        headers=plain_headers,
+    )
+    assert res.status_code == 403
