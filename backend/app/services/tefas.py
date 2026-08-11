@@ -1,8 +1,10 @@
 import logging
 import pandas as pd
+import borsapy
 import threading
 import time
 import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any, Optional
 from datetime import timedelta
 
@@ -166,7 +168,14 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "manager": "Ali Rıza / Pusula Portföy",
         # Refreshed 2026-08-10 per the user's updated TEFAS breakdown -
         # replaces the prior (stale) composition wholesale rather than
-        # diffing entry-by-entry.
+        # diffing entry-by-entry. "as_of" is the date these weights were
+        # confirmed accurate - get_live_estimated_return() uses it as the
+        # reference point for weight-drift adjustment (see
+        # _build_drift_factors_sync): a holding that has quietly
+        # outperformed/underperformed its peers since this date has, in
+        # reality, grown/shrunk as a share of the fund even though TEFAS
+        # hasn't published a new official composition yet.
+        "as_of": "2026-08-10",
         "assets_distribution": [
             {"name": "ODINE", "value": 16.8},
             {"name": "HEDEF", "value": 11.2},
@@ -200,6 +209,7 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 5,
         "manager": "Hakan Ateş / Atlas Portföy",
         # Refreshed 2026-08-10 per the user's updated TEFAS breakdown.
+        "as_of": "2026-08-10",
         "assets_distribution": [
             {"name": "IEYHO", "value": 41.2},
             # Bank deposit holding - fixed daily-return path below (0.12%/day, per the user).
@@ -228,6 +238,7 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         # update ADDS a fixed-rate SABIT deposit holding (16.5%) that TLY
         # never carried before (unlike TMV, which already had one - see that
         # entry's history). Same fixed daily-return path as TMV's, 0.12%/day.
+        "as_of": "2026-08-10",
         "assets_distribution": [
             {"name": "OZATD", "value": 32.9},
             {"name": "SABIT", "value": 16.5},
@@ -261,6 +272,7 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "risk_level": 6,
         "manager": "Yapay Zekâ Algoritması / Tera Portföy",
         # Refreshed 2026-08-10 per the user's updated TEFAS breakdown.
+        "as_of": "2026-08-10",
         "assets_distribution": [
             # Fixed daily-return deposit path below (0.12%/day, weekend-inclusive).
             {"name": "SABIT", "value": 45.2},
@@ -367,6 +379,19 @@ class TefasService:
         # data for the entire run.
         self._snapshot_fetch_lock = threading.Lock()
 
+        # Weight-drift factors: each tracked fund's assets_distribution is a
+        # SNAPSHOT as of its "as_of" date (see FUND_DETAILS_MAP) - between
+        # TEFAS composition updates, a holding that quietly outperforms/
+        # underperforms its peers has, in reality, grown/shrunk as a share
+        # of the fund, but the static snapshot weight doesn't reflect that.
+        # Keyed by ticker -> cumulative price-return multiplier since that
+        # holding's fund's as_of date (e.g. 1.15 = up 15% since then). Built
+        # by _build_drift_factors_sync() once at startup and once daily -
+        # see get_live_estimated_return() for how it's applied.
+        self._drift_factors: Dict[str, float] = {}
+        self._drift_factors_built_at = datetime.datetime.min
+        self._is_building_drift = False
+
         for code, info in BASE_FUNDS.items():
             f = FALLBACKS[code]
             self._cached_funds[code] = {
@@ -406,6 +431,10 @@ class TefasService:
                 self._last_refresh = datetime.datetime.fromisoformat(data["last_refresh"])
             if data.get("history_last_built"):
                 self._history_last_built = datetime.datetime.fromisoformat(data["history_last_built"])
+            if data.get("drift_factors"):
+                self._drift_factors.update(data["drift_factors"])
+            if data.get("drift_factors_built_at"):
+                self._drift_factors_built_at = datetime.datetime.fromisoformat(data["drift_factors_built_at"])
             logger.info(f"Loaded persisted TEFAS cache from Redis (last refresh: {self._last_refresh}).")
         except Exception as e:
             logger.warning(f"Could not load persisted TEFAS cache: {e}")
@@ -418,6 +447,8 @@ class TefasService:
                     "history_cache": self._history_cache,
                     "last_refresh": self._last_refresh.isoformat(),
                     "history_last_built": self._history_last_built.isoformat(),
+                    "drift_factors": self._drift_factors,
+                    "drift_factors_built_at": self._drift_factors_built_at.isoformat(),
                 }
             # Long TTL, not "forever" - if this data ever stops being
             # refreshed (a stuck scheduler, TEFAS down for days), it should
@@ -629,6 +660,132 @@ class TefasService:
             with self._lock:
                 self._is_building_history = False
 
+    def _bg_build_drift_factors(self):
+        """Fire-and-forget kickoff for _build_drift_factors_sync(), matching
+        the _bg_fetch_prices()/_bg_build_history() pattern above."""
+        with self._lock:
+            if self._is_building_drift:
+                return
+        threading.Thread(target=self._build_drift_factors_sync, daemon=True).start()
+
+    def _build_drift_factors_sync(self):
+        """Computes each drift-tracked holding's cumulative price-return
+        multiplier since its fund's "as_of" date (see FUND_DETAILS_MAP) -
+        get_live_estimated_return() uses this to let a fund's weights
+        "drift" toward what they'd realistically be today, instead of
+        staying frozen at the last disclosed TEFAS composition.
+
+        Uses borsapy.Ticker(...).history() - a plain REST call - NOT
+        market_data.py's get_candles(), which rides the single shared live
+        TradingView streaming session (see its docstring: "only supports
+        ONE active chart series at a time"). Sequentially subscribing that
+        session to ~40+ tickers just for this background job would
+        serialize and starve real users' live chart requests; a separate
+        REST history call per ticker (already the pattern strategy_engine.py
+        and portfolio_analytics.py use for the same reason) doesn't share
+        that bottleneck.
+        """
+        with self._lock:
+            if self._is_building_drift:
+                return
+            self._is_building_drift = True
+        try:
+            tickers_by_as_of: Dict[str, set] = {}
+            for details in FUND_DETAILS_MAP.values():
+                as_of = details.get("as_of")
+                if not as_of or "assets_distribution" not in details:
+                    continue
+                for item in details["assets_distribution"]:
+                    ticker = str(item["name"]).upper()
+                    if ticker in _KNOWN_STOCK_TICKERS:
+                        tickers_by_as_of.setdefault(as_of, set()).add(ticker)
+
+            def resolve_one(as_of: str, ticker: str) -> Optional[float]:
+                try:
+                    as_of_date = datetime.date.fromisoformat(as_of)
+                except ValueError:
+                    return None
+                today_tr = datetime.datetime.now(_TR_TZ).date()
+                days_back = max((today_tr - as_of_date).days + 10, 30)
+                df = None
+                last_err: Optional[Exception] = None
+                for attempt in range(3):
+                    try:
+                        df = borsapy.Ticker(ticker).history(period=f"{days_back}d", interval="1d")
+                        break
+                    except Exception as e:
+                        last_err = e
+                        if "429" in str(e):
+                            time.sleep(1.5 * (attempt + 1))
+                            continue
+                        return None
+                if df is None:
+                    if last_err is not None:
+                        logger.warning(f"Drift factor fetch failed for {ticker}: {last_err}")
+                    return None
+                if df.empty:
+                    return None
+                df = df.sort_index()
+                # borsapy returns a tz-AWARE (Europe/Istanbul) DatetimeIndex
+                # (confirmed live) - as_of_date/today_tr are already
+                # TR-local dates, so drop the tz rather than compare a
+                # tz-naive Timestamp against a tz-aware index (pandas raises
+                # on that instead of silently coercing).
+                naive_index = df.index.tz_localize(None) if df.index.tz is not None else df.index
+                as_of_ts = pd.Timestamp(as_of_date)
+                on_or_after_as_of = df[naive_index.normalize() >= as_of_ts]
+                if on_or_after_as_of.empty:
+                    return None
+                close_as_of = float(on_or_after_as_of.iloc[0]["Close"])
+                if close_as_of <= 0:
+                    return None
+                # Excludes today - today's own move is applied separately via
+                # each holding's live change_percent in
+                # get_live_estimated_return(), so folding it in here too
+                # would double-count it.
+                today_ts = pd.Timestamp(today_tr)
+                before_today = df[naive_index.normalize() < today_ts]
+                if before_today.empty:
+                    return None
+                close_latest = float(before_today.iloc[-1]["Close"])
+                return close_latest / close_as_of
+
+            jobs = [(as_of, ticker) for as_of, tickers in tickers_by_as_of.items() for ticker in tickers]
+            new_factors: Dict[str, float] = {}
+            # Small worker pool - borsapy's TradingView connection pool is
+            # shared with market_data_service's live subscriber thread and
+            # strategy_engine's own scans; too much concurrency here risks
+            # 429s app-wide, not just for this job (see
+            # _fetch_history_with_retry in strategy_engine.py for the same
+            # tradeoff).
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                future_to_ticker = {pool.submit(resolve_one, as_of, ticker): ticker for as_of, ticker in jobs}
+                for future in as_completed(future_to_ticker):
+                    ticker = future_to_ticker[future]
+                    try:
+                        factor = future.result()
+                    except Exception as e:
+                        logger.warning(f"Drift factor task errored for {ticker}: {e}")
+                        factor = None
+                    if factor is not None and 0.2 <= factor <= 5.0:
+                        # Sanity floor/ceiling - a holding 5x-ing or losing
+                        # 80% of its value between two composition updates
+                        # is possible but implausible enough (more likely a
+                        # bad/adjusted price series) that it shouldn't
+                        # silently distort a whole fund's weighted estimate.
+                        new_factors[ticker] = factor
+
+            with self._lock:
+                self._drift_factors.update(new_factors)
+                self._drift_factors_built_at = datetime.datetime.now()
+            self._persist_cache()
+            logger.info(f"Rebuilt weight-drift factors for {len(new_factors)}/{len(jobs)} tickers.")
+        except Exception as e:
+            logger.error(f"Error building weight-drift factors: {e}")
+        finally:
+            with self._lock:
+                self._is_building_drift = False
+
     def _get_snapshot(self, days: int) -> Dict[str, Any]:
         """Returns {date_str: combined_df} covering at least the last `days`
         real trading days, reusing a short-lived shared fetch so a price
@@ -752,8 +909,27 @@ class TefasService:
                 self._fetch_prices_sync()
                 self._build_history_sync(count=20)
 
+        def drift_loop():
+            # Own thread (not folded into history_loop) so ~40 sequential
+            # per-ticker REST history fetches (each with its own retry/
+            # backoff on rate limiting) can't delay the NAV history rebuild
+            # or the next scheduled fund-price refresh. Runs at the same
+            # after-close target as history_loop since it also wants that
+            # day's just-closed prices, just staggered slightly later so it
+            # isn't racing history_loop for the same TEFAS/TradingView
+            # connections at the exact same instant.
+            self._build_drift_factors_sync()
+            while True:
+                now = datetime.datetime.now(_TR_TZ)
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(minutes=5)
+                if target <= now:
+                    target += timedelta(days=1)
+                time.sleep(max((target - now).total_seconds(), 1))
+                self._build_drift_factors_sync()
+
         threading.Thread(target=price_loop, daemon=True).start()
         threading.Thread(target=history_loop, daemon=True).start()
+        threading.Thread(target=drift_loop, daemon=True).start()
 
     def get_funds(self, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
         """Get all funds. Refreshes cache asynchronously if expired."""
@@ -825,10 +1001,40 @@ class TefasService:
         estimated_change = 0.0
         resolved_weight = 0.0
 
+        # Weight-drift adjustment: assets_distribution's weights are frozen
+        # as of "as_of" (see FUND_DETAILS_MAP) - a holding that has quietly
+        # out/underperformed its fund-mates since then has, in reality,
+        # grown/shrunk as a share of the fund even though TEFAS hasn't
+        # published a new composition yet. Re-weight using each holding's
+        # cumulative price-return multiplier since as_of
+        # (self._drift_factors, built daily by _build_drift_factors_sync -
+        # 1.0 for anything not resolved, e.g. category labels or fund
+        # codes), then rescale so the drifted weights still sum to the same
+        # total as the original ones (preserves whatever fraction was cash/
+        # bonds/unlisted-other in the original snapshot instead of
+        # inflating it away). Funds with no "as_of" set keep the plain
+        # static weights (drifted_weights stays empty, .get() below falls
+        # through to item["value"]).
+        as_of = details.get("as_of")
+        drifted_weights: Dict[str, float] = {}
+        if as_of:
+            raw_total = 0.0
+            drifted_total = 0.0
+            for item in details["assets_distribution"]:
+                t = str(item["name"]).upper()
+                w = float(item["value"])
+                raw_total += w
+                factor = self._drift_factors.get(t, 1.0)
+                drifted_weights[t] = w * factor
+                drifted_total += w * factor
+            scale = (raw_total / drifted_total) if drifted_total > 0 else 1.0
+            for t in drifted_weights:
+                drifted_weights[t] *= scale
+
         for item in details["assets_distribution"]:
             name = item["name"]
-            weight = float(item["value"])
             ticker = name.upper()
+            weight = drifted_weights.get(ticker, float(item["value"]))
 
             if ticker in _FIXED_RATE_HOLDING_DAILY_PCT:
                 change = _FIXED_RATE_HOLDING_DAILY_PCT[ticker] * _calendar_days_since_last_bist_session()
