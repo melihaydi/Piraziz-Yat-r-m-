@@ -83,7 +83,11 @@ class PortfolioSnapshotService:
             # unconditionally spun up.
             price_by_ticker: Dict[str, float] = {}
             if all_tickers:
-                with ThreadPoolExecutor(max_workers=min(len(all_tickers), 8)) as pool:
+                # Capped at 4 (not 8) - the production host runs on ~1GB
+                # total RAM; fewer concurrent live-price fetches in flight
+                # lowers this daily job's peak memory footprint at the cost
+                # of taking a bit longer to finish across all users.
+                with ThreadPoolExecutor(max_workers=min(len(all_tickers), 4)) as pool:
                     price_by_ticker = dict(zip(all_tickers, pool.map(_fetch_live_price, all_tickers)))
 
             for uid, portfolios in pending.items():

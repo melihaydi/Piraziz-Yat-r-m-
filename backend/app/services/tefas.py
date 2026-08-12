@@ -768,8 +768,11 @@ class TefasService:
             # strategy_engine's own scans; too much concurrency here risks
             # 429s app-wide, not just for this job (see
             # _fetch_history_with_retry in strategy_engine.py for the same
-            # tradeoff).
-            with ThreadPoolExecutor(max_workers=4) as pool:
+            # tradeoff). Capped at 2 (not 4) on top of that - the production
+            # host runs on ~1GB total RAM, and fewer concurrent pandas
+            # DataFrames/HTTP connections in flight lowers this job's peak
+            # memory footprint at the cost of taking a bit longer to finish.
+            with ThreadPoolExecutor(max_workers=2) as pool:
                 future_to_ticker = {pool.submit(resolve_one, as_of, ticker): ticker for as_of, ticker in jobs}
                 for future in as_completed(future_to_ticker):
                     ticker = future_to_ticker[future]
@@ -926,13 +929,17 @@ class TefasService:
             # backoff on rate limiting) can't delay the NAV history rebuild
             # or the next scheduled fund-price refresh. Runs at the same
             # after-close target as history_loop since it also wants that
-            # day's just-closed prices, just staggered slightly later so it
-            # isn't racing history_loop for the same TEFAS/TradingView
-            # connections at the exact same instant.
+            # day's just-closed prices - staggered a full 45 minutes later
+            # (not just 5) so its ThreadPoolExecutor isn't running
+            # concurrently with history_loop's own network/pandas work; the
+            # production host is memory-constrained (~1GB) and two heavy
+            # background jobs overlapping there measurably added to swap
+            # pressure (confirmed live via vmstat during a 2026-08-12
+            # investigation into intermittent slowness).
             self._build_drift_factors_sync()
             while True:
                 now = datetime.datetime.now(_TR_TZ)
-                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(minutes=5)
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(minutes=45)
                 if target <= now:
                     target += timedelta(days=1)
                 time.sleep(max((target - now).total_seconds(), 1))
