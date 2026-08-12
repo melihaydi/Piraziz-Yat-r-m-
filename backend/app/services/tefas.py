@@ -101,6 +101,13 @@ BASE_FUNDS = {
     # resolve this leg via its real daily_return once the TEFAS crawl
     # populates it (same placeholder-overwritten-by-real-data pattern as PRY).
     "HMV": {"name": "Hedef Portföy Mavi Hisse Senedi Serbest (TL) Fon", "category": "Serbest Yoğun", "price": 10.0000, "category_tr": "Serbest Fon"},
+    # New funds requested by the user (2026-08-12) - same placeholder-
+    # overwritten-by-real-TEFAS-data pattern as PRY/HMV above, no known
+    # composition yet so not added to FUND_DETAILS_MAP.
+    "AFT": {"name": "AFT Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "AKU": {"name": "AKU Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "AFO": {"name": "AFO Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "YZT": {"name": "YZT Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
 }
 
 # Baseline fallback values (exact prices & returns from July 20, 2026)
@@ -124,7 +131,11 @@ FALLBACKS = {
     "PFS": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PSE": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "BAC": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
-    "HMV": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
+    "HMV": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "AFT": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "AKU": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "AFO": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "YZT": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0}
 }
 
 # Module-level (not just get_fund()-local) so get_live_estimated_return()
