@@ -43,6 +43,16 @@ def seed_companies() -> None:
             to_add.append(Company(ticker=code, name=info["name"], sector="Yatırım Fonu"))
             existing.add(code)
 
+        # Döviz/altın - market_data_service already keeps a live FX_IDC
+        # subscription for both (see SPECIAL_EXCHANGES), but neither is a
+        # BIST stock or a TEFAS fund code, so they need their own explicit
+        # Company row to be addable as a Yönetilen Portföyler holding.
+        for ticker, name in [("USDTRY", "Dolar / TL"), ("XAUTRYG", "Gram Altın")]:
+            if ticker in existing:
+                continue
+            to_add.append(Company(ticker=ticker, name=name, sector="Döviz / Emtia"))
+            existing.add(ticker)
+
         if to_add:
             db.add_all(to_add)
             db.commit()

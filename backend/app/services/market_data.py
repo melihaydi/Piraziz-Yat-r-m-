@@ -45,6 +45,12 @@ SPECIAL_EXCHANGES: Dict[str, str] = {
 # and the BIST indices), not these.
 _ALWAYS_LIVE_SYMBOLS = set(SPECIAL_EXCHANGES.keys())
 
+# The subset of _ALWAYS_LIVE_SYMBOLS a portfolio can actually hold as a
+# priced asset (see is_known_ticker below) - deliberately narrower than the
+# full set (doesn't include "GOLD"/TVC, which is only the Trade module's
+# VİOP-contract pricing alias for XAUUSD, not a separate holdable symbol).
+_NON_STOCK_LIVE_SYMBOLS = {"USDTRY", "XAUTRYG"}
+
 _BIST_TZ = ZoneInfo("Europe/Istanbul")
 _BIST_SESSION_OPEN = dt_time(9, 30)
 _BIST_SESSION_CLOSE = dt_time(18, 15)
@@ -241,13 +247,18 @@ class MarketDataService:
         logger.info(f"Loaded {len(self.tickers)} BIST 30 + Extras priority tickers.")
 
     def is_known_ticker(self, symbol: str) -> bool:
-        """True if `symbol` is in the tracked stock universe. get_quote()
-        NEVER returns None - for any unrecognized symbol it still returns a
-        synthetic fallback quote, so callers that need to tell "a real
-        tracked stock" apart from "an arbitrary label" (e.g. a TEFAS fund
-        category like "Ters Repo", or an unrelated portfolio ticker) must
-        check this BEFORE calling get_quote(), not rely on its truthiness."""
-        return symbol.upper() in {t["ticker"] for t in self.tickers}
+        """True if `symbol` is in the tracked stock universe, OR one of the
+        non-stock symbols (USD/TRY, gram altın) this service separately
+        keeps a live FX_IDC subscription for (see SPECIAL_EXCHANGES) - added
+        so a portfolio holding USDTRY/XAUTRYG (e.g. via Yönetilen
+        Portföyler) gets a real daily %change like any stock, not just a
+        price. get_quote() NEVER returns None - for any unrecognized symbol
+        it still returns a synthetic fallback quote, so callers that need to
+        tell "a real tracked instrument" apart from "an arbitrary label"
+        (e.g. a TEFAS fund category like "Ters Repo") must check this BEFORE
+        calling get_quote(), not rely on its truthiness."""
+        s = symbol.upper()
+        return s in {t["ticker"] for t in self.tickers} or s in _NON_STOCK_LIVE_SYMBOLS
 
     def _read_prefetched_auth_token(self) -> Optional[str]:
         """A real auth_token kept fresh by deploy/refresh_tv_auth_token.sh via

@@ -29,6 +29,28 @@ def test_leaves_plausible_change_untouched_even_for_known_symbol():
     assert item["prev_close"] == 46.5
 
 
+def test_is_known_ticker_recognizes_usdtry_and_gram_altin():
+    # Needed so a portfolio holding USD/TRY or gram altın (added via
+    # Yönetilen Portföyler) gets a real daily %change like a stock, not
+    # just a price - see is_known_ticker's docstring.
+    svc = _service()
+    svc.tickers = [{"ticker": "THYAO"}]
+    assert svc.is_known_ticker("USDTRY") is True
+    assert svc.is_known_ticker("usdtry") is True
+    assert svc.is_known_ticker("XAUTRYG") is True
+    assert svc.is_known_ticker("THYAO") is True
+    assert svc.is_known_ticker("NOTAREALTICKER") is False
+
+
+def test_is_known_ticker_does_not_recognize_gold_viop_alias():
+    # "GOLD" (TVC) is only the Trade module's VİOP-contract pricing alias
+    # for XAUUSD, not a separately holdable portfolio symbol - see
+    # _NON_STOCK_LIVE_SYMBOLS's comment for why it's deliberately excluded.
+    svc = _service()
+    svc.tickers = []
+    assert svc.is_known_ticker("GOLD") is False
+
+
 def test_ignores_symbols_with_no_known_corporate_action():
     item = {"last": 100.0, "change": -80.0, "change_percent": -80.0, "prev_close": 180.0}
     _service()._correct_stale_corporate_action("THYAO", item)

@@ -672,6 +672,29 @@ export default function ManagedPortfoliosPage() {
                     className="h-8 w-24 text-xs"
                   />
                 </div>
+                {/* Döviz/altın hızlı seçim - USDTRY/XAUTRYG gerçek ticker
+                    kodları (market_data_service'te zaten canlı takip
+                    ediliyor, bkz. SPECIAL_EXCHANGES) ama admin bunları ezbere
+                    bilmesin diye kısayol. */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground opacity-0 select-none">.</label>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setNewAssetTicker("USDTRY")}
+                      className="h-8 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-emerald-500/40 cursor-pointer"
+                    >
+                      USD/TRY
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewAssetTicker("XAUTRYG")}
+                      className="h-8 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 cursor-pointer"
+                    >
+                      Gram Altın
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted-foreground">Adet</label>
                   <input
