@@ -65,3 +65,69 @@ def test_usd_cash_balance_converts_to_tl_at_live_rate_on_own_portfolio(client, d
     assert body["total_cost"] == pytest.approx(8800.0)
     assert body["total_value"] == pytest.approx(8800.0)
     assert body["total_profit"] == pytest.approx(0.0)
+
+
+def _mock_usd_rate(rate: float):
+    return patch(
+        "app.api.v1.endpoints.portfolio.market_data_service.get_quote",
+        return_value={"last": rate},
+    )
+
+
+def test_user_can_deposit_usd_cash_into_own_portfolio(client, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    with _mock_usd_rate(40.0):
+        res = client.post(
+            f"/api/v1/portfolio/{portfolio_id}/usd-cash",
+            json={"amount": 220.0},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["usd_cash_balance"] == 220.0
+        assert res.json()["usd_cash_value_try"] == pytest.approx(8800.0)
+
+        fetch = client.get("/api/v1/portfolio/", headers=auth_headers)
+    assert fetch.json()[0]["usd_cash_balance"] == 220.0
+
+
+def test_user_can_withdraw_own_usd_cash(client, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    with _mock_usd_rate(40.0):
+        client.post(f"/api/v1/portfolio/{portfolio_id}/usd-cash", json={"amount": 500.0}, headers=auth_headers)
+        res = client.post(f"/api/v1/portfolio/{portfolio_id}/usd-cash", json={"amount": -200.0}, headers=auth_headers)
+    assert res.status_code == 200
+    assert res.json()["usd_cash_balance"] == 300.0
+
+
+def test_user_cannot_withdraw_more_usd_cash_than_available(client, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    with _mock_usd_rate(40.0):
+        client.post(f"/api/v1/portfolio/{portfolio_id}/usd-cash", json={"amount": 100.0}, headers=auth_headers)
+        res = client.post(f"/api/v1/portfolio/{portfolio_id}/usd-cash", json={"amount": -500.0}, headers=auth_headers)
+    assert res.status_code == 400
+
+
+def test_user_cannot_adjust_usd_cash_on_someone_elses_portfolio(client, auth_headers):
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "otherusdcashuser@example.com", "password": "mypassword", "terms_accepted": True},
+    )
+    other_login = client.post(
+        "/api/v1/auth/login",
+        data={"username": "otherusdcashuser@example.com", "password": "mypassword"},
+    )
+    other_headers = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
+    other_portfolio_id = _create_portfolio(client, other_headers, name="Başkasının Portföyü")
+
+    res = client.post(
+        f"/api/v1/portfolio/{other_portfolio_id}/usd-cash",
+        json={"amount": 100.0},
+        headers=auth_headers,
+    )
+    assert res.status_code == 404
+
+
+def test_zero_amount_usd_cash_adjustment_rejected_self_service(client, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    res = client.post(f"/api/v1/portfolio/{portfolio_id}/usd-cash", json={"amount": 0.0}, headers=auth_headers)
+    assert res.status_code == 400

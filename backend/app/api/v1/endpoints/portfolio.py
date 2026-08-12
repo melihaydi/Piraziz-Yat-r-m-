@@ -514,6 +514,50 @@ class AssetUpdate(BaseModel):
 class AssetSell(BaseModel):
     shares: float
 
+class UsdCashAdjustIn(BaseModel):
+    # Signed delta in raw USD, not TL - positive deposits, negative
+    # withdraws/corrects. Same shape as admin.py's ManagedUsdCashAdjustIn,
+    # but self-service: the user manages their OWN portfolio's USD cash
+    # directly (unlike cash_balance/viop_margin, which stay admin-only via
+    # Yönetilen Portföyler for now - see Portfolio.cash_balance's
+    # docstring) since they explicitly asked to add dollars to their own
+    # Portföyüm without going through an admin.
+    amount: float
+
+@router.post("/{id}/usd-cash")
+@limiter.limit("30/minute")
+def adjust_own_usd_cash(
+    request: Request,
+    id: int,
+    payload: UsdCashAdjustIn,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Deposits (positive amount) or withdraws (negative amount) cash held
+    directly in USD in the current user's OWN portfolio - mirrors admin.py's
+    adjust_managed_usd_cash, just scoped to the caller's own Portfolio row
+    instead of an admin acting on someone else's. Its TL value is computed
+    fresh at the live USD/TRY rate on every read (see _usd_try_rate()), not
+    converted once at deposit time."""
+    portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
+    if not portfolio:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
+    if payload.amount == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutar sıfır olamaz.")
+
+    new_balance = portfolio.usd_cash_balance + payload.amount
+    if new_balance < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Yetersiz döviz nakti: mevcut bakiye ${portfolio.usd_cash_balance:.2f}, "
+                   f"${-payload.amount:.2f} çıkarılamaz.",
+        )
+    portfolio.usd_cash_balance = new_balance
+    db.commit()
+    db.refresh(portfolio)
+
+    return {"usd_cash_balance": portfolio.usd_cash_balance, "usd_cash_value_try": round(portfolio.usd_cash_balance * _usd_try_rate(), 2)}
+
 @router.put("/assets/{asset_id}", response_model=PortfolioAssetResponse)
 @limiter.limit("30/minute")
 def update_portfolio_asset(

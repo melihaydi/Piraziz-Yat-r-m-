@@ -27,7 +27,9 @@ import {
   Loader2,
   Sparkles,
   Zap,
-  ChevronDown
+  ChevronDown,
+  DollarSign,
+  Minus
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -45,6 +47,13 @@ import { authFetch } from "@/lib/auth"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
+
+// A native <input type="number"> forces a period as the decimal separator
+// regardless of the OS/browser's Turkish locale - this plain-text parser
+// accepts the Turkish convention instead ("." thousands separator stripped,
+// "," decimal point), same as admin/managed-portfolios/page.tsx's
+// parseTLAmount and trade/DepositModal.tsx's amount field.
+const parseTLAmount = (raw: string): number => parseFloat(raw.trim().replace(/\./g, "").replace(",", "."))
 
 function PortfolioStressTest({ beta, currentValue }: { beta: number | null; currentValue: number }) {
   const [scenario, setScenario] = useState(-10)
@@ -128,6 +137,37 @@ export default function PortfolioPage() {
   const flashActionError = (msg: string) => {
     setActionError(msg)
     setTimeout(() => setActionError(null), 5000)
+  }
+
+  const [usdCashAmount, setUsdCashAmount] = useState("")
+  const [usdCashBusy, setUsdCashBusy] = useState(false)
+
+  // sign: +1 deposit, -1 withdraw - user always types a positive amount,
+  // this decides direction, same convention as
+  // admin/managed-portfolios/page.tsx's adjustCash.
+  const adjustUsdCash = async (sign: 1 | -1) => {
+    if (!activePortfolio) return
+    const parsed = parseTLAmount(usdCashAmount)
+    if (!usdCashAmount || !Number.isFinite(parsed) || parsed <= 0) return
+    setUsdCashBusy(true)
+    try {
+      const res = await authFetch(`/portfolio/${activePortfolio.id}/usd-cash`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: sign * parsed }),
+      })
+      if (res.ok) {
+        setUsdCashAmount("")
+        await loadCore()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Döviz nakti güncellenemedi.")
+      }
+    } catch (e) {
+      flashActionError("Sunucuya ulaşılamadı.")
+    } finally {
+      setUsdCashBusy(false)
+    }
   }
 
   // Load portfolios and alerts. AuthGate guarantees a valid session by the
@@ -591,13 +631,35 @@ export default function PortfolioPage() {
               <form onSubmit={handleAddAsset} className="space-y-4 py-4">
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Hisse veya Fon Kodu</label>
-                  <Input 
+                  <Input
                     value={assetTicker}
                     onChange={(e) => setAssetTicker(e.target.value)}
-                    placeholder="THYAO veya PHE" 
-                    className="col-span-2 bg-secondary/50" 
-                    required 
+                    placeholder="THYAO veya PHE"
+                    className="col-span-2 bg-secondary/50"
+                    required
                   />
+                </div>
+                {/* Döviz/altın hızlı seçim - USDTRY/XAUTRYG gerçek ticker
+                    kodları (market_data_service'te canlı takip ediliyor),
+                    ezbere bilinmesin diye kısayol. */}
+                <div className="grid grid-cols-3 items-center gap-4">
+                  <span />
+                  <div className="col-span-2 flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setAssetTicker("USDTRY")}
+                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-emerald-500/40 cursor-pointer"
+                    >
+                      USD/TRY
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAssetTicker("XAUTRYG")}
+                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 cursor-pointer"
+                    >
+                      Gram Altın
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Adet (Lot)</label>
@@ -723,23 +785,20 @@ export default function PortfolioPage() {
               </p>
             )}
             <p className="text-[10px] text-muted-foreground mt-1">Toplam Maliyet: ₺{totalCost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            {(cashBalance > 0 || viopMargin > 0 || usdCashBalance > 0) && (
+            {(cashBalance > 0 || viopMargin > 0) && (
               // Admin-managed balances (Yönetilen Portföyler'den eklenir) -
               // read-only here, just surfaced so a deposit/teminat an admin
               // enters actually shows up somewhere on this page instead of
               // silently only affecting the totals above with no visible
               // line item (previously this endpoint didn't even return
-              // these fields, so they never showed up at all). USD cash's
-              // TL figure is the backend's LIVE conversion, not fixed - it
-              // moves with USD/TRY on every reload.
+              // these fields, so they never showed up at all). Döviz Nakit
+              // (USD) has its own self-service module below instead of
+              // being shown here, since the user can add/withdraw it
+              // themselves.
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 {cashBalance > 0 && <>Nakit: ₺{cashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
-                {cashBalance > 0 && (viopMargin > 0 || usdCashBalance > 0) && " · "}
+                {cashBalance > 0 && viopMargin > 0 && " · "}
                 {viopMargin > 0 && <>VİOP Teminatı: ₺{viopMargin.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
-                {viopMargin > 0 && usdCashBalance > 0 && " · "}
-                {usdCashBalance > 0 && (
-                  <>Döviz Nakit: ${usdCashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (₺{usdCashValueTry.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</>
-                )}
               </p>
             )}
             <button
@@ -827,6 +886,46 @@ export default function PortfolioPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Döviz Nakit (USD) - self-service, unlike Nakit/VİOP Teminatı above
+          (still admin-only via Yönetilen Portföyler for now). Stored in raw
+          dollars; the TL figure is the backend's LIVE conversion computed
+          on every load, not a fixed snapshot from deposit time - it moves
+          with USD/TRY on refresh. Gram altın is added the normal way
+          through "Varlık Ekle" below (it has its own live price/P&L to
+          track, unlike plain parked cash). */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
+        <DollarSign className="h-4 w-4 text-sky-400 shrink-0" />
+        <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Döviz Nakit (USD)</span>
+        <span className="text-sm font-extrabold font-mono text-foreground mr-1">
+          ${usdCashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <span className="text-[10px] font-semibold text-muted-foreground ml-1">(₺{usdCashValueTry.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+        </span>
+        <Input
+          value={usdCashAmount}
+          onChange={e => setUsdCashAmount(e.target.value)}
+          placeholder="Tutar ($) örn. 220"
+          className="h-8 w-28 text-xs"
+        />
+        <Button
+          type="button"
+          onClick={() => adjustUsdCash(1)}
+          disabled={usdCashBusy || !usdCashAmount}
+          className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Ekle
+        </Button>
+        <Button
+          type="button"
+          onClick={() => adjustUsdCash(-1)}
+          disabled={usdCashBusy || !usdCashAmount}
+          className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+        >
+          <Minus className="h-3.5 w-3.5 mr-1" />
+          Çıkar
+        </Button>
       </div>
 
       {showLiveEstimate && (
