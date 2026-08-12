@@ -22,6 +22,15 @@ class Portfolio(Base):
     # totals below - same reasoning as cash_balance's docstring: no ticker/
     # price to look up, so it can't be a PortfolioAsset row either.
     viop_margin = Column(Float, nullable=False, default=0.0)
+    # Cash held directly in USD (not converted to TL at deposit time) - the
+    # user explicitly wanted to add "220 dolar" as cash directly, not go
+    # through the USDTRY PortfolioAsset route (which requires typing today's
+    # exchange rate as an average_cost). Stored in raw USD; every valuation
+    # (get_managed_portfolio/get_user_portfolios) converts it to TL at the
+    # CURRENT live USD/TRY rate on read, so its TL value moves with the
+    # exchange rate exactly like a real dollar holding would - see
+    # portfolio.py's _usd_try_rate().
+    usd_cash_balance = Column(Float, nullable=False, default=0.0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

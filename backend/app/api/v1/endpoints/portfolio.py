@@ -98,6 +98,16 @@ def _official_daily_change_pct(ticker: str, delay_minutes: int = 0) -> Optional[
         return _fund_official_daily_change_pct(ticker)
     return _stock_daily_change_pct(ticker, delay_minutes)
 
+def _usd_try_rate() -> float:
+    """Live USD/TRY rate for converting a usd_cash_balance holding to TL -
+    get_quote() never returns None (it always has a synthetic fallback, see
+    its own docstring), so this only needs a defensive constant for the
+    pathological case of a malformed quote dict, not real unavailability."""
+    quote = market_data_service.get_quote("USDTRY")
+    rate = quote.get("last") if quote else None
+    return float(rate) if rate else 33.245
+
+
 def calculate_asset_metrics(asset: PortfolioAsset, live_price: Optional[float] = None, delay_minutes: int = 0) -> dict:
     """Helper to compute real-time value and profit metrics for an asset.
     Pass a pre-fetched `live_price` (see _fetch_live_price) to skip the
@@ -185,15 +195,19 @@ def get_user_portfolios(
             total_cost += asset.shares * asset.average_cost
             total_value += metrics["total_value"]
 
-        # Cash and VİOP teminatı both fold 1:1 into total_cost and
-        # total_value (never just one side) - neither has profit/loss of
-        # its own, matching admin.py's get_managed_portfolio exactly (this
-        # is the SAME Portfolio row an admin manages via Yönetilen
-        # Portföyler; previously this endpoint never read either field at
-        # all, so an admin-entered deposit was saved to the DB correctly
-        # but silently never showed up here - confirmed live).
-        total_cost += p.cash_balance + p.viop_margin
-        total_value += p.cash_balance + p.viop_margin
+        # USD cash converts to TL at the CURRENT live rate every time this
+        # is read (not the rate at deposit time) - see Portfolio.
+        # usd_cash_balance's docstring for why. Cash/VİOP teminatı/USD cash
+        # all fold 1:1 into total_cost and total_value (never just one
+        # side) - none has profit/loss of its own, matching admin.py's
+        # get_managed_portfolio exactly (this is the SAME Portfolio row an
+        # admin manages via Yönetilen Portföyler; previously this endpoint
+        # never read cash_balance/viop_margin at all, so an admin-entered
+        # deposit was saved to the DB correctly but silently never showed up
+        # here - confirmed live).
+        usd_cash_value_try = p.usd_cash_balance * _usd_try_rate()
+        total_cost += p.cash_balance + p.viop_margin + usd_cash_value_try
+        total_value += p.cash_balance + p.viop_margin + usd_cash_value_try
         total_profit = total_value - total_cost
         profit_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0.0
 
@@ -204,6 +218,8 @@ def get_user_portfolios(
             "assets": assets_responses,
             "cash_balance": p.cash_balance,
             "viop_margin": p.viop_margin,
+            "usd_cash_balance": p.usd_cash_balance,
+            "usd_cash_value_try": round(usd_cash_value_try, 2),
             "total_cost": total_cost,
             "total_value": total_value,
             "total_profit": total_profit,

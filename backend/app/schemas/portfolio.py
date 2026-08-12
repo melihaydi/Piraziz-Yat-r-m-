@@ -48,6 +48,11 @@ class PortfolioResponse(PortfolioBase):
     assets: List[PortfolioAssetResponse] = []
     cash_balance: Optional[float] = 0.0
     viop_margin: Optional[float] = 0.0
+    usd_cash_balance: Optional[float] = 0.0
+    # Live TL equivalent of usd_cash_balance at read time - not a stored
+    # column, computed fresh on every response (see portfolio.py's
+    # _usd_try_rate()).
+    usd_cash_value_try: Optional[float] = 0.0
     total_cost: Optional[float] = 0.0
     total_value: Optional[float] = 0.0
     total_profit: Optional[float] = 0.0

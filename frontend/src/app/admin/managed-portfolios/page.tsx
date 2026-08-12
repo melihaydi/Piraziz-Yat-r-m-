@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus, Landmark } from "lucide-react"
+import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus, Landmark, DollarSign } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -51,6 +51,8 @@ interface ManagedPortfolio {
   assets: ManagedAsset[]
   cash_balance: number
   viop_margin: number
+  usd_cash_balance: number
+  usd_cash_value_try: number
   total_cost: number
   total_value: number
   total_profit: number
@@ -88,6 +90,8 @@ export default function ManagedPortfoliosPage() {
   const [cashBusy, setCashBusy] = useState(false)
   const [viopAmount, setViopAmount] = useState("")
   const [viopBusy, setViopBusy] = useState(false)
+  const [usdCashAmount, setUsdCashAmount] = useState("")
+  const [usdCashBusy, setUsdCashBusy] = useState(false)
 
   const [pinnedIds, setPinnedIds] = useState<number[]>([])
 
@@ -268,6 +272,33 @@ export default function ManagedPortfoliosPage() {
       setManagedError("Sunucuya ulaşılamadı.")
     } finally {
       setViopBusy(false)
+    }
+  }
+
+  // Same sign convention as adjustCash above - amount is raw USD, not TL
+  // (parseTLAmount is locale parsing only, not currency-specific).
+  const adjustUsdCash = async (sign: 1 | -1) => {
+    const parsed = parseTLAmount(usdCashAmount)
+    if (!managedUserId || !usdCashAmount || !Number.isFinite(parsed) || parsed <= 0) return
+    setUsdCashBusy(true)
+    setManagedError(null)
+    try {
+      const res = await authFetch(`/admin/managed-portfolios/${managedUserId}/usd-cash`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: sign * parsed }),
+      })
+      if (res.ok) {
+        setUsdCashAmount("")
+        await loadManagedPortfolio(managedUserId)
+      } else {
+        const body = await res.json().catch(() => null)
+        setManagedError(body?.detail || "Döviz nakti güncellenemedi.")
+      }
+    } catch (e) {
+      setManagedError("Sunucuya ulaşılamadı.")
+    } finally {
+      setUsdCashBusy(false)
     }
   }
 
@@ -532,6 +563,48 @@ export default function ManagedPortfoliosPage() {
                   onClick={() => adjustViopMargin(-1)}
                   disabled={viopBusy || !viopAmount}
                   title="Teminat çıkar"
+                  className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+                >
+                  <Minus className="h-3.5 w-3.5 mr-1" />
+                  Çıkar
+                </Button>
+              </div>
+
+              {/* Döviz nakit (USD) module - stored in raw dollars (see
+                  Portfolio.usd_cash_balance's docstring), the TL figure
+                  shown next to it is the LIVE conversion computed by the
+                  backend on every load, not a fixed snapshot from deposit
+                  time - it'll change on refresh as USD/TRY moves. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
+                <DollarSign className="h-4 w-4 text-sky-400 shrink-0" />
+                <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Döviz Nakit (USD)</span>
+                <span className="text-sm font-extrabold font-mono text-foreground mr-1">
+                  ${managedPortfolio.usd_cash_balance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="text-[10px] font-semibold text-muted-foreground ml-1">({tl(managedPortfolio.usd_cash_value_try)})</span>
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={usdCashAmount}
+                  onChange={e => setUsdCashAmount(e.target.value)}
+                  placeholder="Tutar ($) örn. 220"
+                  className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
+                />
+                <Button
+                  type="button"
+                  onClick={() => adjustUsdCash(1)}
+                  disabled={usdCashBusy || !usdCashAmount}
+                  title="Döviz nakti ekle"
+                  className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Ekle
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => adjustUsdCash(-1)}
+                  disabled={usdCashBusy || !usdCashAmount}
+                  title="Döviz nakti çıkar"
                   className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
                 >
                   <Minus className="h-3.5 w-3.5 mr-1" />

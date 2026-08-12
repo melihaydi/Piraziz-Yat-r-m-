@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from app.models.user import User
@@ -286,6 +288,110 @@ def test_non_superuser_cannot_adjust_managed_viop_margin(client, plain_headers, 
     res = client.post(
         f"/api/v1/admin/managed-portfolios/{target_user.id}/viop-margin",
         json={"amount": 1000.0},
+        headers=plain_headers,
+    )
+    assert res.status_code == 403
+
+
+def _mock_usd_rate(rate: float):
+    """Patches the live USD/TRY quote used by _usd_try_rate() so USD-cash
+    tests get a deterministic TL conversion instead of whatever the real
+    (fallback) quote happens to be."""
+    return patch(
+        "app.api.v1.endpoints.portfolio.market_data_service.get_quote",
+        return_value={"last": rate},
+    )
+
+
+def test_managed_portfolio_starts_with_zero_usd_cash(client, admin_headers, target_user):
+    res = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    assert res.json()["usd_cash_balance"] == 0.0
+    assert res.json()["usd_cash_value_try"] == 0.0
+
+
+def test_admin_can_deposit_usd_cash_and_it_converts_at_live_rate(client, admin_headers, target_user):
+    with _mock_usd_rate(40.0):
+        res = client.post(
+            f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+            json={"amount": 220.0},
+            headers=admin_headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["usd_cash_balance"] == 220.0
+        assert res.json()["usd_cash_value_try"] == pytest.approx(8800.0)
+
+        fetch = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    body = fetch.json()
+    assert body["usd_cash_balance"] == 220.0
+    assert body["usd_cash_value_try"] == pytest.approx(8800.0)
+    # Folds into totals same as cash/viop_margin - no assets yet, so both
+    # equal the TL-converted amount and profit stays 0.
+    assert body["total_cost"] == pytest.approx(8800.0)
+    assert body["total_value"] == pytest.approx(8800.0)
+    assert body["total_profit"] == pytest.approx(0.0)
+
+
+def test_usd_cash_tl_value_moves_with_the_live_rate_on_each_read(client, admin_headers, target_user):
+    with _mock_usd_rate(40.0):
+        client.post(
+            f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+            json={"amount": 100.0},
+            headers=admin_headers,
+        )
+    # Rate moves between deposit and the next read - the TL figure must
+    # reflect the NEW rate, not whatever it was at deposit time.
+    with _mock_usd_rate(42.0):
+        fetch = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    assert fetch.json()["usd_cash_value_try"] == pytest.approx(4200.0)
+
+
+def test_admin_can_withdraw_usd_cash_with_negative_amount(client, admin_headers, target_user):
+    with _mock_usd_rate(40.0):
+        client.post(
+            f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+            json={"amount": 500.0},
+            headers=admin_headers,
+        )
+        res = client.post(
+            f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+            json={"amount": -200.0},
+            headers=admin_headers,
+        )
+    assert res.status_code == 200
+    assert res.json()["usd_cash_balance"] == 300.0
+
+
+def test_cannot_withdraw_more_usd_cash_than_available(client, admin_headers, target_user):
+    with _mock_usd_rate(40.0):
+        client.post(
+            f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+            json={"amount": 100.0},
+            headers=admin_headers,
+        )
+        res = client.post(
+            f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+            json={"amount": -500.0},
+            headers=admin_headers,
+        )
+    assert res.status_code == 400
+
+    fetch = client.get(f"/api/v1/admin/managed-portfolios/{target_user.id}", headers=admin_headers)
+    assert fetch.json()["usd_cash_balance"] == 100.0
+
+
+def test_zero_amount_usd_cash_adjustment_rejected(client, admin_headers, target_user):
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+        json={"amount": 0.0},
+        headers=admin_headers,
+    )
+    assert res.status_code == 400
+
+
+def test_non_superuser_cannot_adjust_managed_usd_cash(client, plain_headers, target_user):
+    res = client.post(
+        f"/api/v1/admin/managed-portfolios/{target_user.id}/usd-cash",
+        json={"amount": 100.0},
         headers=plain_headers,
     )
     assert res.status_code == 403

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from app.models.portfolio import Portfolio
@@ -43,3 +45,23 @@ def test_cash_balance_set_by_admin_is_visible_on_own_portfolio(client, db, auth_
     assert body["total_cost"] == 6500.0
     assert body["total_value"] == 6500.0
     assert body["total_profit"] == 0.0
+
+
+def test_usd_cash_balance_converts_to_tl_at_live_rate_on_own_portfolio(client, db, auth_headers):
+    portfolio_id = _create_portfolio(client, auth_headers)
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    portfolio.usd_cash_balance = 220.0
+    db.commit()
+
+    with patch(
+        "app.api.v1.endpoints.portfolio.market_data_service.get_quote",
+        return_value={"last": 40.0},
+    ):
+        response = client.get("/api/v1/portfolio/", headers=auth_headers)
+
+    body = response.json()[0]
+    assert body["usd_cash_balance"] == 220.0
+    assert body["usd_cash_value_try"] == pytest.approx(8800.0)
+    assert body["total_cost"] == pytest.approx(8800.0)
+    assert body["total_value"] == pytest.approx(8800.0)
+    assert body["total_profit"] == pytest.approx(0.0)

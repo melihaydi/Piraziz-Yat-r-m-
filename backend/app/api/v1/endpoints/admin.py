@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api import deps
-from app.api.v1.endpoints.portfolio import calculate_asset_metrics, _daily_change
+from app.api.v1.endpoints.portfolio import calculate_asset_metrics, _daily_change, _usd_try_rate
 from app.core.audit import log_audit
 from app.core.limiter import limiter
 from app.core.email import send_email
@@ -240,6 +240,12 @@ class ManagedViopMarginAdjustIn(BaseModel):
     amount: float
 
 
+class ManagedUsdCashAdjustIn(BaseModel):
+    # Same signed-delta shape as ManagedCashAdjustIn, but in raw USD, not
+    # TL - see Portfolio.usd_cash_balance's docstring.
+    amount: float
+
+
 def _asset_dict(asset: PortfolioAsset) -> dict:
     return {
         "id": asset.id,
@@ -299,14 +305,17 @@ def get_managed_portfolio(
         total_cost += metrics["cost_value"]
         total_value += metrics["total_value"]
 
-    # Cash and VİOP teminatı both fold 1:1 into total_cost and total_value
-    # (never just one side) - neither has profit/loss of its own, so adding
-    # them equally to both keeps total_profit exactly what the priced
-    # holdings made/lost, while still correctly diluting profit_percentage
-    # as a real blended portfolio return would (₺10 profit on ₺100 stock +
-    # ₺100 idle cash is a 5% portfolio return, not 10%).
-    total_cost += portfolio.cash_balance + portfolio.viop_margin
-    total_value += portfolio.cash_balance + portfolio.viop_margin
+    # Cash, VİOP teminatı and USD cash all fold 1:1 into total_cost and
+    # total_value (never just one side) - none has profit/loss of its own,
+    # so adding them equally to both keeps total_profit exactly what the
+    # priced holdings made/lost, while still correctly diluting
+    # profit_percentage as a real blended portfolio return would (₺10 profit
+    # on ₺100 stock + ₺100 idle cash is a 5% portfolio return, not 10%). USD
+    # cash converts to TL at the CURRENT live rate on every read, not the
+    # rate at deposit time - see Portfolio.usd_cash_balance's docstring.
+    usd_cash_value_try = portfolio.usd_cash_balance * _usd_try_rate()
+    total_cost += portfolio.cash_balance + portfolio.viop_margin + usd_cash_value_try
+    total_value += portfolio.cash_balance + portfolio.viop_margin + usd_cash_value_try
     total_profit = total_value - total_cost
 
     return {
@@ -314,6 +323,8 @@ def get_managed_portfolio(
         "user_email": target.email,
         "user_name": target.full_name,
         "portfolio_id": portfolio.id,
+        "usd_cash_balance": portfolio.usd_cash_balance,
+        "usd_cash_value_try": round(usd_cash_value_try, 2),
         "portfolio_name": portfolio.name,
         "assets": assets,
         "cash_balance": portfolio.cash_balance,
@@ -415,6 +426,53 @@ def adjust_managed_viop_margin(
                   "amount": payload.amount, "new_balance": portfolio.viop_margin,
               })
     return {"viop_margin": portfolio.viop_margin}
+
+
+@router.post("/managed-portfolios/{user_id}/usd-cash")
+@limiter.limit("30/minute")
+def adjust_managed_usd_cash(
+    request: Request,
+    user_id: int,
+    payload: ManagedUsdCashAdjustIn,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Deposits (positive amount) or withdraws/corrects (negative amount)
+    cash held directly in USD in the target user's portfolio - mirrors
+    adjust_managed_cash above, but the amount is raw dollars (not TL) and
+    is stored as such; its TL value is computed fresh at the live USD/TRY
+    rate on every read (see Portfolio.usd_cash_balance's docstring), not
+    converted once at deposit time. Superuser only, audit-logged."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+    if payload.amount == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutar sıfır olamaz.")
+
+    portfolio = db.query(Portfolio).filter(Portfolio.user_id == user_id).first()
+    if not portfolio:
+        portfolio = Portfolio(user_id=user_id, name="Ana Portföy")
+        db.add(portfolio)
+        db.commit()
+        db.refresh(portfolio)
+
+    new_balance = portfolio.usd_cash_balance + payload.amount
+    if new_balance < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Yetersiz döviz nakti: mevcut bakiye ${portfolio.usd_cash_balance:.2f}, "
+                   f"${-payload.amount:.2f} çıkarılamaz.",
+        )
+    portfolio.usd_cash_balance = new_balance
+    db.commit()
+    db.refresh(portfolio)
+
+    log_audit(db, "managed_portfolio_usd_cash_adjusted", request=request, user_id=admin.id, resource_type="portfolio",
+              resource_id=portfolio.id, details={
+                  "target_user_id": user_id, "target_email": target.email,
+                  "amount": payload.amount, "new_balance": portfolio.usd_cash_balance,
+              })
+    return {"usd_cash_balance": portfolio.usd_cash_balance, "usd_cash_value_try": round(portfolio.usd_cash_balance * _usd_try_rate(), 2)}
 
 
 @router.post("/managed-portfolios/{user_id}/assets", status_code=status.HTTP_201_CREATED)
