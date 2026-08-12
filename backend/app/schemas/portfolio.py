@@ -47,6 +47,7 @@ class PortfolioResponse(PortfolioBase):
     user_id: int
     assets: List[PortfolioAssetResponse] = []
     cash_balance: Optional[float] = 0.0
+    viop_margin: Optional[float] = 0.0
     total_cost: Optional[float] = 0.0
     total_value: Optional[float] = 0.0
     total_profit: Optional[float] = 0.0

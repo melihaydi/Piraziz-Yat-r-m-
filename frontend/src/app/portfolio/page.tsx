@@ -260,6 +260,8 @@ export default function PortfolioPage() {
   const currentValue = activePortfolio ? activePortfolio.total_value || 0.0 : 0.0
   const totalProfit = activePortfolio ? activePortfolio.total_profit || 0.0 : 0.0
   const profitPercentage = activePortfolio ? activePortfolio.profit_percentage || 0.0 : 0.0
+  const cashBalance = activePortfolio ? activePortfolio.cash_balance || 0.0 : 0.0
+  const viopMargin = activePortfolio ? activePortfolio.viop_margin || 0.0 : 0.0
 
   // Portfolio-wide OFFICIAL daily gain (₺ + %) - aggregated from each
   // asset's official_daily_gain_value: a real live quote for stocks, the
@@ -719,6 +721,19 @@ export default function PortfolioPage() {
               </p>
             )}
             <p className="text-[10px] text-muted-foreground mt-1">Toplam Maliyet: ₺{totalCost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            {(cashBalance > 0 || viopMargin > 0) && (
+              // Admin-managed balances (Yönetilen Portföyler'den eklenir) -
+              // read-only here, just surfaced so a deposit/teminat an admin
+              // enters actually shows up somewhere on this page instead of
+              // silently only affecting the totals above with no visible
+              // line item (previously this endpoint didn't even return
+              // these fields, so they never showed up at all).
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {cashBalance > 0 && <>Nakit: ₺{cashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
+                {cashBalance > 0 && viopMargin > 0 && " · "}
+                {viopMargin > 0 && <>VİOP Teminatı: ₺{viopMargin.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
+              </p>
+            )}
             <button
               onClick={handleToggleLiveEstimate}
               className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"

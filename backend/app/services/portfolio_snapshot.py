@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
-from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
+from app.models.portfolio import Portfolio, PortfolioSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -49,34 +49,48 @@ class PortfolioSnapshotService:
         try:
             today = datetime.now(_TR_TZ).date()
 
-            assets_by_user: Dict[int, List[PortfolioAsset]] = {}
+            # Keyed by the whole Portfolio row (not just its assets) so cash
+            # and VİOP teminatı - which have no `assets` entry of their own -
+            # still count toward the snapshot, and so a portfolio holding
+            # ONLY cash/margin (no priced assets at all) still gets a
+            # snapshot instead of being skipped entirely (the old `if
+            # p.assets:` guard here silently dropped those users).
+            portfolios_by_user: Dict[int, List[Portfolio]] = {}
             for p in db.query(Portfolio).all():
-                if p.assets:
-                    assets_by_user.setdefault(p.user_id, []).extend(p.assets)
+                portfolios_by_user.setdefault(p.user_id, []).append(p)
 
-            if not assets_by_user:
+            if not portfolios_by_user:
                 return
 
             already_done = {
                 row[0] for row in
                 db.query(PortfolioSnapshot.user_id)
                 .filter(PortfolioSnapshot.snapshot_date == today)
-                .filter(PortfolioSnapshot.user_id.in_(assets_by_user.keys()))
+                .filter(PortfolioSnapshot.user_id.in_(portfolios_by_user.keys()))
                 .all()
             }
-            pending = {uid: assets for uid, assets in assets_by_user.items() if uid not in already_done}
+            pending = {uid: portfolios for uid, portfolios in portfolios_by_user.items() if uid not in already_done}
             if not pending:
                 return
 
-            all_tickers = sorted({a.ticker.upper() for assets in pending.values() for a in assets})
-            with ThreadPoolExecutor(max_workers=min(len(all_tickers), 8)) as pool:
-                price_by_ticker = dict(zip(all_tickers, pool.map(_fetch_live_price, all_tickers)))
+            all_tickers = sorted({
+                a.ticker.upper() for portfolios in pending.values() for p in portfolios for a in p.assets
+            })
+            # A cash/VİOP-teminatı-only portfolio contributes no tickers at
+            # all - ThreadPoolExecutor rejects max_workers=0 outright, and
+            # since that's now possible (unlike before, when only users with
+            # assets were tracked here), this must be skipped rather than
+            # unconditionally spun up.
+            price_by_ticker: Dict[str, float] = {}
+            if all_tickers:
+                with ThreadPoolExecutor(max_workers=min(len(all_tickers), 8)) as pool:
+                    price_by_ticker = dict(zip(all_tickers, pool.map(_fetch_live_price, all_tickers)))
 
-            for uid, assets in pending.items():
+            for uid, portfolios in pending.items():
                 total_value = sum(
                     a.shares * (price_by_ticker.get(a.ticker.upper()) or a.average_cost)
-                    for a in assets
-                )
+                    for p in portfolios for a in p.assets
+                ) + sum(p.cash_balance + p.viop_margin for p in portfolios)
                 db.add(PortfolioSnapshot(user_id=uid, snapshot_date=today, total_value=total_value))
             db.commit()
             logger.info(f"Portfolio snapshot: recorded {len(pending)} users' total value for {today}.")

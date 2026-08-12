@@ -84,3 +84,37 @@ def test_no_users_with_holdings_is_a_no_op(snap_db):
     with patch("app.services.portfolio_snapshot.SessionLocal", return_value=snap_db):
         service._run_snapshot_for_all_users()
     assert snap_db.query(PortfolioSnapshot).count() == 0
+
+
+def test_cash_and_viop_margin_fold_into_snapshot_total_value(snap_db):
+    _seed_portfolio(snap_db, user_id=1, ticker="THYAO", shares=10, average_cost=300.0)
+    portfolio = snap_db.query(Portfolio).filter(Portfolio.user_id == 1).first()
+    portfolio.cash_balance = 1000.0
+    portfolio.viop_margin = 500.0
+    snap_db.commit()
+
+    service = PortfolioSnapshotService()
+    with patch("app.services.portfolio_snapshot.SessionLocal", return_value=snap_db), \
+         patch("app.api.v1.endpoints.portfolio._fetch_live_price", return_value=320.0):
+        service._run_snapshot_for_all_users()
+
+    snapshot = snap_db.query(PortfolioSnapshot).one()
+    assert snapshot.total_value == pytest.approx(10 * 320.0 + 1000.0 + 500.0)
+
+
+def test_cash_only_portfolio_with_no_assets_still_gets_a_snapshot(snap_db):
+    # Previously this whole user was skipped (the old `if p.assets:` guard
+    # never added them to assets_by_user at all) - an admin-managed
+    # portfolio holding only cash/VİOP teminatı and no priced assets
+    # silently never appeared on the equity curve.
+    portfolio = Portfolio(user_id=1, name="Ana Portföy", cash_balance=2500.0)
+    snap_db.add(portfolio)
+    snap_db.commit()
+
+    service = PortfolioSnapshotService()
+    with patch("app.services.portfolio_snapshot.SessionLocal", return_value=snap_db):
+        service._run_snapshot_for_all_users()
+
+    snapshot = snap_db.query(PortfolioSnapshot).one()
+    assert snapshot.user_id == 1
+    assert snapshot.total_value == pytest.approx(2500.0)

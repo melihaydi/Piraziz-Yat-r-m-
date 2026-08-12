@@ -185,6 +185,15 @@ def get_user_portfolios(
             total_cost += asset.shares * asset.average_cost
             total_value += metrics["total_value"]
 
+        # Cash and VİOP teminatı both fold 1:1 into total_cost and
+        # total_value (never just one side) - neither has profit/loss of
+        # its own, matching admin.py's get_managed_portfolio exactly (this
+        # is the SAME Portfolio row an admin manages via Yönetilen
+        # Portföyler; previously this endpoint never read either field at
+        # all, so an admin-entered deposit was saved to the DB correctly
+        # but silently never showed up here - confirmed live).
+        total_cost += p.cash_balance + p.viop_margin
+        total_value += p.cash_balance + p.viop_margin
         total_profit = total_value - total_cost
         profit_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0.0
 
@@ -193,6 +202,8 @@ def get_user_portfolios(
             "user_id": p.user_id,
             "name": p.name,
             "assets": assets_responses,
+            "cash_balance": p.cash_balance,
+            "viop_margin": p.viop_margin,
             "total_cost": total_cost,
             "total_value": total_value,
             "total_profit": total_profit,
