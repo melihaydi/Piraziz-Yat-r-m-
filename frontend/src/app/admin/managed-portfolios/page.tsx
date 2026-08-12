@@ -59,6 +59,15 @@ interface ManagedPortfolio {
 
 const tl = (n: number) => `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+// A native <input type="number"> forces a period as the decimal separator
+// regardless of the OS/browser's Turkish locale, so typing "1.500,50" (the
+// same tr-TR format tl() above displays everywhere else in this app) either
+// gets silently rejected or misread. This plain-text parser accepts the
+// Turkish convention instead - "." as a thousands separator (stripped),
+// "," as the decimal point - matching trade/DepositModal.tsx's amount
+// field, which already works this way.
+const parseTLAmount = (raw: string): number => parseFloat(raw.trim().replace(/\./g, "").replace(",", "."))
+
 export default function ManagedPortfoliosPage() {
   const [checkingAccess, setCheckingAccess] = useState(true)
   const [forbidden, setForbidden] = useState(false)
@@ -212,7 +221,7 @@ export default function ManagedPortfoliosPage() {
   // always types a positive number, this decides its direction, so a typo
   // in the sign can't silently flip a deposit into a withdrawal.
   const adjustCash = async (sign: 1 | -1) => {
-    const parsed = parseFloat(cashAmount)
+    const parsed = parseTLAmount(cashAmount)
     if (!managedUserId || !cashAmount || !Number.isFinite(parsed) || parsed <= 0) return
     setCashBusy(true)
     setManagedError(null)
@@ -238,7 +247,7 @@ export default function ManagedPortfoliosPage() {
 
   // Same sign convention as adjustCash above.
   const adjustViopMargin = async (sign: 1 | -1) => {
-    const parsed = parseFloat(viopAmount)
+    const parsed = parseTLAmount(viopAmount)
     if (!managedUserId || !viopAmount || !Number.isFinite(parsed) || parsed <= 0) return
     setViopBusy(true)
     setManagedError(null)
@@ -463,10 +472,11 @@ export default function ManagedPortfoliosPage() {
                 <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Nakit</span>
                 <span className="text-sm font-extrabold font-mono text-foreground mr-1">{tl(managedPortfolio.cash_balance)}</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={cashAmount}
                   onChange={e => setCashAmount(e.target.value)}
-                  placeholder="Tutar (₺)"
+                  placeholder="Tutar (₺) örn. 1.500,50"
                   className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
                 />
                 <Button
@@ -500,10 +510,11 @@ export default function ManagedPortfoliosPage() {
                 <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">VİOP Teminatı</span>
                 <span className="text-sm font-extrabold font-mono text-foreground mr-1">{tl(managedPortfolio.viop_margin)}</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={viopAmount}
                   onChange={e => setViopAmount(e.target.value)}
-                  placeholder="Tutar (₺)"
+                  placeholder="Tutar (₺) örn. 1.500,50"
                   className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
                 />
                 <Button
