@@ -381,7 +381,17 @@ def get_stock_chart(
     if not candles:
         # Generate simulated daily/hourly candles as a fallback (Request 1 & 4!)
         response.headers["X-Chart-Simulated"] = "true"
-        import time
+        # time is already imported at module level (line 1) - a local
+        # `import time` here would make Python treat `time` as local to the
+        # WHOLE function (Python determines scope statically per-function),
+        # shadowing the module-level import even on code paths that never
+        # reach this line. The delay-cutoff branch below (`if delay > 0:`)
+        # also calls time.time() - when real candles are returned (this
+        # fallback block is skipped entirely) that call hit an unbound local
+        # `time`, 500ing this endpoint for every delay-gated (free-tier)
+        # user - confirmed live via bip_backend's logs (UnboundLocalError:
+        # cannot access local variable 'time'), reported as the entire app
+        # being inaccessible on 2026-08-13.
         import random
         candles = []
         base_price = 100.0
