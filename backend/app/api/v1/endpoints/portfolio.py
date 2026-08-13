@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -411,25 +411,51 @@ def get_portfolio_live_estimate(
 def create_portfolio(
     request: Request,
     portfolio_in: PortfolioCreate,
+    response: Response,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    """Create a new portfolio."""
-    db_portfolio = Portfolio(name=portfolio_in.name, user_id=current_user.id)
-    db.add(db_portfolio)
-    db.commit()
-    db.refresh(db_portfolio)
-    
-    # Return empty response shell
+    """Create a new portfolio. Idempotent by name per user: the frontend
+    auto-creates a default "Ana Portföyüm" portfolio whenever a user has
+    none, and two concurrent loadData() calls can both see zero portfolios
+    and both POST here before either commit lands, producing duplicate
+    empty defaults. If a portfolio with this exact name already exists for
+    the user, return it instead of creating another one."""
+    existing = (
+        db.query(Portfolio)
+        .filter(Portfolio.user_id == current_user.id, Portfolio.name == portfolio_in.name)
+        .first()
+    )
+
+    if existing:
+        db_portfolio = existing
+        response.status_code = status.HTTP_200_OK
+    else:
+        db_portfolio = Portfolio(name=portfolio_in.name, user_id=current_user.id)
+        db.add(db_portfolio)
+        db.commit()
+        db.refresh(db_portfolio)
+
+    assets_responses = []
+    total_cost = 0.0
+    total_value = 0.0
+    for asset in db_portfolio.assets:
+        metrics = calculate_asset_metrics(asset)
+        assets_responses.append(PortfolioAssetResponse(**metrics))
+        total_cost += asset.shares * asset.average_cost
+        total_value += metrics["total_value"]
+    total_profit = total_value - total_cost
+    profit_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0.0
+
     return PortfolioResponse(
         id=db_portfolio.id,
         user_id=db_portfolio.user_id,
         name=db_portfolio.name,
-        assets=[],
-        total_cost=0.0,
-        total_value=0.0,
-        total_profit=0.0,
-        profit_percentage=0.0,
+        assets=assets_responses,
+        total_cost=total_cost,
+        total_value=total_value,
+        total_profit=total_profit,
+        profit_percentage=profit_pct,
         created_at=db_portfolio.created_at,
         updated_at=db_portfolio.updated_at
     )

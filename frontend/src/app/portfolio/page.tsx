@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import {
   PieChart,
   Pie,
@@ -106,7 +106,12 @@ export default function PortfolioPage() {
   const [liveEstimateLoading, setLiveEstimateLoading] = useState(false)
   const [showLiveEstimate, setShowLiveEstimate] = useState(false)
   const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur">("hisse")
-  
+
+  // Guards the auto-create-default-portfolio POST below from firing twice
+  // concurrently (e.g. loadData re-entering before the first POST resolves),
+  // which previously created duplicate "Ana Portföyüm" portfolios.
+  const autoCreatingDefaultRef = useRef(false)
+
   // Modal states
   const [isOpenAlertModal, setIsOpenAlertModal] = useState(false)
   const [isOpenAssetModal, setIsOpenAssetModal] = useState(false)
@@ -192,16 +197,23 @@ export default function PortfolioPage() {
         const portData = await portRes.json()
         setPortfolios(portData)
 
-        // Auto-create a default portfolio if user has none
-        if (portData.length === 0) {
-          const createRes = await authFetch("/portfolio/", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "Ana Portföyüm" })
-          })
-          if (createRes.ok) {
-            const newPort = await createRes.json()
-            setPortfolios([newPort])
+        // Auto-create a default portfolio if user has none. Guarded so a
+        // second overlapping loadData() call can't fire this POST again
+        // before the first one resolves.
+        if (portData.length === 0 && !autoCreatingDefaultRef.current) {
+          autoCreatingDefaultRef.current = true
+          try {
+            const createRes = await authFetch("/portfolio/", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: "Ana Portföyüm" })
+            })
+            if (createRes.ok) {
+              const newPort = await createRes.json()
+              setPortfolios([newPort])
+            }
+          } finally {
+            autoCreatingDefaultRef.current = false
           }
         }
       }

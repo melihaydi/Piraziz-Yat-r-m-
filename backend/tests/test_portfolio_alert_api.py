@@ -35,6 +35,28 @@ def test_create_and_get_portfolio(client, auth_headers):
     assert data_get[0]["name"] == "Hisse Portföyüm"
     assert data_get[0]["total_cost"] == 0.0
 
+def test_create_portfolio_is_idempotent_by_name(client, auth_headers):
+    # Simulates two concurrent auto-create-default-portfolio requests racing:
+    # the second POST with the same name must not create a duplicate.
+    first = client.post(
+        "/api/v1/portfolio/",
+        json={"name": "Ana Portföyüm"},
+        headers=auth_headers
+    )
+    assert first.status_code == 201
+    first_id = first.json()["id"]
+
+    second = client.post(
+        "/api/v1/portfolio/",
+        json={"name": "Ana Portföyüm"},
+        headers=auth_headers
+    )
+    assert second.status_code == 200
+    assert second.json()["id"] == first_id
+
+    all_portfolios = client.get("/api/v1/portfolio/", headers=auth_headers).json()
+    assert len(all_portfolios) == 1
+
 def test_portfolio_assets_weighted_average(client, auth_headers):
     # Create portfolio
     p_create = client.post(
