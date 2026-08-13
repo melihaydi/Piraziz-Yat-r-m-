@@ -77,54 +77,67 @@ def patched_subscribe_chart(self, symbol: str, interval: str = "1m", exchange: s
     if not hasattr(self, "_has_active_chart_series"):
         self._has_active_chart_series = False
         
+    # The lock MUST cover the WebSocket sends below, not just the bookkeeping
+    # above. There is exactly ONE shared chart session ($prices/s1) on this
+    # connection, so a chart subscription is a read-modify-write against
+    # global remote state: remove the old series, resolve the new symbol,
+    # create the new series. Several callers fetch candles concurrently
+    # (portfolio/strategy/screener all use ThreadPoolExecutor), and with the
+    # lock released after the bookkeeping their sends interleaved - one
+    # thread's create_series would reference a series_id that another
+    # thread's clear()+remove_series had already invalidated. TradingView
+    # answered those with "invalid symbol"/"resolve error", which is what
+    # flooded production logs (1308 symbol errors + 181 series errors in a
+    # single 15-minute window, ~87/min, all wasted work on a 1GB host).
+    # self._lock is an RLock, so holding it across _send() is safe.
     with self._lock:
         self._chart_subscribed.clear()
         self._chart_series_map.clear()
         self._chart_data.clear()
-        
+
         self._chart_subscribed[symbol] = {interval}
         self._chart_data[symbol] = {interval: []}
-        
+
         self._chart_series_counter += 1
         series_id = f"ser_{self._chart_series_counter}"
         self._chart_series_map[series_id] = (symbol, interval)
-        
-    if self.is_connected:
-        if self._has_active_chart_series:
-            try:
-                self._send(self._create_message("remove_series", [self._chart_session, "$prices"]))
-                time.sleep(0.03)
-            except Exception:
-                pass
-                
-        tv_interval = borsapy.stream.CHART_TIMEFRAMES.get(interval, interval)
-        tv_symbol = f"{exchange}:{symbol}"
-        
-        symbol_config = json.dumps({
-            "symbol": tv_symbol,
-            "adjustment": "splits",
-            "session": "regular",
-        })
-        self._send(
-            self._create_message(
-                "resolve_symbol",
-                [self._chart_session, series_id, f"={symbol_config}"],
+
+        if self.is_connected:
+            if self._has_active_chart_series:
+                try:
+                    self._send(self._create_message("remove_series", [self._chart_session, "$prices"]))
+                    time.sleep(0.03)
+                except Exception:
+                    pass
+
+            tv_interval = borsapy.stream.CHART_TIMEFRAMES.get(interval, interval)
+            tv_symbol = f"{exchange}:{symbol}"
+
+            symbol_config = json.dumps({
+                "symbol": tv_symbol,
+                "adjustment": "splits",
+                "session": "regular",
+            })
+            self._send(
+                self._create_message(
+                    "resolve_symbol",
+                    [self._chart_session, series_id, f"={symbol_config}"],
+                )
             )
-        )
-        self._send(
-            self._create_message(
-                "create_series",
-                [
-                    self._chart_session,
-                    "$prices",
-                    "s1",
-                    series_id,
-                    tv_interval,
-                    300,
-                ],
+            self._send(
+                self._create_message(
+                    "create_series",
+                    [
+                        self._chart_session,
+                        "$prices",
+                        "s1",
+                        series_id,
+                        tv_interval,
+                        300,
+                    ],
+                )
             )
-        )
-        self._has_active_chart_series = True
+            self._has_active_chart_series = True
 
 TradingViewStream.subscribe_chart = patched_subscribe_chart
 

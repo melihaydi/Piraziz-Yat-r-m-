@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   AreaChart,
@@ -37,18 +37,6 @@ import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 
 // Fallback index chart points in case of connection limits
-const marketData = [
-  { time: "09:55", value: 10180 },
-  { time: "10:30", value: 10210 },
-  { time: "11:00", value: 10195 },
-  { time: "12:00", value: 10220 },
-  { time: "13:00", value: 10235 },
-  { time: "14:00", value: 10215 },
-  { time: "15:00", value: 10245 },
-  { time: "16:00", value: 10260 },
-  { time: "17:00", value: 10255 },
-  { time: "18:00", value: 10240 },
-]
 
 export default function Home() {
   const router = useRouter()
@@ -65,6 +53,8 @@ export default function Home() {
   
   const [loadingSummary, setLoadingSummary] = useState(true)
   const [indexChartData, setIndexChartData] = useState<any[]>([])
+  const [indexChartError, setIndexChartError] = useState(false)
+  const [indexChartLoading, setIndexChartLoading] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState<string>("XU100")
   
   // Popüler Fonlar - Anlık Getiri (same live estimate as /funds page)
@@ -82,29 +72,43 @@ export default function Home() {
   const [loadingFavorites, setLoadingFavorites] = useState(true)
 
   // Fetch index chart data dynamically when selectedIndex changes (Request 4!)
-  useEffect(() => {
+  const loadIndexChart = useCallback(() => {
+    setIndexChartError(false)
+    setIndexChartLoading(true)
     authFetch(`/screener/chart/${selectedIndex}?interval=1d`)
       .then(res => {
-        if (!res.ok) {
-          console.warn("Index chart data not available from server");
-          return [];
-        }
+        if (!res.ok) throw new Error(`chart request failed: ${res.status}`)
         return res.json()
       })
       .then(data => {
-        if (Array.isArray(data)) {
-          const mapped = data.map(d => {
-            const date = new Date(d.time * 1000)
-            return {
-              time: date.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }),
-              value: d.close
-            }
-          })
-          setIndexChartData(mapped.slice(-15))
-        }
+        if (!Array.isArray(data) || data.length === 0) throw new Error("empty chart payload")
+        const mapped = data.map(d => {
+          const date = new Date(d.time * 1000)
+          return {
+            time: date.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }),
+            value: d.close
+          }
+        })
+        setIndexChartData(mapped.slice(-15))
       })
-      .catch(err => console.error("Failed to load index chart data:", err))
+      .catch(err => {
+        // Surface the failure instead of silently falling back to the
+        // hardcoded `marketData` sample. That fallback plotted invented
+        // ~10,200-level values under a "BIST 100 Endeksi (XU100)" heading
+        // while the real index was at 14,132 - fabricated prices presented
+        // as live market data, with nothing telling the user the feed was
+        // down. Confirmed live on 2026-08-13: a backend 500 on this
+        // endpoint left every free-tier user staring at that fake chart,
+        // which is how the outage got reported as "the app doesn't work"
+        // rather than "the chart is stale".
+        console.error("Failed to load index chart data:", err)
+        setIndexChartData([])
+        setIndexChartError(true)
+      })
+      .finally(() => setIndexChartLoading(false))
   }, [selectedIndex])
+
+  useEffect(() => { loadIndexChart() }, [loadIndexChart])
 
   // Fetch all dashboard data
   useEffect(() => {
@@ -299,8 +303,26 @@ export default function Home() {
                 })}
               </div>
               <div className="h-72 w-full">
+                {indexChartError ? (
+                  <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-center px-4">
+                    <p className="text-sm font-bold text-foreground">Endeks grafiği şu anda yüklenemedi</p>
+                    <p className="text-xs text-muted-foreground max-w-sm">
+                      Piyasa veri bağlantısına ulaşılamıyor. Sayfadaki diğer veriler etkilenmemiş olabilir.
+                    </p>
+                    <button
+                      onClick={loadIndexChart}
+                      className="mt-1 h-8 px-3 rounded-md border border-input bg-secondary/40 text-xs font-bold text-foreground hover:bg-secondary/60 cursor-pointer"
+                    >
+                      Tekrar dene
+                    </button>
+                  </div>
+                ) : indexChartLoading && indexChartData.length === 0 ? (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <p className="text-xs text-muted-foreground">Endeks grafiği yükleniyor...</p>
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={indexChartData.length > 0 ? indexChartData : marketData}>
+                  <AreaChart data={indexChartData}>
                     <defs>
                       <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
@@ -318,6 +340,7 @@ export default function Home() {
                     <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorValue)" />
                   </AreaChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
