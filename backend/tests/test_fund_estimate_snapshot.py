@@ -1,5 +1,6 @@
 from datetime import date, datetime as real_datetime, timedelta
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
@@ -46,6 +47,14 @@ def _fake_fund(code):
     return {"code": code, "daily_return": 1.2}
 
 
+# The service stamps snapshot_date from Turkey-local "today" (see
+# fund_estimate_snapshot.py's _TR_TZ), not the CI runner's UTC date - between
+# 21:00-23:59 UTC, Turkey (UTC+3) is already the next calendar day, which
+# made this comparison flaky against a plain date.today() every run that
+# happened to land in that window.
+_today_tr = lambda: real_datetime.now(ZoneInfo("Europe/Istanbul")).date()
+
+
 def test_records_one_snapshot_per_tracked_fund(snap_db):
     service = FundEstimateSnapshotService()
     with patch("app.services.fund_estimate_snapshot.SessionLocal", return_value=snap_db), \
@@ -56,7 +65,7 @@ def test_records_one_snapshot_per_tracked_fund(snap_db):
     rows = snap_db.query(FundEstimateSnapshot).all()
     assert {r.fund_code for r in rows} == set(TRACKED_FUND_CODES)
     for r in rows:
-        assert r.snapshot_date == date.today()
+        assert r.snapshot_date == _today_tr()
         assert r.estimated_change_pct == 1.5
         assert r.resolved_weight_pct == 90.0
         assert r.actual_change_pct == 1.2
@@ -64,7 +73,7 @@ def test_records_one_snapshot_per_tracked_fund(snap_db):
 
 def test_skips_funds_that_already_have_a_snapshot_today(snap_db):
     snap_db.add(FundEstimateSnapshot(
-        fund_code="TMV", snapshot_date=date.today(),
+        fund_code="TMV", snapshot_date=_today_tr(),
         estimated_change_pct=9.9, resolved_weight_pct=50.0, actual_change_pct=9.9,
     ))
     snap_db.commit()

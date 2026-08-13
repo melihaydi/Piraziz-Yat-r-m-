@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine
@@ -65,7 +66,13 @@ def test_falls_back_to_average_cost_when_live_price_unavailable(snap_db):
 
 def test_skips_users_who_already_have_a_snapshot_today(snap_db):
     _seed_portfolio(snap_db, user_id=1, ticker="THYAO", shares=10, average_cost=300.0)
-    snap_db.add(PortfolioSnapshot(user_id=1, snapshot_date=date.today(), total_value=999.0))
+    # The service stamps snapshot_date from Turkey-local "today" (see
+    # portfolio_snapshot.py's _TR_TZ), not the test runner's UTC date -
+    # between 21:00-23:59 UTC, Turkey (UTC+3) is already the next calendar
+    # day, which made a plain date.today() here flaky against the service's
+    # dedup query in that window.
+    today_tr = datetime.now(ZoneInfo("Europe/Istanbul")).date()
+    snap_db.add(PortfolioSnapshot(user_id=1, snapshot_date=today_tr, total_value=999.0))
     snap_db.commit()
 
     service = PortfolioSnapshotService()
