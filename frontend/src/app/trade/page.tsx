@@ -104,7 +104,7 @@ export default function TradePage() {
                 className="flex items-center gap-1.5 text-slate-500 hover:text-white transition-colors pr-3 border-r border-slate-800"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span className="text-[11px] font-bold hidden sm:inline">Piraziz</span>
+                <span className="text-[11px] font-bold hidden sm:inline">BIP</span>
               </Link>
             )}
             <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">

@@ -48,7 +48,7 @@ def generate_account_statement_pdf(
     )
 
     elements = [
-        Paragraph("Piraziz Yatırım - Hesap Ekstresi", title_style),
+        Paragraph("BIP Terminal - Hesap Ekstresi", title_style),
         Paragraph(f"Hesap: {account.name} ({account.broker})", styles["Normal"]),
         Paragraph(f"Dönem: {period_label}", styles["Normal"]),
         Paragraph(f"Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')}", styles["Normal"]),
@@ -108,7 +108,7 @@ def generate_account_statement_pdf(
 
     elements.append(Spacer(1, 1 * cm))
     elements.append(Paragraph(
-        "Bu belge, Piraziz Yatırım'ın simüle (kağıt üzerinde) alım-satım hesabı için üretilmiş "
+        "Bu belge, BIP Terminal'ın simüle (kağıt üzerinde) alım-satım hesabı için üretilmiş "
         "bilgilendirme amaçlı bir dökümdür. Resmi bir aracı kurum hesap ekstresi veya vergi belgesi "
         "değildir; gerçek para/gerçek borsa işlemi içermez.",
         small,

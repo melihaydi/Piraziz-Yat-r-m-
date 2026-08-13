@@ -67,7 +67,7 @@ export default function TradePerformancePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `piraziz-yatirim-ekstre-${new Date().toISOString().slice(0, 10)}.pdf`
+      a.download = `bip-terminal-ekstre-${new Date().toISOString().slice(0, 10)}.pdf`
       a.click()
       URL.revokeObjectURL(url)
     } finally {

@@ -246,7 +246,7 @@ export default function Home() {
       {/* Welcome & AI Summary Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Piraziz Yatırım Terminali</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight">BIP Terminal</h1>
           <p className="text-muted-foreground mt-1">TradingView canlı verileri ve yapay zekâ destekli analiz terminali.</p>
         </div>
         <div className="flex items-center space-x-3">

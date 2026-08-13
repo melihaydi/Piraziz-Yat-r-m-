@@ -1,6 +1,6 @@
 {
-  "name": "Piraziz Yatırım",
-  "short_name": "Piraziz",
+  "name": "BIP Terminal",
+  "short_name": "BIP",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }

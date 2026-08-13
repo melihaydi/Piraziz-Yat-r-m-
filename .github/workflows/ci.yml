@@ -128,7 +128,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: piraziz-yatirim-debug-apk
+          name: bip-terminal-debug-apk
           path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
@@ -150,7 +150,7 @@ jobs:
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             frontend/android/app/build/outputs/apk/debug/app-debug.apk \
-            "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/downloads/PirazizYatirim.apk"
+            "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/downloads/BIPTerminal.apk"
 
   build-desktop:
     # Builds and publishes the Electron desktop installer - previously this
@@ -212,7 +212,7 @@ jobs:
           installer=$(ls frontend/dist/*.exe | head -n 1)
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             "$installer" \
-            "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/downloads/PirazizYatirim-Setup.exe"
+            "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/downloads/BIPTerminal-Setup.exe"
 
   docker-build-verification:
     runs-on: ubuntu-latest

@@ -9,6 +9,15 @@
 	# those apply regardless of what's in front of it.
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
+	# Caddy does NOT compress on its own - without this directive every
+	# JSON response left here at full size. The backend now also applies
+	# GZipMiddleware (see app/main.py) so responses are compressed even
+	# when something other than Caddy is in front; Caddy skips
+	# re-compressing anything already encoded, so the two don't conflict.
+	# zstd is listed first because browsers that support it decode it
+	# faster and smaller than gzip, which stays as the fallback.
+	encode zstd gzip
+
 	route {
 		handle_path /download/* {
 			root * /srv/downloads
