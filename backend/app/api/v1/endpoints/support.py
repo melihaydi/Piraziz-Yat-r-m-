@@ -1,3 +1,4 @@
+import html
 from typing import List
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
@@ -54,10 +55,14 @@ def create_ticket(
     db.commit()
     db.refresh(ticket)
 
+    # Escaped before going into the HTML email body - subject/message are
+    # free-text from the ticket submitter, so an unescaped "<img src=...>"
+    # or link would render live in whatever mail client opens this.
+    safe_subject = html.escape(body.subject)
     send_email(
         _SUPPORT_INBOX,
-        f"Yeni Destek Talebi: {body.subject}",
-        f"<p><strong>{current_user.email}</strong> yeni bir destek talebi oluşturdu.</p>"
-        f"<p><strong>Konu:</strong> {body.subject}</p><p>{body.message}</p>",
+        f"Yeni Destek Talebi: {safe_subject}",
+        f"<p><strong>{html.escape(current_user.email)}</strong> yeni bir destek talebi oluşturdu.</p>"
+        f"<p><strong>Konu:</strong> {safe_subject}</p><p>{html.escape(body.message)}</p>",
     )
     return ticket

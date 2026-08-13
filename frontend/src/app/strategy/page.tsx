@@ -7,6 +7,7 @@ import {
   ArrowUpCircle, ArrowDownCircle, Info, ShieldAlert, ArrowUpDown
 } from "lucide-react"
 import { authFetch } from "@/lib/auth"
+import { pollWhileVisible } from "@/lib/usePolling"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 type Direction = "LONG" | "SHORT" | "NONE"
@@ -227,9 +228,8 @@ export default function StrategyPage() {
     // The backend only recomputes every 3 minutes (see StrategyEngine -
     // REFRESH_INTERVAL_SECONDS), so this just needs to be frequent enough
     // to pick up a finished background scan promptly, not to drive the
-    // computation itself.
-    const interval = setInterval(() => fetchScan(), 30000)
-    return () => clearInterval(interval)
+    // computation itself. pollWhileVisible - stops while the tab is hidden.
+    return pollWhileVisible(() => fetchScan(), 30000)
   }, [fetchScan])
 
   const fetchHistory = useCallback(async () => {
@@ -248,8 +248,7 @@ export default function StrategyPage() {
 
   useEffect(() => {
     fetchHistory()
-    const interval = setInterval(fetchHistory, 30000)
-    return () => clearInterval(interval)
+    return pollWhileVisible(fetchHistory, 30000)
   }, [fetchHistory])
 
   const filteredHistory = useMemo(() => {

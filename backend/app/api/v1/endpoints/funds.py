@@ -83,7 +83,7 @@ def get_popular_funds_live_estimate(
     TefasService.get_live_estimated_return's docstring for exactly what this
     is and isn't (an estimate from disclosed composition x live prices, not
     a real intraday NAV recalculation; TEFAS itself only publishes one NAV
-    per fund per day). Free/starter/pro tiers get this computed from
+    per fund per day). Free tier gets this computed from
     15-minute-delayed stock quotes instead (see deps.get_data_delay_minutes).
 
     The computed result is cached server-side per delay tier: building it

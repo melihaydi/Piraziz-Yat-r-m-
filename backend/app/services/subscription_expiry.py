@@ -49,8 +49,8 @@ class SubscriptionExpiryService:
                 if not user:
                     continue
                 # Skip if the user already has a DIFFERENT, still-valid paid
-                # subscription (e.g. they upgraded from starter to premium
-                # before the starter one expired) - only downgrade if their
+                # subscription (e.g. they renewed premium again before the
+                # previous one expired) - only downgrade if their
                 # current role actually matches the one that just expired.
                 still_valid = (
                     db.query(Subscription)

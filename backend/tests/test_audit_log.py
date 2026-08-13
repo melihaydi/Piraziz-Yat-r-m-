@@ -48,13 +48,13 @@ def test_failed_login_writes_audit_row_with_no_pnl_leak(client, db):
 
 def test_role_change_writes_audit_row_with_old_and_new_role(client, db, admin_headers, plain_headers):
     # plain_headers' user starts on role="premium" (see that fixture - trade
-    # endpoints are premium-only now), so this exercises a premium ->
-    # institutional transition instead of the original free -> premium one.
+    # endpoints are premium-only now), so this exercises a premium -> free
+    # transition (only two roles exist: free and premium).
     target = db.query(User).filter(User.email == "auditplain@example.com").first()
     res = client.put(
         f"/api/v1/admin/users/{target.id}/role",
         headers=admin_headers,
-        params={"role": "institutional"},
+        params={"role": "free"},
     )
     assert res.status_code == 200
 
@@ -62,7 +62,7 @@ def test_role_change_writes_audit_row_with_old_and_new_role(client, db, admin_he
     assert row is not None
     assert row.resource_id == str(target.id)
     assert row.details["old_role"] == "premium"
-    assert row.details["new_role"] == "institutional"
+    assert row.details["new_role"] == "free"
 
 
 def test_order_placement_writes_audit_row(client, db, plain_headers, monkeypatch):

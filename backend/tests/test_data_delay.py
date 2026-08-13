@@ -89,10 +89,5 @@ def test_get_data_delay_minutes_is_zero_for_premium():
     assert deps.get_data_delay_minutes(_user("premium")) == 0
 
 
-def test_get_data_delay_minutes_is_zero_for_institutional():
-    assert deps.get_data_delay_minutes(_user("institutional")) == 0
-
-
-def test_get_data_delay_minutes_is_delayed_for_free_starter_and_pro():
-    for role in ("free", "starter", "pro"):
-        assert deps.get_data_delay_minutes(_user(role)) == deps.DELAYED_DATA_MINUTES
+def test_get_data_delay_minutes_is_delayed_for_free():
+    assert deps.get_data_delay_minutes(_user("free")) == deps.DELAYED_DATA_MINUTES

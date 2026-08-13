@@ -9,7 +9,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { authFetch, fetchCurrentUser, logout, resendVerification } from "@/lib/auth"
+import { authFetch, fetchCurrentUser, getProfilePicKey, logout, resendVerification } from "@/lib/auth"
 import { isPushSupported, getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from "@/lib/push"
 import { API_BASE_URL } from "@/lib/config"
 import PlanCard from "@/components/settings/PlanCard"
@@ -562,7 +562,10 @@ export default function SettingsPage() {
   // it in locally. Only the profile picture (a data URL never sent to the
   // server) stays in localStorage.
   useEffect(() => {
-    const savedPic = localStorage.getItem("bip_profile_pic")
+    // Keyed per logged-in user (getProfilePicKey) so switching accounts on
+    // the same browser never shows the previous account's photo.
+    const key = getProfilePicKey()
+    const savedPic = key ? localStorage.getItem(key) : null
     if (savedPic) setProfilePic(savedPic)
 
     refreshProfile()
@@ -582,7 +585,8 @@ export default function SettingsPage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault()
-    localStorage.setItem("bip_profile_pic", profilePic)
+    const key = getProfilePicKey()
+    if (key) localStorage.setItem(key, profilePic)
 
     // Display name is real account data - the backend (full_name) is the
     // only source of truth, Header/etc. all read it fresh from /auth/me.

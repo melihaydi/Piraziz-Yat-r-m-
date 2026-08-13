@@ -15,10 +15,7 @@ interface Plan {
 
 const ROLE_LABEL: Record<string, string> = {
   free: "Ücretsiz",
-  starter: "Starter",
-  pro: "Pro",
   premium: "Premium",
-  institutional: "Kurumsal",
 }
 
 const tl = (n: number) => `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -130,11 +127,11 @@ export default function PlanCard({ currentRole, onUpgraded }: { currentRole: str
           </Button>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:max-w-xs sm:mx-auto gap-2">
           {plans.map(plan => (
             <div key={plan.role} className="rounded-lg border border-border/50 bg-secondary/20 p-3 text-center space-y-1.5">
               <span className="text-[10px] font-bold uppercase text-muted-foreground">{ROLE_LABEL[plan.role] || plan.role}</span>
-              <p className="text-lg font-extrabold text-foreground">{tl(plan.price_try)}<span className="text-[10px] font-medium text-muted-foreground">/{plan.period_days}g</span></p>
+              <p className="text-lg font-extrabold text-foreground">{tl(plan.price_try)}<span className="text-[10px] font-medium text-muted-foreground">/ay</span></p>
               <Button
                 type="button"
                 onClick={() => startCheckout(plan.role)}

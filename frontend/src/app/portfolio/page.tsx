@@ -44,6 +44,7 @@ import {
   DialogTrigger
 } from "@/components/ui/Dialog"
 import { authFetch } from "@/lib/auth"
+import { pollWhileVisible } from "@/lib/usePolling"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
@@ -298,9 +299,9 @@ export default function PortfolioPage() {
     fetchLiveEstimate(false)
     // Keeps the headline PORTFÖY DEĞERİ card (and fund holdings' estimate-
     // projected price) moving during the live session instead of only
-    // reflecting whatever was true at page load.
-    const interval = setInterval(() => { loadCore(); fetchLiveEstimate(false) }, 15000)
-    return () => clearInterval(interval)
+    // reflecting whatever was true at page load. pollWhileVisible - stops
+    // while the tab is hidden (see usePolling.ts).
+    return pollWhileVisible(() => { loadCore(); fetchLiveEstimate(false) }, 15000)
   }, [])
 
   // Derive active portfolio (default to first one)

@@ -38,8 +38,6 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 
 PLAN_PRICES_TRY: Dict[str, float] = {
-    "starter": 99.0,
-    "pro": 199.0,
     "premium": 399.0,
 }
 PLAN_PERIOD_DAYS = 30

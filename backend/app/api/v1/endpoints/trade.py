@@ -217,7 +217,7 @@ def reset_account(
 @router.get("/watchlist")
 def get_watchlist(delay: int = Depends(deps.get_data_delay_minutes)):
     """BIST30 quotes for the Trade module's stock watchlist - live for
-    premium/institutional, 15-minute-delayed otherwise."""
+    premium, 15-minute-delayed otherwise."""
     return trade_service.get_watchlist(delay)
 
 

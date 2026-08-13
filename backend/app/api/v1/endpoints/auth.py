@@ -86,7 +86,7 @@ def register_user(request: Request, user_in: UserCreate, db: Session = Depends(d
     # taken from user_in here even though UserCreate has those fields (they
     # exist for admin update flows) - self-registration must never be able
     # to grant itself a paid tier or pre-activate an account by just sending
-    # {"role": "institutional"} in the request body.
+    # {"role": "premium"} in the request body.
     hashed_password = security.get_password_hash(user_in.password)
     db_user = User(
         email=user_in.email,

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { authFetch } from "@/lib/auth"
+import { pollWhileVisible } from "@/lib/usePolling"
 
 interface NewsItem {
   title: string
@@ -94,8 +95,8 @@ export default function EconomyNewsPage() {
     fetchNews()
     // Matches the backend's own 90s cache TTL (see NewsService) - polling
     // faster than that would just return the same cached response.
-    const interval = setInterval(fetchNews, 90000)
-    return () => clearInterval(interval)
+    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
+    return pollWhileVisible(fetchNews, 90000)
   }, [fetchNews])
 
   useEffect(() => {

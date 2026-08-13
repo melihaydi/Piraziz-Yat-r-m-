@@ -177,7 +177,7 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         "fund_size": "₺29,530,000,000",
         "risk_level": 4,
         "manager": "Ali Rıza / Pusula Portföy",
-        # Refreshed 2026-08-10 per the user's updated TEFAS breakdown -
+        # Refreshed 2026-08-14 per the user's updated TEFAS breakdown -
         # replaces the prior (stale) composition wholesale rather than
         # diffing entry-by-entry. "as_of" is the date these weights were
         # confirmed accurate - get_live_estimated_return() uses it as the
@@ -186,51 +186,50 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         # outperformed/underperformed its peers since this date has, in
         # reality, grown/shrunk as a share of the fund even though TEFAS
         # hasn't published a new official composition yet.
-        "as_of": "2026-08-10",
+        "as_of": "2026-08-14",
         "assets_distribution": [
-            {"name": "ODINE", "value": 16.8},
-            {"name": "HEDEF", "value": 11.2},
-            {"name": "GUNDG", "value": 11.1},
-            {"name": "PASEU", "value": 10.7},
-            {"name": "KTLEV", "value": 8.9},
+            {"name": "ODINE", "value": 21.8},
+            {"name": "KTLEV", "value": 19.9},
+            {"name": "HEDEF", "value": 12.9},
+            {"name": "PASEU", "value": 11.7},
+            {"name": "GUNDG", "value": 10.4},
+            {"name": "DSTKF", "value": 8.3},
             {"name": "PCS", "value": 8.6},
-            {"name": "BALSU", "value": 6.2},
-            {"name": "ANELE", "value": 6.0},
-            {"name": "DSTKF", "value": 5.3},
-            {"name": "PKZ", "value": 4.5},
+            {"name": "PKZ", "value": 7.5},
             {"name": "AKSEN", "value": 3.4},
-            {"name": "TMPOL", "value": 2.0},
-            {"name": "IZFAS", "value": 1.8},
-            {"name": "TATEN", "value": 1.4},
-            # PRY/PHN/PA2 - Pusula Portföy fund codes, confirmed by the user
-            # (not stocks). None has its own known composition in
+            # PRY/PHN - Pusula Portföy fund codes, confirmed by the user
+            # (not stocks). Neither has its own known composition in
             # FUND_DETAILS_MAP to recurse into, so each resolves via its own
             # real TEFAS daily_return instead (see BASE_FUNDS/FALLBACKS and
             # get_live_estimated_return's BASE_FUNDS fallback step).
-            {"name": "PRY", "value": 0.9},
-            {"name": "DAPGM", "value": 0.5},
+            {"name": "PRY", "value": 3.4},
+            {"name": "TMPOL", "value": 2.1},
+            {"name": "IZFAS", "value": 1.9},
+            {"name": "TATEN", "value": 1.6},
+            {"name": "ANELE", "value": 0.9},
             {"name": "PHN", "value": 0.4},
+            {"name": "DAPGM", "value": 0.5},
+            {"name": "BALSU", "value": 0.2},
             {"name": "SKBNK", "value": 0.1},
-            {"name": "SARAE", "value": 0.1},
-            {"name": "PA2", "value": 0.1}
+            {"name": "SARAE", "value": 0.1}
         ]
     },
     "DFI": {
         "fund_size": "₺32,460,000,000",
         "risk_level": 5,
         "manager": "Hakan Ateş / Atlas Portföy",
-        # Refreshed 2026-08-10 per the user's updated TEFAS breakdown.
-        "as_of": "2026-08-10",
+        # Refreshed 2026-08-14 per the user's updated TEFAS breakdown.
+        "as_of": "2026-08-14",
         "assets_distribution": [
-            {"name": "IEYHO", "value": 41.2},
+            {"name": "IEYHO", "value": 44.7},
             # Bank deposit holding - fixed daily-return path below (0.12%/day, per the user).
-            {"name": "MEVDUAT", "value": 25.9},
-            {"name": "ABG", "value": 23.0},
-            # PSE/BAC - Atlas Portföy fund codes, confirmed by the user (not
-            # stocks) - same daily_return fallback resolution as PRY/PHN/PA2
-            # in PBR above.
+            {"name": "MEVDUAT", "value": 24.3},
+            {"name": "ABG", "value": 22.7},
+            # PSE/BAC/PFS - Atlas Portföy fund codes, confirmed by the user
+            # (not stocks) - same daily_return fallback resolution as
+            # PRY/PHN in PBR above.
             {"name": "PSE", "value": 5.3},
-            {"name": "ISKPL", "value": 3.3},
+            {"name": "ISKPL", "value": 1.6},
             {"name": "BAC", "value": 1.1},
             # LDR Turizm A.Ş. (BIST:LIDER, confirmed real ticker) - note the
             # PLAIN ASCII "I", not the Turkish dotted "İ" the user typed:
@@ -238,83 +237,80 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             # so a dotted-İ spelling here would never match the ASCII
             # "LIDER" ticker registered in market_data.py's universe.
             {"name": "LIDER", "value": 0.2},
-            {"name": "KVR", "value": 0.1}
+            {"name": "KVR", "value": 0.1},
+            {"name": "PFS", "value": 0.0}
         ]
     },
     "TLY": {
         "fund_size": "₺3,125,000,000",
         "risk_level": 3,
         "manager": "Gökhan Şen / Tera Portföy",
-        # Refreshed 2026-08-10 per the user's updated TEFAS breakdown - this
-        # update ADDS a fixed-rate SABIT deposit holding (16.5%) that TLY
-        # never carried before (unlike TMV, which already had one - see that
-        # entry's history). Same fixed daily-return path as TMV's, 0.12%/day.
-        "as_of": "2026-08-10",
+        # Refreshed 2026-08-14 per the user's updated TEFAS breakdown.
+        "as_of": "2026-08-14",
         "assets_distribution": [
-            {"name": "OZATD", "value": 32.9},
+            {"name": "OZATD", "value": 32.0},
             {"name": "SABIT", "value": 16.5},
-            {"name": "DSTKF", "value": 10.8},
+            {"name": "DSTKF", "value": 11.3},
             {"name": "TEHOL", "value": 9.1},
-            {"name": "PEKGY", "value": 8.7},
+            {"name": "PEKGY", "value": 8.9},
             # HMV is itself a tracked fund (see BASE_FUNDS/FALLBACKS above),
             # not a stock - resolved via its own daily_return, not a quote.
-            {"name": "HMV", "value": 4.8},
-            {"name": "TERA", "value": 4.4},
+            {"name": "HMV", "value": 4.4},
+            {"name": "TERA", "value": 4.1},
             {"name": "TRHOL", "value": 3.9},
-            {"name": "ANELE", "value": 1.9},
-            {"name": "ALKLC", "value": 1.7},
-            {"name": "BIGEN", "value": 1.6},
-            {"name": "SELEC", "value": 1.5},
-            {"name": "HEDEF", "value": 0.7},
+            {"name": "ANELE", "value": 3.0},
+            {"name": "BIGEN", "value": 1.7},
+            {"name": "SELEC", "value": 1.6},
+            {"name": "ALKLC", "value": 1.6},
             {"name": "SVGYO", "value": 0.5},
-            {"name": "SARAE", "value": 0.3},
-            {"name": "EUPWR", "value": 0.3},
             {"name": "MANAS", "value": 0.3},
-            {"name": "TMPOL", "value": 0.1},
+            {"name": "HEDEF", "value": 0.3},
+            {"name": "SARAE", "value": 0.2},
+            {"name": "EUPWR", "value": 0.2},
             {"name": "DAPGM", "value": 0.1},
+            {"name": "TMPOL", "value": 0.1},
             {"name": "GESAN", "value": 0.0},
             {"name": "YKBNK", "value": 0.0},
-            {"name": "EFOR", "value": 0.0},
-            {"name": "METEN", "value": 0.0}
+            {"name": "EFOR", "value": 0.0}
         ]
     },
     "TMV": {
         "fund_size": "₺26,000,000,000",
         "risk_level": 6,
         "manager": "Yapay Zekâ Algoritması / Tera Portföy",
-        # Refreshed 2026-08-10 per the user's updated TEFAS breakdown.
-        "as_of": "2026-08-10",
+        # Refreshed 2026-08-14 per the user's updated TEFAS breakdown.
+        "as_of": "2026-08-14",
         "assets_distribution": [
             # Fixed daily-return deposit path below (0.12%/day, weekend-inclusive).
-            {"name": "SABIT", "value": 45.2},
-            {"name": "OZATD", "value": 12.3},
+            {"name": "SABIT", "value": 41.3},
+            {"name": "OZATD", "value": 11.0},
             {"name": "TEHOL", "value": 10.3},
-            {"name": "TRHOL", "value": 7.0},
             # "VİOP" (Vadeli İşlem ve Opsiyon Piyasası) is a MARKET SEGMENT,
             # not a single tradable ticker - no real BIST quote to resolve
             # this against, left unresolved rather than guessing one.
-            {"name": "VIOP", "value": 4.6},
-            {"name": "ANELE", "value": 4.3},
-            {"name": "SELEC", "value": 3.6},
-            {"name": "PEKGY", "value": 2.6},
-            {"name": "DSTKF", "value": 1.9},
-            {"name": "ALKLC", "value": 1.8},
+            {"name": "VIOP", "value": 8.7},
+            {"name": "TRHOL", "value": 7.0},
+            {"name": "ANELE", "value": 5.2},
+            {"name": "SELEC", "value": 3.3},
+            {"name": "DSTKF", "value": 3.2},
+            {"name": "TERA", "value": 2.1},
             {"name": "EUPWR", "value": 1.6},
-            {"name": "TERA", "value": 1.1},
+            {"name": "ALKLC", "value": 1.6},
+            {"name": "PEKGY", "value": 1.3},
             # "VDMK" (Varlığa Dayalı Menkul Kıymet / asset-backed security)
             # is an instrument CATEGORY, not a single ticker - same
             # reasoning as VİOP above, left unresolved.
-            {"name": "VDMK", "value": 0.9},
-            # Bond holding - fixed daily-return path below (0.11%/day, per the user).
-            {"name": "BONO", "value": 0.5},
+            {"name": "VDMK", "value": 0.8},
+            {"name": "SVGYO", "value": 0.5},
             {"name": "GESAN", "value": 0.4},
             {"name": "AKSEN", "value": 0.4},
             {"name": "TURSG", "value": 0.3},
-            {"name": "HEDEF", "value": 0.3},
             {"name": "YKBNK", "value": 0.3},
+            {"name": "HEDEF", "value": 0.2},
             {"name": "KORDS", "value": 0.2},
-            {"name": "SVGYO", "value": 0.1},
-            {"name": "MANAS", "value": 0.0}
+            {"name": "MANAS", "value": 0.0},
+            # Bond holding - fixed daily-return path below (0.11%/day, per the user).
+            {"name": "BONO", "value": 0.1}
         ]
     },
     "PUK": {

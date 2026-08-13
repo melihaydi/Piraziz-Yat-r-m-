@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import TradingViewChart from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { pollWhileVisible } from "@/lib/usePolling"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
 
@@ -111,11 +112,13 @@ export default function FundsPage() {
         .catch(err => console.error("Failed to load popular funds live estimate:", err))
         .finally(() => { if (active) setPopularLoading(false) })
     }
-    fetchPopular()
-    const interval = setInterval(fetchPopular, 15000)
+    // pollWhileVisible (not plain setInterval) - stops entirely while the
+    // tab is hidden instead of quietly burning requests against the 1GB
+    // host forever (see usePolling.ts's docstring).
+    const stopPolling = pollWhileVisible(fetchPopular, 15000)
     return () => {
       active = false
-      clearInterval(interval)
+      stopPolling()
     }
   }, [])
 
@@ -277,8 +280,8 @@ export default function FundsPage() {
     }
 
     fetchFunds()
-    const interval = setInterval(fetchFunds, 10000)
-    return () => clearInterval(interval)
+    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
+    return pollWhileVisible(fetchFunds, 10000)
   }, [])
 
   // Fetch fund candles when selectedCode changes

@@ -144,7 +144,7 @@ def get_user_portfolios(
     delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Retrieve all portfolios for the current user, calculating valuations -
-    live for premium/institutional, 15-minute-delayed otherwise (see
+    live for premium, 15-minute-delayed otherwise (see
     deps.get_data_delay_minutes)."""
     portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
 

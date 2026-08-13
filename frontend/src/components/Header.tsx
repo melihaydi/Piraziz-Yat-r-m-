@@ -7,18 +7,15 @@ import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck, Us
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
-import { authFetch } from "@/lib/auth"
-import { usePolling } from "@/lib/usePolling"
+import { authFetch, getProfilePicKey } from "@/lib/auth"
+import { usePolling, pollWhileVisible } from "@/lib/usePolling"
 
 // role -> display label/styling. Previously the header just hardcoded
 // "Pro Üye" for every single user regardless of their real subscription
 // tier - a free-tier user saw the same badge as a paying one.
 const ROLE_DISPLAY: Record<string, { label: string; className: string }> = {
   free: { label: "Ücretsiz Üye", className: "text-muted-foreground" },
-  starter: { label: "Starter Üye", className: "text-cyan-400" },
-  pro: { label: "Pro Üye", className: "text-emerald-400" },
   premium: { label: "Premium Üye", className: "text-amber-400" },
-  institutional: { label: "Kurumsal Üye", className: "text-blue-400" },
 }
 
 const HEADER_TICKERS_CACHE_KEY = "bip_header_tickers"
@@ -154,8 +151,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
     // now caches /portfolio/signals for 2 minutes (see portfolio.py), so
     // polling much faster than that just burns requests without fresher
     // data. 60s still catches new alarm triggers promptly.
-    const interval = setInterval(checkSignalsAndAlarms, 60000)
-    return () => clearInterval(interval)
+    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
+    return pollWhileVisible(checkSignalsAndAlarms, 60000)
   }, [])
 
   // Frantic Strateji signal history notifications - previously the only
@@ -168,6 +165,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
   // every signal that already fired earlier today.
   const seenSignalHistoryKeysRef = useRef<Set<string> | null>(null)
   useEffect(() => {
+    // Frantic Algoritmik Strateji is premium-only (strategy.py's router
+    // requires get_current_premium_user) - polling this for a free-tier
+    // user just meant a guaranteed 403 every 60s, forever, for a feature
+    // they can't see or use.
+    if (role === "free") return
+
     const checkStrategyHistory = async () => {
       const token = localStorage.getItem("token")
       if (!token) return
@@ -204,20 +207,22 @@ export default function Header({ onMenuClick }: HeaderProps) {
       }
     }
 
-    checkStrategyHistory()
     // Matches StrategyEngine's own 180s scan cycle closely enough (60s)
     // that a new signal is announced within a minute of firing, without
     // polling meaningfully faster than the data actually changes.
-    const strategyInterval = setInterval(checkStrategyHistory, 60000)
-    return () => clearInterval(strategyInterval)
-  }, [])
+    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
+    return pollWhileVisible(checkStrategyHistory, 60000)
+  }, [role])
 
   // Profile picture is a real per-browser choice (a data URL, never sent to
   // the server), so it stays in localStorage - unlike the display name below.
+  // Keyed per logged-in user (getProfilePicKey) so switching accounts on the
+  // same browser never shows the previous account's photo.
   useEffect(() => {
     const loadPic = () => {
-      const savedPic = localStorage.getItem("bip_profile_pic")
-      if (savedPic) setProfilePic(savedPic)
+      const key = getProfilePicKey()
+      const savedPic = key ? localStorage.getItem(key) : null
+      setProfilePic(savedPic || "")
     }
     loadPic()
     window.addEventListener("profile-updated", loadPic)
@@ -591,23 +596,23 @@ export default function Header({ onMenuClick }: HeaderProps) {
           )}
         </div>
 
-        {/* Live vs delayed data indicator - only premium/institutional get
-            real-time BIST data everywhere (Tarama, Fonlar, Hisse Detay, Ana
-            Sayfa, Trade); every other tier sees a 15-minute-delayed feed
-            (see backend deps.get_data_delay_minutes). Shown here so it's
-            never ambiguous which one is currently active. */}
+        {/* Live vs delayed data indicator - only premium gets real-time BIST
+            data everywhere (Tarama, Fonlar, Hisse Detay, Ana Sayfa, Trade);
+            free sees a 15-minute-delayed feed (see backend
+            deps.get_data_delay_minutes). Shown here so it's never ambiguous
+            which one is currently active. */}
         <span
-          title={role === "premium" || role === "institutional"
+          title={role === "premium"
             ? "Anlık, gecikmesiz BIST verisi görüntülüyorsunuz."
             : "Fiyatlar ve grafikler 15 dakika gecikmeli gösteriliyor. Anlık veri için Premium'a yükseltin."}
           className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${
-            role === "premium" || role === "institutional"
+            role === "premium"
               ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
               : "text-amber-400 border-amber-500/30 bg-amber-500/10"
           }`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${role === "premium" || role === "institutional" ? "bg-emerald-400" : "bg-amber-400"}`} />
-          {role === "premium" || role === "institutional" ? "Canlı Veri" : "15 Dk Gecikmeli"}
+          <span className={`h-1.5 w-1.5 rounded-full ${role === "premium" ? "bg-emerald-400" : "bg-amber-400"}`} />
+          {role === "premium" ? "Canlı Veri" : "15 Dk Gecikmeli"}
         </span>
 
         {/* User Badge */}

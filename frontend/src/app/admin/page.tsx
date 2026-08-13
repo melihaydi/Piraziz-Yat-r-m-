@@ -30,10 +30,7 @@ interface SupportTicket {
 
 const ROLE_OPTIONS = [
   { value: "free", label: "Ücretsiz" },
-  { value: "starter", label: "Starter" },
-  { value: "pro", label: "Pro" },
   { value: "premium", label: "Premium" },
-  { value: "institutional", label: "Kurumsal" },
 ]
 
 export default function AdminPage() {

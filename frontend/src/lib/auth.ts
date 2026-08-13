@@ -178,9 +178,41 @@ export async function resendVerification(email: string): Promise<AuthResult> {
   }
 }
 
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const payload = token.split(".")[1]
+    const json = decodeURIComponent(
+      atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+        .split("")
+        .map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+        .join("")
+    )
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+/** Per-browser profile picture storage key, scoped to the currently logged-in
+ * user's id (the JWT's `sub` claim, decoded client-side - no extra request).
+ * Without this, a single shared "bip_profile_pic" key meant switching
+ * accounts on the same browser kept showing whichever account had uploaded a
+ * photo last, until the new account overwrote it too. Returns null when
+ * there's no valid session - callers should skip reading/writing any key then. */
+export function getProfilePicKey(): string | null {
+  const token = localStorage.getItem("token")
+  if (!token) return null
+  const sub = decodeJwtPayload(token)?.sub
+  return sub ? `bip_profile_pic:${sub}` : null
+}
+
 /** Clears the session and notifies AuthGate to show the login screen again. */
 export function logout() {
   localStorage.removeItem("token")
+  // Legacy unscoped key from before profile pictures were namespaced per
+  // user (see getProfilePicKey) - removed here so it can never leak into
+  // whichever account logs in next on this browser.
+  localStorage.removeItem("bip_profile_pic")
   window.dispatchEvent(new Event("bip:session-expired"))
 }
 

@@ -78,7 +78,7 @@ def test_plans_endpoint_lists_paid_tiers(client, auth_headers_user):
     res = client.get("/api/v1/subscription/plans", headers=auth_headers_user)
     assert res.status_code == 200
     roles = {p["role"] for p in res.json()["plans"]}
-    assert {"starter", "pro", "premium"} <= roles
+    assert {"premium"} <= roles
 
 
 def test_checkout_rejects_when_iyzico_not_configured(client, auth_headers_user):
@@ -148,7 +148,7 @@ def test_callback_with_failed_payment_does_not_upgrade_role(client, auth_headers
 
     client.post(
         "/api/v1/subscription/checkout",
-        json={"role": "pro", "identity_number": "12345678901"},
+        json={"role": "premium", "identity_number": "12345678901"},
         headers=auth_headers_user,
     )
     callback_res = client.post(
@@ -169,7 +169,7 @@ def test_checkout_initialize_failure_is_reported(client, auth_headers_user, iyzi
 
     res = client.post(
         "/api/v1/subscription/checkout",
-        json={"role": "starter", "identity_number": "12345678901"},
+        json={"role": "premium", "identity_number": "12345678901"},
         headers=auth_headers_user,
     )
     assert res.status_code == 400

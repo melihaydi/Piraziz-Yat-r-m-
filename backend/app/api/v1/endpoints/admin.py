@@ -1,3 +1,4 @@
+import html
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -17,7 +18,7 @@ from app.schemas.user import UserOut
 
 router = APIRouter()
 
-VALID_ROLES = {"free", "starter", "pro", "premium", "institutional"}
+VALID_ROLES = {"free", "premium"}
 
 
 @router.get("/users", response_model=List[UserOut])
@@ -195,10 +196,16 @@ def update_support_ticket(
     db.refresh(ticket)
 
     if reply_added:
+        # Escaped before going into the HTML email body - subject/admin_reply
+        # are free-text (subject from the ticket submitter, admin_reply from
+        # whoever's logged into the admin panel), so an unescaped
+        # "<img src=...>" or link would render live in the recipient's mail
+        # client (see support.py's create_ticket for the matching subject/
+        # message escaping).
         send_email(
             ticket.user.email,
-            f"Destek Talebinize Yanıt Verildi: {ticket.subject}",
-            f"<p><strong>Konu:</strong> {ticket.subject}</p><p>{ticket.admin_reply}</p>",
+            f"Destek Talebinize Yanıt Verildi: {html.escape(ticket.subject)}",
+            f"<p><strong>Konu:</strong> {html.escape(ticket.subject)}</p><p>{html.escape(ticket.admin_reply)}</p>",
         )
 
     return SupportTicketAdminResponse(

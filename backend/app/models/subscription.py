@@ -19,7 +19,7 @@ class Subscription(Base):
     Veriler" list, which doesn't list them either)."""
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
-    role = Column(String(20), nullable=False)  # the tier being purchased - starter | pro | premium
+    role = Column(String(20), nullable=False)  # the tier being purchased - currently only "premium"; older rows may say starter/pro/institutional (retired tiers, kept as history)
     amount_try = Column(Float, nullable=False)
     period_days = Column(Integer, nullable=False)
     # pending: checkout form initialized, awaiting the user to pay.

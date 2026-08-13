@@ -101,7 +101,7 @@ def _quote_symbol(underlying: str) -> str:
 def get_live_price(instrument_type: str, symbol: str, delay_minutes: int = 0) -> float:
     """Price straight from the existing TradingView websocket cache - no new
     data source, exactly as instructed. `delay_minutes` (see
-    deps.get_data_delay_minutes) routes free/starter/pro tiers through
+    deps.get_data_delay_minutes) routes the free tier through
     market_data_service.get_delayed_quote() instead of the live one, so a
     non-premium user's order fills - not just what they see on screen -
     execute at the same delayed price everywhere in the app."""

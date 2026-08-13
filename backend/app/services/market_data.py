@@ -672,7 +672,7 @@ class MarketDataService:
     def get_delayed_quote(self, symbol: str, delay_minutes: int) -> Dict[str, Any]:
         """Same shape as get_quote(), but with the price fields backdated to
         `delay_minutes` ago using 1-minute candle history - used to serve
-        free/starter/pro tiers a legally-flavored "15 minutes delayed" quote
+        free tier a legally-flavored "15 minutes delayed" quote
         instead of the live one (see deps.get_data_delay_minutes). There's no
         separate historical-quote store in this app, so the delayed price is
         derived from the same 1m candle cache the chart already uses, which

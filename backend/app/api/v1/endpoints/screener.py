@@ -145,13 +145,13 @@ def _build_stock_response(ticker: str, name: str, quote: dict | None) -> Screene
 
 def _delay_adjust_price_fields(response: ScreenerStockResponse, delay_minutes: int) -> ScreenerStockResponse:
     """Overwrites just the price-moving fields (price/change/change_percent/
-    bid/ask) with a 15-minutes-old equivalent for free/starter/pro tiers
-    (see deps.get_data_delay_minutes) - AI score/PE/EPS/market cap are left
+    bid/ask) with a 15-minutes-old equivalent for the free tier (see
+    deps.get_data_delay_minutes) - AI score/PE/EPS/market cap are left
     as computed, since those are slower-moving fundamentals, not the "canlı
     veri" (live data) the delay restriction is actually about. Applied AFTER
     the shared 2s response cache lookup rather than baked into it, so the
-    same cached list keeps serving live data to premium/institutional users
-    without needing a second parallel cache."""
+    same cached list keeps serving live data to premium users without
+    needing a second parallel cache."""
     if delay_minutes <= 0:
         return response
     delayed = market_data_service.get_delayed_quote(response.ticker, delay_minutes)
@@ -184,12 +184,12 @@ def get_screener_stocks(
     delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Retrieve all BIST 500 stocks with quote fields and calculated AI
-    scores - live for premium/institutional, 15-minute-delayed for everyone
-    else (see deps.get_data_delay_minutes)."""
+    scores - live for premium, 15-minute-delayed for free (see
+    deps.get_data_delay_minutes)."""
     from app.core.redis import cache_service
 
     # Delayed and live responses are cached separately (both on the same 2s
-    # TTL) so every free/starter/pro user sharing a poll window still
+    # TTL) so every free-tier user sharing a poll window still
     # collapses into one delay computation, same as the existing live-cache
     # collapsing every premium user's poll into one live computation.
     cache_key = _SCREENER_LIST_CACHE_KEY if delay <= 0 else f"{_SCREENER_LIST_CACHE_KEY}:delayed"
