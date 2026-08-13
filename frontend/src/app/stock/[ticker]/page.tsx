@@ -18,7 +18,7 @@ import {
 import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
-import { CHART_TIMEFRAMES } from "@/lib/chartTimeframes"
+import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
 import { authFetch } from "@/lib/auth"
 
 export default function StockDetailPage() {
@@ -93,6 +93,7 @@ export default function StockDetailPage() {
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h")
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(true)
+  const [chartSimulated, setChartSimulated] = useState(false)
 
   // AI report state
   const [aiReport, setAiReport] = useState<any>(null)
@@ -141,10 +142,17 @@ export default function StockDetailPage() {
   useEffect(() => {
     let active = true;
     let timerId: any = null;
+    // The retry exists to ride out the backend's cold cache right after a
+    // restart, which resolves in seconds. It used to have NO cap: whenever
+    // the backend kept answering with simulated candles (e.g. a symbol that
+    // never resolves), this refired every 2.5s for as long as the tab
+    // stayed open - an unbounded request loop against a 1GB host, per open
+    // tab. Cap it, then stop and tell the user instead of hammering.
+    let attemptsLeft = MAX_SIMULATED_CHART_RETRIES;
 
     const loadChart = () => {
       if (!ticker) return;
-      
+
       authFetch(`/screener/chart/${ticker}?interval=${selectedTimeframe}`)
         .then(res => {
           if (!res.ok) {
@@ -160,8 +168,10 @@ export default function StockDetailPage() {
             setChartData(data)
           }
           setChartLoading(false)
-          
-          if (isSimulated) {
+          setChartSimulated(isSimulated)
+
+          if (isSimulated && attemptsLeft > 0) {
+            attemptsLeft -= 1;
             timerId = setTimeout(() => {
               if (active) loadChart();
             }, 2500);
@@ -175,6 +185,7 @@ export default function StockDetailPage() {
     };
 
     setChartLoading(true)
+    setChartSimulated(false)
     loadChart();
 
     return () => {
@@ -396,7 +407,21 @@ export default function StockDetailPage() {
                   <span className="text-xs text-muted-foreground">Tarihsel Mum Verileri Derleniyor...</span>
                 </div>
               ) : chartData.length > 0 ? (
-                <TradingViewChart data={chartData} symbol={ticker} />
+                <>
+                  {/* The backend serves randomly generated placeholder bars
+                      (X-Chart-Simulated) when its live cache is cold. Those
+                      used to render indistinguishably from real candles -
+                      invented prices on a stock detail page. Label them. */}
+                  {chartSimulated && (
+                    <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                      <span className="text-[11px] font-bold text-amber-400">Geçici veri</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Canlı fiyat akışı henüz bağlanmadı - bu grafik gerçek piyasa verisi değildir.
+                      </span>
+                    </div>
+                  )}
+                  <TradingViewChart data={chartData} symbol={ticker} />
+                </>
               ) : (
                 <div className="flex items-center justify-center h-[380px] text-xs text-muted-foreground border border-border/30 rounded-xl bg-zinc-950/20">
                   Grafik verisi bulunamadı veya sunucu bağlantısı bekleniyor.

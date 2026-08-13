@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { authFetch } from "@/lib/auth"
+import { pollWhileVisible } from "@/lib/usePolling"
 
 export type InstrumentType = "stock" | "viop"
 export type Broker = "info_yatirim" | "midas"
@@ -415,10 +416,10 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         .catch(err => console.error("Failed to load trade watchlist:", err))
     }
     fetchWatchlist()
-    const interval = setInterval(fetchWatchlist, 2000)
+    const stop = pollWhileVisible(fetchWatchlist, 2000)
     return () => {
       active = false
-      clearInterval(interval)
+      stop()
     }
   }, [])
 
@@ -433,10 +434,10 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         .catch(err => console.error("Failed to load VİOP contracts:", err))
     }
     fetchViop()
-    const interval = setInterval(fetchViop, 2000)
+    const stop = pollWhileVisible(fetchViop, 2000)
     return () => {
       active = false
-      clearInterval(interval)
+      stop()
     }
   }, [])
 
@@ -449,8 +450,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   const hasAccount = !!account
   useEffect(() => {
     if (!hasAccount) return
-    const interval = setInterval(refreshAccount, 3000)
-    return () => clearInterval(interval)
+    return pollWhileVisible(refreshAccount, 3000)
   }, [hasAccount, refreshAccount])
 
   // Pending (resting LIMIT) orders - polled on the same cadence as the
@@ -461,8 +461,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   // just picks up the resulting state.
   useEffect(() => {
     if (!hasAccount) return
-    const interval = setInterval(refreshPendingOrders, 3000)
-    return () => clearInterval(interval)
+    return pollWhileVisible(refreshPendingOrders, 3000)
   }, [hasAccount, refreshPendingOrders])
 
   // Whenever the tab switches, default the selected symbol to something

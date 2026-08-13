@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { usePolling } from "@/lib/usePolling"
 
 // role -> display label/styling. Previously the header just hardcoded
 // "Pro Üye" for every single user regardless of their real subscription
@@ -248,8 +249,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }, [])
 
   // 1. Fetch live market indexes
-  useEffect(() => {
-    const fetchIndexes = () => {
+  const fetchIndexes = React.useCallback(() => {
+    {
       authFetch(`/screener/market-summary`)
         .then(res => res.json())
         .then(data => {
@@ -303,18 +304,23 @@ export default function Header({ onMenuClick }: HeaderProps) {
         })
         .catch(err => console.error("Failed to load header ticker feed:", err))
     }
-
-    fetchIndexes()
-    // This is a persistent component (mounted for the whole app, not per
-    // page), so its poll interval runs continuously everywhere, stacked on
-    // top of whatever the current page itself is polling. 2s was excessive
-    // for a ticker banner - re-rendering the header 30x/minute added
-    // constant background CPU/network pressure that made route transitions
-    // feel janky even though nothing was actually reloading. 5s still reads
-    // as live for an index ticker.
-    const interval = setInterval(fetchIndexes, 5000)
-    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => { fetchIndexes() }, [fetchIndexes])
+
+  // This is a persistent component (mounted for the whole app, not per
+  // page), so its poll interval runs continuously everywhere, stacked on
+  // top of whatever the current page itself is polling. 2s was excessive
+  // for a ticker banner - re-rendering the header 30x/minute added
+  // constant background CPU/network pressure that made route transitions
+  // feel janky even though nothing was actually reloading. 5s still reads
+  // as live for an index ticker.
+  //
+  // usePolling (not setInterval) so this stops entirely while the tab is
+  // hidden. Being app-wide, this was the single largest source of idle
+  // traffic: a parked tab kept requesting market-summary 12x/minute
+  // forever, and nothing rendered any of it.
+  usePolling(fetchIndexes, 5000)
 
   // 2. Fetch all tickers (stocks) for search autocomplete
   useEffect(() => {

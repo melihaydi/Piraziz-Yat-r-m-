@@ -35,6 +35,7 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { pollWhileVisible } from "@/lib/usePolling"
 
 // Fallback index chart points in case of connection limits
 
@@ -198,16 +199,21 @@ export default function Home() {
 
     // Market summary reads from an in-memory cache on the backend (no extra
     // network cost per call), so it can refresh close to real-time.
-    const marketInterval = setInterval(fetchMarketSummary, 2000)
+    // pollWhileVisible rather than setInterval: at 2s this is 30 requests a
+    // minute, and a browser keeps firing setInterval in a background tab, so
+    // a dashboard left open in another tab kept that up indefinitely against
+    // a 1GB host while rendering nothing. Now it pauses when hidden and
+    // refetches on return.
+    const stopMarket = pollWhileVisible(fetchMarketSummary, 2000)
     // Favorites involve fetching the full stock/fund lists, so keep that on a
     // slower cadence to avoid unnecessary load.
-    const favoritesInterval = setInterval(loadFavorites, 10000)
-    const popularFundsInterval = setInterval(fetchPopularFunds, 15000)
+    const stopFavorites = pollWhileVisible(loadFavorites, 10000)
+    const stopPopularFunds = pollWhileVisible(fetchPopularFunds, 15000)
 
     return () => {
-      clearInterval(marketInterval)
-      clearInterval(favoritesInterval)
-      clearInterval(popularFundsInterval)
+      stopMarket()
+      stopFavorites()
+      stopPopularFunds()
     }
   }, [])
 

@@ -15,3 +15,12 @@ export const CHART_TIMEFRAMES: ChartTimeframe[] = [
   { label: "Günlük", value: "1d" },
   { label: "Haftalık", value: "1w" },
 ]
+
+// How many times a chart view re-requests candles after the backend answers
+// with SIMULATED data (X-Chart-Simulated: true - randomly generated bars it
+// serves when its live cache is cold). The retry is meant to ride out a
+// backend restart, which settles within seconds; 5 attempts x 2.5s covers
+// that. It is capped because it previously wasn't: a symbol that never
+// resolved kept the retry firing every 2.5s for as long as the tab stayed
+// open, one unbounded request loop per open tab against a 1GB host.
+export const MAX_SIMULATED_CHART_RETRIES = 5

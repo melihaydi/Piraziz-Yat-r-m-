@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
-import { CHART_TIMEFRAMES } from "@/lib/chartTimeframes"
+import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
+import { pollWhileVisible } from "@/lib/usePolling"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
 
@@ -158,6 +159,7 @@ export default function ScreenerPage() {
   const [selectedTimeframe, setSelectedTimeframe] = useState("1h")
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(false)
+  const [chartSimulated, setChartSimulated] = useState(false)
   const [scoreDetails, setScoreDetails] = useState<any>(null)
   const [scoreLoading, setScoreLoading] = useState(false)
 
@@ -273,18 +275,22 @@ export default function ScreenerPage() {
     fetchStocks()
     // Backend reads from an in-memory TradingView WebSocket cache, so polling
     // every 2s doesn't add real network/API load, just keeps the table fresh.
-    const interval = setInterval(fetchStocks, 2000)
-    return () => clearInterval(interval)
+    const stopStocks = pollWhileVisible(fetchStocks, 2000)
+    return stopStocks
   }, [])
 
   // Fetch chart data for selected ticker with self-healing retry if data is simulated (Request 1!)
   useEffect(() => {
     let active = true;
     let timerId: any = null;
+    // Capped for the same reason as the stock detail page's copy of this
+    // loop: uncapped, a symbol that never resolved kept re-requesting every
+    // 2.5s for the lifetime of the tab.
+    let attemptsLeft = MAX_SIMULATED_CHART_RETRIES;
 
     const loadChart = () => {
       if (!selectedTicker) return;
-      
+
       authFetch(`/screener/chart/${selectedTicker}?interval=${selectedTimeframe}`)
         .then(res => {
           if (!res.ok) {
@@ -300,10 +306,12 @@ export default function ScreenerPage() {
             setChartData(data)
           }
           setChartLoading(false)
-          
-          // Self-healing retry: if the chart was simulated (cache empty on backend startup), 
+          setChartSimulated(isSimulated)
+
+          // Self-healing retry: if the chart was simulated (cache empty on backend startup),
           // schedule a retry in 2.5 seconds to pull the real data once the websocket streams it!
-          if (isSimulated) {
+          if (isSimulated && attemptsLeft > 0) {
+            attemptsLeft -= 1;
             timerId = setTimeout(() => {
               if (active) loadChart();
             }, 2500);
@@ -317,6 +325,7 @@ export default function ScreenerPage() {
     };
 
     setChartLoading(true)
+    setChartSimulated(false)
     loadChart();
 
     return () => {
@@ -640,6 +649,16 @@ export default function ScreenerPage() {
                 </div>
 
                 {/* Chart Area */}
+                {/* Same placeholder-bar labelling as the stock detail page -
+                    simulated candles must not read as real prices. */}
+                {chartSimulated && !chartLoading && (
+                  <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                    <span className="text-[11px] font-bold text-amber-400">Geçici veri</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Canlı fiyat akışı henüz bağlanmadı - gerçek piyasa verisi değildir.
+                    </span>
+                  </div>
+                )}
                 <div className="relative border border-border/40 rounded-xl overflow-hidden bg-zinc-900/60 p-1">
                   {chartLoading && (
                     <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm flex items-center justify-center z-10">
