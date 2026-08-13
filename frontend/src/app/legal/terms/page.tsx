@@ -1,20 +1,20 @@
 import LegalPageShell from "@/components/legal/LegalPageShell"
 
-export const metadata = { title: "Kullanım Koşulları - Piraziz Yatırım" }
+export const metadata = { title: "Kullanım Koşulları - BIP Terminal" }
 
 export default function TermsPage() {
   return (
     <LegalPageShell title="Kullanım Koşulları" updatedAt="10 Ağustos 2026">
       <h2>1. Taraflar ve Kapsam</h2>
       <p>
-        Bu Kullanım Koşulları ("Koşullar"), Piraziz Yatırım ("Platform", "Uygulama", "Biz") tarafından
+        Bu Kullanım Koşulları ("Koşullar"), BIP Terminal ("Platform", "Uygulama", "Biz") tarafından
         sunulan web, masaüstü ve mobil uygulamaların kullanımına ilişkin şartları düzenler. Uygulamayı
         kullanarak bu Koşulları kabul etmiş sayılırsınız.
       </p>
 
       <h2>2. Hizmetin Niteliği - Simülasyon Uyarısı</h2>
       <p>
-        Piraziz Yatırım, <strong>gerçek para ve gerçek borsa emri içermeyen, tamamen simüle edilmiş bir
+        BIP Terminal, <strong>gerçek para ve gerçek borsa emri içermeyen, tamamen simüle edilmiş bir
         kağıt üzerinde alım-satım (paper trading) ve piyasa takip platformudur.</strong> Uygulama
         üzerinden verilen emirler Borsa İstanbul'a veya herhangi bir gerçek işlem platformuna
         iletilmez, gerçek para transferi yapılmaz, gerçek menkul kıymet mülkiyeti oluşmaz. Uygulama
@@ -48,7 +48,7 @@ export default function TermsPage() {
 
       <h2>6. Fikri Mülkiyet</h2>
       <p>
-        Platformdaki tüm yazılım, tasarım, logo ve içerik Piraziz Yatırım'a veya ilgili lisans
+        Platformdaki tüm yazılım, tasarım, logo ve içerik BIP Terminal'a veya ilgili lisans
         sahiplerine aittir. İzinsiz kopyalanamaz, dağıtılamaz.
       </p>
 
@@ -56,7 +56,7 @@ export default function TermsPage() {
       <p>
         Platform "olduğu gibi" sunulmaktadır. Piyasa verilerindeki gecikme/hata, sistem kesintileri
         veya üçüncü taraf veri sağlayıcılarından kaynaklanan sorunlardan doğabilecek zararlardan
-        Piraziz Yatırım sorumlu tutulamaz.
+        BIP Terminal sorumlu tutulamaz.
       </p>
 
       <h2>8. Hesap Sonlandırma</h2>

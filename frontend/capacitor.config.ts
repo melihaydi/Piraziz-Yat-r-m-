@@ -8,7 +8,7 @@ import type { CapacitorConfig } from "@capacitor/cli"
 // build, just for Android instead of Windows.
 const config: CapacitorConfig = {
   appId: "com.pirazizyatirim.app",
-  appName: "Piraziz Yatırım",
+  appName: "BIP Terminal",
   webDir: "public",
   server: {
     url: "https://pirazizyatirim.netlify.app",

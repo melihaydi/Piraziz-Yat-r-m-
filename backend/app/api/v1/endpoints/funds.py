@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.core.limiter import limiter
+from app.core.redis import cache_service
 from app.models.user import User
 from app.services.tefas import tefas_service
 from app.services.market_data import market_data_service
@@ -83,7 +84,20 @@ def get_popular_funds_live_estimate(
     is and isn't (an estimate from disclosed composition x live prices, not
     a real intraday NAV recalculation; TEFAS itself only publishes one NAV
     per fund per day). Free/starter/pro tiers get this computed from
-    15-minute-delayed stock quotes instead (see deps.get_data_delay_minutes)."""
+    15-minute-delayed stock quotes instead (see deps.get_data_delay_minutes).
+
+    The computed result is cached server-side per delay tier: building it
+    means walking every popular fund's holdings and recursively resolving
+    sub-funds against live quotes, which is far too much work to redo for
+    each viewer when every viewer on the same tier gets the identical
+    answer. The delayed tier caches longer than the live one because its
+    numbers are already quoted 15 minutes behind - another minute of cache
+    age is invisible there, whereas a premium user is paying for immediacy."""
+    cache_key = f"funds:popular:live-estimate:delay={delay}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     chg = _get_live_index_change()
     results = []
     for code in POPULAR_LIVE_FUNDS:
@@ -101,7 +115,16 @@ def get_popular_funds_live_estimate(
             "resolved_weight_pct": estimate["resolved_weight_pct"],
             "holdings": _with_impact_pct(estimate["holdings"]),
         })
-    return {"funds": results}
+
+    payload = {"funds": results}
+    # Only cache a complete answer. A partial result (some fund's quote or
+    # composition momentarily unresolvable, so it got skipped by the
+    # `continue` above) would otherwise be frozen in place for everyone on
+    # this tier for the full TTL, turning a one-off blip into a fund
+    # visibly missing from the panel.
+    if len(results) == len(POPULAR_LIVE_FUNDS):
+        cache_service.set_json(cache_key, payload, expire_seconds=60 if delay > 0 else 15)
+    return payload
 
 
 @router.get("/popular/estimate-history")

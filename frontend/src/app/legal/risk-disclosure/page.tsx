@@ -1,12 +1,12 @@
 import LegalPageShell from "@/components/legal/LegalPageShell"
 
-export const metadata = { title: "Yatırım Risk Bildirim Formu - Piraziz Yatırım" }
+export const metadata = { title: "Yatırım Risk Bildirim Formu - BIP Terminal" }
 
 export default function RiskDisclosurePage() {
   return (
     <LegalPageShell title="Yatırım Risk Bildirim Formu" updatedAt="8 Ağustos 2026">
       <p>
-        Bu Risk Bildirim Formu, Piraziz Yatırım platformunun sunduğu piyasa verileri, analizler ve
+        Bu Risk Bildirim Formu, BIP Terminal platformunun sunduğu piyasa verileri, analizler ve
         simüle işlem araçlarını kullanmadan önce okumanız gereken önemli bilgileri içerir.
       </p>
 
@@ -46,7 +46,7 @@ export default function RiskDisclosurePage() {
       <p>
         Gerçek hayatta herhangi bir yatırım kararı almadan önce, kendi mali durumunuzu, risk
         toleransınızı değerlendirmeli ve gerekirse SPK lisanslı, bağımsız bir yatırım danışmanına
-        başvurmalısınız. Piraziz Yatırım, platform kullanımından kaynaklanan hiçbir gerçek finansal
+        başvurmalısınız. BIP Terminal, platform kullanımından kaynaklanan hiçbir gerçek finansal
         karar veya sonuçtan sorumlu tutulamaz.
       </p>
     </LegalPageShell>

@@ -12,3 +12,29 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Baseline security headers for the web app itself. The backend sets its
+# own equivalents on API responses (see app/main.py's add_security_headers),
+# but those never apply to the pages Netlify serves - the two are separate
+# origins and each has to carry its own. No Content-Security-Policy here on
+# purpose, for the same reason the backend omits one: the app embeds
+# several third-party TradingView widgets across multiple domains, and a
+# CSP tight enough to be worth having would break them.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "SAMEORIGIN"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Revokes access to hardware/sensor APIs this app never uses, so an
+    # injected script or embedded widget cannot silently reach for them.
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+# Next.js fingerprints everything under /_next/static/ with a content hash,
+# so these URLs can never change meaning - cache them permanently instead
+# of revalidating on every page load. HTML and API routes are deliberately
+# left alone (Netlify's defaults already handle those correctly).
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

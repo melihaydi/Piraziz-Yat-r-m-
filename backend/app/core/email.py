@@ -7,7 +7,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_FROM_NAME = "Piraziz Yatırım"
+_FROM_NAME = "BIP Terminal"
 
 
 def send_email(to: str, subject: str, html_body: str) -> bool:

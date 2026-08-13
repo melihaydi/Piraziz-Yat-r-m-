@@ -18,10 +18,38 @@ connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
+# Pool sizing matters here because every endpoint in this app is a sync
+# `def` (not `async def`), so FastAPI runs them in anyio's threadpool - up
+# to 40 concurrent requests, each holding a DB session for its whole
+# lifetime. SQLAlchemy's defaults (pool_size=5, max_overflow=10) cap that
+# at 15, so beyond 15 in-flight requests the rest queue for 30s and then
+# fail with "QueuePool limit of size 5 overflow 10 reached" - a 500 under
+# load, not a slowdown.
+#
+# 20 total (10 + 10 overflow) rather than a number covering all 40 threads,
+# because each Postgres connection is a backend process costing several MB
+# and the db container is capped at mem_limit: 150m in
+# docker-compose.prod.yml - sizing the pool to the threadpool would just
+# trade these timeouts for the OOM killer. Raise both together, not this
+# alone. pool_timeout is 10s rather than the default 30 so a request that
+# cannot get a connection fails while the user is still watching, instead
+# of after the browser has already given up. pool_recycle keeps
+# connections from being handed out after some intermediary has already
+# dropped them for idling.
+pool_kwargs = {}
+if not DATABASE_URL.startswith("sqlite"):
+    pool_kwargs = {
+        "pool_size": 10,
+        "max_overflow": 10,
+        "pool_timeout": 10,
+        "pool_recycle": 1800,
+    }
+
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    connect_args=connect_args
+    connect_args=connect_args,
+    **pool_kwargs
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

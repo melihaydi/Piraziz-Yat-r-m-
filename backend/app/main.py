@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
@@ -34,14 +35,34 @@ if settings.SENTRY_DSN:
         send_default_pii=False,
     )
 
+# The interactive docs enumerate every route, query parameter and response
+# schema of this API - including the admin and trade surfaces - which is
+# free reconnaissance for anyone probing the public host. Useful in
+# development, so they stay on there and are only closed in production.
+_docs_enabled = settings.ENVIRONMENT != "production"
+
 app = FastAPI(
     title="BIST Intelligence Platform (BIP) API",
     description="AI-powered analysis and tracking platform for Borsa Istanbul (BIST)",
     version="1.0.0",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Nothing in front of this app compressed anything (Caddy does not enable
+# compression unless told to, and the `encode` directive added to the
+# Caddyfile alongside this only covers the deploy that actually runs behind
+# Caddy). The payloads here are highly repetitive JSON - screener tables,
+# chart candle arrays, fund lists - which routinely compress 5-10x, and the
+# users are on Turkish mobile connections where that is the difference
+# between a chart appearing instantly and visibly waiting for it. The 1 KB
+# floor skips small responses, where the CPU cost of compressing outweighs
+# the bytes saved.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 @app.exception_handler(Exception)
@@ -113,11 +134,13 @@ async def start_background_jobs():
 
 @app.get("/")
 async def root():
-    return {
-        "message": "Welcome to BIST Intelligence Platform (BIP) API",
-        "docs_url": "/docs",
-        "redoc_url": "/redoc"
-    }
+    body = {"message": "Welcome to BIST Intelligence Platform (BIP) API"}
+    # Advertising these in production would point straight at endpoints
+    # that no longer exist there (see _docs_enabled above).
+    if _docs_enabled:
+        body["docs_url"] = "/docs"
+        body["redoc_url"] = "/redoc"
+    return body
 
 @app.get("/health")
 async def health_check(response: Response):

@@ -52,10 +52,10 @@ def _send_verification_email(user: User) -> None:
     link = f"{settings.FRONTEND_URL}/verify-email?token={token}"
     send_email(
         user.email,
-        "E-posta adresini doğrula - Piraziz Yatırım",
+        "E-posta adresini doğrula - BIP Terminal",
         f"""
         <p>Merhaba{f' {user.full_name}' if user.full_name else ''},</p>
-        <p>Piraziz Yatırım hesabını kullanmaya başlamak için e-posta adresini doğrula:</p>
+        <p>BIP Terminal hesabını kullanmaya başlamak için e-posta adresini doğrula:</p>
         <p><a href="{link}">E-postamı Doğrula</a></p>
         <p>Bu bağlantı {EMAIL_VERIFY_TOKEN_HOURS} saat geçerlidir. Bu isteği sen yapmadıysan bu e-postayı görmezden gelebilirsin.</p>
         """,
@@ -373,7 +373,7 @@ def setup_2fa(
     current_user.totp_secret = secret
     db.commit()
 
-    uri = pyotp.TOTP(secret).provisioning_uri(name=current_user.email, issuer_name="Piraziz Yatırım")
+    uri = pyotp.TOTP(secret).provisioning_uri(name=current_user.email, issuer_name="BIP Terminal")
     img = qrcode.make(uri)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -475,7 +475,7 @@ def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session =
         link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
         send_email(
             user.email,
-            "Şifre Sıfırlama - Piraziz Yatırım",
+            "Şifre Sıfırlama - BIP Terminal",
             f"""
             <p>Merhaba{f' {user.full_name}' if user.full_name else ''},</p>
             <p>Hesabın için bir şifre sıfırlama isteği aldık. Aşağıdaki bağlantıya tıklayarak yeni bir şifre belirleyebilirsin:</p>

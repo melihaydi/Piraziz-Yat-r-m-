@@ -27,7 +27,7 @@ export default function LegalPageShell({
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 flex items-start gap-2.5">
           <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300/90 leading-relaxed">
-            Bu bir <strong>taslak</strong> metindir; Piraziz Yatırım ekibi tarafından hazırlanmıştır ancak
+            Bu bir <strong>taslak</strong> metindir; BIP Terminal ekibi tarafından hazırlanmıştır ancak
             bir avukat tarafından incelenip onaylanmamıştır. Gerçek kullanıcılara sunulmadan önce
             hukuki inceleme yapılmalıdır.
           </p>

@@ -28,13 +28,13 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
 
   const downloadCodes = () => {
     const body =
-      "Piraziz Yatırım - 2FA Kurtarma Kodları\n" +
+      "BIP Terminal - 2FA Kurtarma Kodları\n" +
       "Her kod yalnızca bir kez kullanılabilir. Güvenli bir yerde saklayın.\n\n" +
       recoveryCodes.join("\n") + "\n"
     const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }))
     const a = document.createElement("a")
     a.href = url
-    a.download = "piraziz-yatirim-kurtarma-kodlari.txt"
+    a.download = "bip-terminal-kurtarma-kodlari.txt"
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -367,7 +367,7 @@ const SECURITY_ITEMS = [
   {
     icon: BadgeCheck,
     title: "Lisans Bilgisi",
-    description: "Hesabınız Piraziz Yatırım Premium lisansı kapsamında gerçek zamanlı BIST verisi ve TEFAS fon verisi erişimine sahiptir.",
+    description: "Hesabınız BIP Terminal Premium lisansı kapsamında gerçek zamanlı BIST verisi ve TEFAS fon verisi erişimine sahiptir.",
     badge: "Premium",
     badgeColor: "emerald"
   }
@@ -521,7 +521,7 @@ export default function SettingsPage() {
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url
-        a.download = `piraziz-yatirim-verilerim-${new Date().toISOString().slice(0, 10)}.json`
+        a.download = `bip-terminal-verilerim-${new Date().toISOString().slice(0, 10)}.json`
         a.click()
         URL.revokeObjectURL(url)
       }
@@ -874,14 +874,14 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               <a
-                href={`${API_BASE_URL}/download/PirazizYatirim-Setup.exe`}
+                href={`${API_BASE_URL}/download/BIPTerminal-Setup.exe`}
                 className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-cyan-300 border border-cyan-500/25 bg-cyan-500/5 hover:bg-cyan-500/15 transition-colors cursor-pointer"
               >
                 <Download className="h-4 w-4" />
                 İndir (.exe, Windows)
               </a>
               <a
-                href={`${API_BASE_URL}/download/PirazizYatirim.apk`}
+                href={`${API_BASE_URL}/download/BIPTerminal.apk`}
                 className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-emerald-300 border border-emerald-500/25 bg-emerald-500/5 hover:bg-emerald-500/15 transition-colors cursor-pointer"
               >
                 <Smartphone className="h-4 w-4" />

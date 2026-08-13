@@ -13,7 +13,7 @@
   },
   "build": {
     "appId": "com.piraziz.terminal",
-    "productName": "PirazizYatirim",
+    "productName": "BIPTerminal",
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"

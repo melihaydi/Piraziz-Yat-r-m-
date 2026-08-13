@@ -69,7 +69,7 @@ function errorHtml(title, subtitle) {
 }
 
 const LOADING_HTML = loadingHtml(
-  'Piraziz Yatırım Terminali başlatılıyor...',
+  'BIP Terminal başlatılıyor...',
   'Bu birkaç saniye sürebilir.'
 )
 
@@ -146,7 +146,7 @@ function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
-    title: "Piraziz Yatırım Terminali",
+    title: "BIP Terminal",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
