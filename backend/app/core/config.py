@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     # deployment; override in .env for a custom domain.
     FRONTEND_URL: str = "https://pirazizyatirim.netlify.app"
 
+    # Extra browser origins allowed to call this API, comma-separated. The
+    # CORS allowlist in main.py matches *.netlify.app by pattern, which
+    # stops covering the site the moment it's served from a domain of its
+    # own - every API call would then fail the browser's preflight.
+    # FRONTEND_URL is allowed automatically, so this is for the additional
+    # hostnames that point at the same site (typically the www. variant).
+    EXTRA_CORS_ORIGINS: str = ""
+
     # This backend's OWN public URL - needed for iyzico's checkoutForm
     # callbackUrl (iyzico redirects the buyer's browser back here after
     # payment, as a POST with a `token` - see payment_service.py). Must be
@@ -115,6 +123,27 @@ class Settings(BaseSettings):
         if self.REDIS_URL:
             return self.REDIS_URL
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+
+    def get_cors_origins(self) -> list[str]:
+        """Browser origins allowed to call this API, on top of the
+        *.netlify.app pattern applied in main.py. Trailing slashes are
+        stripped because a browser's Origin header never carries one and
+        CORSMiddleware compares the two as plain strings - "https://x.com/"
+        in .env would silently match nothing."""
+        origins = [
+            "http://localhost:3000",      # Next.js development server
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://localhost",           # Production / Nginx
+            self.FRONTEND_URL,
+        ]
+        origins += self.EXTRA_CORS_ORIGINS.split(",")
+        seen: dict[str, None] = {}
+        for origin in origins:
+            cleaned = origin.strip().rstrip("/")
+            if cleaned:
+                seen[cleaned] = None
+        return list(seen)
 
 settings = Settings()
 

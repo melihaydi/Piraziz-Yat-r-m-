@@ -58,13 +58,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
-# CORS configuration
-origins = [
-    "http://localhost:3000",      # Next.js development server
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://localhost",           # Production / Nginx
-]
+# CORS configuration - the localhost entries plus FRONTEND_URL and anything
+# in EXTRA_CORS_ORIGINS (see core/config.py), which is how a custom domain
+# gets allowed without editing this file.
+origins = settings.get_cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
