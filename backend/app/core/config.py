@@ -65,9 +65,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
 
     # Public web app URL - used to build links inside emails (password
-    # reset, email verification, etc.). Defaults to the live Netlify
-    # deployment; override in .env for a custom domain.
-    FRONTEND_URL: str = "https://pirazizyatirim.netlify.app"
+    # reset, email verification, etc.). Override in .env if this ever moves
+    # again (e.g. back to the bare Netlify subdomain in a non-prod deploy).
+    FRONTEND_URL: str = "https://bipterminal.com"
 
     # Extra browser origins allowed to call this API, comma-separated. The
     # CORS allowlist in main.py matches *.netlify.app by pattern, which
@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # payment, as a POST with a `token` - see payment_service.py). Must be
     # a real, internet-reachable HTTPS URL, not localhost, even in a
     # sandbox test.
-    BACKEND_PUBLIC_URL: str = "https://92-5-160-231.sslip.io"
+    BACKEND_PUBLIC_URL: str = "https://api.bipterminal.com"
 
     # Web Push (VAPID) - generated once for this app (see core/push.py),
     # baked in as a working default so browser push works out of the box

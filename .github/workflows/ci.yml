@@ -190,7 +190,7 @@ jobs:
         # public, client-exposed value already (baked into JS shipped to the
         # browser/exe), not a secret, so it's safe to set directly here.
         env:
-          NEXT_PUBLIC_API_URL: https://92-5-160-231.sslip.io
+          NEXT_PUBLIC_API_URL: https://api.bipterminal.com
         run: |
           cd frontend
           npm run dist
@@ -297,7 +297,7 @@ jobs:
           # attempt failed here on the very first real run even though the
           # container came up healthy moments later.
           for i in $(seq 1 12); do
-            if curl -sf https://92-5-160-231.sslip.io/health; then
+            if curl -sf https://api.bipterminal.com/health; then
               echo "Healthy."
               exit 0
             fi

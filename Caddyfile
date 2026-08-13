@@ -1,8 +1,18 @@
 # Production reverse proxy config, mirrored from the live server
 # (/home/ubuntu/bip/Caddyfile). Used by docker-compose.prod.yml's caddy
-# service. sslip.io gives Caddy a real DNS name for automatic Let's
-# Encrypt HTTPS without owning a domain.
-92-5-160-231.sslip.io {
+# service. api.bipterminal.com is DNS-only (grey cloud) in Cloudflare so
+# Caddy can complete its own Let's Encrypt HTTP-01 challenge directly
+# against this host - a proxied (orange cloud) record would intercept that
+# handshake and break automatic HTTPS.
+#
+# 92-5-160-231.sslip.io is TEMPORARY and kept alive alongside the new
+# domain: the currently-deployed Netlify build still has the old sslip.io
+# URL baked into NEXT_PUBLIC_API_URL at build time (confirmed live,
+# 2026-08-13) - removing this block before that env var is updated and the
+# site rebuilt would have broken every API call for every real user
+# mid-migration. Safe to delete once Netlify's NEXT_PUBLIC_API_URL points
+# at api.bipterminal.com and a fresh build has gone out.
+api.bipterminal.com, 92-5-160-231.sslip.io {
 	# HSTS - Caddy terminates TLS here, but doesn't add this header on its
 	# own; the backend's own security-headers middleware (main.py) covers
 	# X-Content-Type-Options/X-Frame-Options/Referrer-Policy instead, since
