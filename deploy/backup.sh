@@ -1,5 +1,5 @@
 #!/bin/bash
-# Daily Postgres backup for the Piraziz Yatirim (BIP) production database.
+# Daily Postgres backup for the BIP Terminal production database.
 # Runs via cron (0 3 * * *) - dumps the bip_postgres container's database,
 # gzips it, keeps 14 days locally, and optionally ships an encrypted copy
 # off the box.

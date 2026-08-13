@@ -137,7 +137,7 @@ def initialize_checkout(db: Session, user: User, role: str, buyer: Dict[str, str
         },
         "basketItems": [{
             "id": role,
-            "name": f"Piraziz Yatirim - {role.capitalize()} Uyelik ({PLAN_PERIOD_DAYS} gun)",
+            "name": f"BIP Terminal - {role.capitalize()} Uyelik ({PLAN_PERIOD_DAYS} gun)",
             "category1": "Uyelik",
             "itemType": "VIRTUAL",
             "price": price_str,

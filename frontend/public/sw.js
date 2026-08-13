@@ -1,9 +1,9 @@
-// Piraziz Yatırım - Web Push service worker. Only handles push display and
+// BIP Terminal - Web Push service worker. Only handles push display and
 // notification clicks - no offline caching/asset interception, this is not
 // a full PWA service worker, just the minimum surface Web Push requires.
 
 self.addEventListener("push", (event) => {
-  let payload = { title: "Piraziz Yatırım", body: "Yeni bir bildirim var.", url: "/" }
+  let payload = { title: "BIP Terminal", body: "Yeni bir bildirim var.", url: "/" }
   try {
     if (event.data) payload = { ...payload, ...event.data.json() }
   } catch (e) {

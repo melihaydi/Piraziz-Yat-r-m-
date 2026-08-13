@@ -1,3 +1,4 @@
+import bisect
 import json
 import logging
 import os
@@ -682,13 +683,32 @@ class MarketDataService:
         live = self.get_quote(symbol)
         if delay_minutes <= 0:
             return live
-        candles = self.get_candles(symbol, "1m", wait=False)
+        # subscribe=False is load-bearing, not an optimization. get_candles()
+        # with the default subscribe=True takes the global self._lock and
+        # calls subscribe_chart() whenever the 1m cache is empty - and
+        # subscribe_chart resets the ONE shared TradingView chart session
+        # (see patched_subscribe_chart). That made this the slow path for
+        # exactly the tiers that go through it: a free user's portfolio or
+        # screener request fans out over N tickers, and each one with a cold
+        # 1m cache serialized on that lock and yanked the shared session to
+        # its own symbol - so free accounts paid a websocket round trip per
+        # ticker that premium accounts (delay_minutes == 0, returning above)
+        # never pay, AND the user's actually-open chart kept getting reset
+        # out from under them by their own quote requests. A quote lookup
+        # has no business steering the chart session; when the 1m cache is
+        # cold we simply fall through to the live quote below, which is what
+        # this function already did whenever the candles were missing.
+        candles = self.get_candles(symbol, "1m", wait=False, subscribe=False)
         if not candles:
             return live
         cutoff = time.time() - delay_minutes * 60
-        eligible = [c for c in candles if c["time"] <= cutoff]
-        if not eligible:
+        # Candles are time-ordered, so the newest bar at or before the cutoff
+        # is found by bisecting rather than scanning every bar - this runs
+        # once per ticker per request across a whole portfolio/screener page.
+        idx = bisect.bisect_right([c["time"] for c in candles], cutoff)
+        if idx == 0:
             return live
+        eligible = candles[:idx]
         prev_close = live.get("prev_close")
         if not prev_close:
             # Can't safely derive a delayed change_percent without a real

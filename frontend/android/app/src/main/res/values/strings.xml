@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Piraziz Yatırım</string>
-    <string name="title_activity_main">Piraziz Yatırım</string>
+    <string name="app_name">BIP Terminal</string>
+    <string name="title_activity_main">BIP Terminal</string>
     <string name="package_name">com.pirazizyatirim.app</string>
     <string name="custom_url_scheme">com.pirazizyatirim.app</string>
 </resources>

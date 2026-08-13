@@ -225,7 +225,7 @@ export default function AuthGate({ children }: AuthGateProps) {
         <Card glass={true} className="border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-2xl">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto h-12 w-12 rounded-2xl overflow-hidden mb-4">
-              <img src="/logo.png" alt="Piraziz Yatırım" className="h-full w-full object-cover" />
+              <img src="/logo.png" alt="BIP Terminal" className="h-full w-full object-cover" />
             </div>
             <CardTitle className="text-2xl font-black tracking-tight text-foreground flex items-center justify-center gap-1.5">
               BİP Yatırım Terminali

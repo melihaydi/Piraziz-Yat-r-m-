@@ -351,7 +351,7 @@ def get_statement(
 
     account = _require_account(db, current_user, account_id)
     pdf_bytes = generate_account_statement_pdf(db, account, from_date, to_date)
-    filename = f"piraziz-yatirim-ekstre-{account.id}-{date.today().isoformat()}.pdf"
+    filename = f"bip-terminal-ekstre-{account.id}-{date.today().isoformat()}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

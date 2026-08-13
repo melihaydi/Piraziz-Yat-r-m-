@@ -1,19 +1,19 @@
 import LegalPageShell from "@/components/legal/LegalPageShell"
 
-export const metadata = { title: "Gizlilik Politikası ve KVKK Aydınlatma Metni - Piraziz Yatırım" }
+export const metadata = { title: "Gizlilik Politikası ve KVKK Aydınlatma Metni - BIP Terminal" }
 
 export default function PrivacyPage() {
   return (
     <LegalPageShell title="Gizlilik Politikası ve KVKK Aydınlatma Metni" updatedAt="10 Ağustos 2026">
       <p>
         Bu metin, 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") uyarınca, veri sorumlusu
-        sıfatıyla Piraziz Yatırım tarafından işlenen kişisel verileriniz hakkında sizi bilgilendirmek
+        sıfatıyla BIP Terminal tarafından işlenen kişisel verileriniz hakkında sizi bilgilendirmek
         amacıyla hazırlanmıştır.
       </p>
 
       <h2>1. Veri Sorumlusunun Kimliği</h2>
       <p>
-        Veri sorumlusu, Piraziz Yatırım platformunu işleten gerçek/tüzel kişidir. <em>[Taslak notu: KVKK
+        Veri sorumlusu, BIP Terminal platformunu işleten gerçek/tüzel kişidir. <em>[Taslak notu: KVKK
         m.10 uyarınca burada veri sorumlusunun tam unvanı, açık adresi ve varsa MERSİS numarası
         belirtilmelidir - bu bilgiler, hukuki inceleme sırasında işletmenin gerçek ticari/hukuki
         statüsüne (şahıs şirketi, limited şirket vb.) göre doldurulmalıdır.]</em> Başvurularınızı

@@ -45,7 +45,7 @@ npm install
 npm run dist
 ```
 
-Bu komut sırasıyla: Next.js production build'ini alır (`next build`), standalone sunucu için statik dosyaları kopyalar, ardından `electron-builder` ile `frontend/dist/` klasörüne bir NSIS kurulum dosyası (`PirazizYatirim Setup x.x.x.exe`) üretir.
+Bu komut sırasıyla: Next.js production build'ini alır (`next build`), standalone sunucu için statik dosyaları kopyalar, ardından `electron-builder` ile `frontend/dist/` klasörüne bir NSIS kurulum dosyası (`BIPTerminal Setup x.x.x.exe`) üretir.
 
 Notlar:
 - Kurulum dosyası backend kodunu ve frontend'in production build'ini kendi içine gömer; ayrı bir `run_dev.bat` çalıştırmaya gerek kalmaz.
