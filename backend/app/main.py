@@ -87,10 +87,12 @@ origins = settings.get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    # Netlify assigns a *.netlify.app subdomain per site (and per preview
-    # deploy) - allowed by pattern so the frontend doesn't need a backend
-    # redeploy every time its exact Netlify URL changes.
-    allow_origin_regex=r"https://.*\.netlify\.app",
+    # The *.netlify.app wildcard that used to live here (for the pre-custom-
+    # domain deploy URL) was removed once bipterminal.com became the sole
+    # real frontend - the Netlify subdomain itself can't be disabled (a
+    # Netlify-side setting), but this stops it from being able to call the
+    # API: it still LOADS (dead login form only), just can't reach /auth/*
+    # or anything else, so it stops being a live second copy of the app.
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
