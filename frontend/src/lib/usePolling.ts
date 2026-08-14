@@ -66,17 +66,24 @@ export function pollWhileVisible(callback: () => void, intervalMs: number): () =
 }
 
 /**
- * Same as pollWhileVisible, plus a second gate: BIST live price/fund data
- * doesn't change outside the cash session (Mon-Fri 09:30-18:15 Istanbul
- * time, see bistSession.ts) - the backend itself already skips its own
- * background refresh work then, so polling from here just re-requested the
- * same stale cached response over and over, all evening and all weekend,
- * for data that was never going to change. Re-checks the session boundary
- * once a minute (not just on visibility change) so a tab left open across
- * 09:30 or 18:15 starts/stops on its own without needing a focus event.
+ * Same as pollWhileVisible, plus a second gate on the REPEATING part only:
+ * BIST live price/fund data doesn't change outside the cash session
+ * (Mon-Fri 09:30-18:15 Istanbul time, see bistSession.ts), so re-requesting
+ * every few seconds all evening and every weekend was pure waste. But the
+ * very first call always fires as soon as the tab is visible, session open
+ * or not - without this, opening the app outside market hours (which is
+ * most of the day) left every page that used only this for its data
+ * showing an infinite loading skeleton, since fetchOnce() had literally
+ * never run yet. Shipped broken once already for exactly that reason:
+ * confirmed live, "Popüler Fonlar - Anlık Getiri" (and the screener,
+ * dashboard, portfolio and funds lists, which all rely on this same
+ * helper) never loaded at all outside 09:30-18:15. Re-checks the session
+ * boundary once a minute (not just on visibility change) so a tab left
+ * open across 09:30 or 18:15 starts/stops polling on its own.
  */
 export function pollWhileVisibleAndOpen(callback: () => void, intervalMs: number): () => void {
   let timerId: ReturnType<typeof setInterval> | null = null
+  let hasFetchedOnce = false
 
   const stop = () => {
     if (timerId !== null) {
@@ -90,22 +97,37 @@ export function pollWhileVisibleAndOpen(callback: () => void, intervalMs: number
     timerId = setInterval(callback, intervalMs)
   }
 
-  const evaluate = (fireImmediately: boolean) => {
-    if (document.visibilityState === "visible" && isBistSessionOpen()) {
-      if (fireImmediately) callback()
+  const evaluate = () => {
+    if (document.visibilityState !== "visible") {
+      stop()
+      return
+    }
+    if (!hasFetchedOnce) {
+      hasFetchedOnce = true
+      callback()
+    }
+    if (isBistSessionOpen()) {
       start()
     } else {
       stop()
     }
   }
 
-  const onVisibilityChange = () => evaluate(document.visibilityState === "visible")
+  const onVisibilityChange = () => {
+    // Returning to the tab always refreshes once, same as pollWhileVisible -
+    // whatever's on screen was last fetched before the tab was hidden, so
+    // it's stale by definition, session open or not.
+    if (document.visibilityState === "visible") {
+      hasFetchedOnce = false
+    }
+    evaluate()
+  }
 
-  evaluate(true)
+  evaluate()
   document.addEventListener("visibilitychange", onVisibilityChange)
   // Catches the session opening/closing while the tab stays visible the
   // whole time (e.g. left open overnight into the next trading day).
-  const sessionCheckId = setInterval(() => evaluate(false), 60000)
+  const sessionCheckId = setInterval(evaluate, 60000)
 
   return () => {
     stop()
