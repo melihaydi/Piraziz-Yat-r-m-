@@ -135,8 +135,8 @@ function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; sto
     return <p className="text-[11px] text-muted-foreground">Giriş/stop seviyesi olmadığı için hesaplanamıyor.</p>
   }
 
-  const acc = parseFloat(accountSize) || 0
-  const risk = parseFloat(riskPct) || 0
+  const acc = parseFloat(accountSize.trim().replace(/\./g, "").replace(",", ".")) || 0
+  const risk = parseFloat(riskPct.replace(",", ".")) || 0
   const riskAmount = acc * (risk / 100)
   const perShareRisk = Math.abs(entry - stopLoss)
   const lot = perShareRisk > 0 ? Math.floor(riskAmount / perShareRisk) : 0
@@ -148,7 +148,8 @@ function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; sto
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground">Hesap (₺)</span>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={accountSize}
             onChange={e => setAccountSize(e.target.value)}
             className="w-28 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-amber-500/40"
@@ -157,8 +158,8 @@ function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; sto
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground">Risk %</span>
           <input
-            type="number"
-            step="0.1"
+            type="text"
+            inputMode="decimal"
             value={riskPct}
             onChange={e => setRiskPct(e.target.value)}
             className="w-16 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-amber-500/40"

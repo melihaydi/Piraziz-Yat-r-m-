@@ -44,7 +44,7 @@ import {
   DialogTrigger
 } from "@/components/ui/Dialog"
 import { authFetch } from "@/lib/auth"
-import { pollWhileVisible } from "@/lib/usePolling"
+import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
@@ -88,7 +88,7 @@ function PortfolioStressTest({ beta, currentValue }: { beta: number | null; curr
           {estimatedChangePct >= 0 ? "+" : ""}{estimatedChangePct.toFixed(1)}% (₺{estimatedDiff.toLocaleString("tr-TR", { maximumFractionDigits: 0 })})
         </span>
       </div>
-      <p className="text-[9px] text-muted-foreground/70 leading-relaxed pt-1">
+      <p className="text-[11px] text-muted-foreground/70 leading-relaxed pt-1">
         Beta ({beta.toFixed(2)}) kullanılarak yapılan doğrusal bir yaklaşık tahmindir, kesin bir risk modeli değildir.
       </p>
     </div>
@@ -301,7 +301,7 @@ export default function PortfolioPage() {
     // projected price) moving during the live session instead of only
     // reflecting whatever was true at page load. pollWhileVisible - stops
     // while the tab is hidden (see usePolling.ts).
-    return pollWhileVisible(() => { loadCore(); fetchLiveEstimate(false) }, 15000)
+    return pollWhileVisibleAndOpen(() => { loadCore(); fetchLiveEstimate(false) }, 15000)
   }, [])
 
   // Derive active portfolio (default to first one)
@@ -388,6 +388,12 @@ export default function PortfolioPage() {
   const handleAddAsset = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activePortfolio || !assetTicker || !assetShares || !assetCost) return
+    const shares = parseTLAmount(assetShares)
+    const averageCost = parseTLAmount(assetCost)
+    if (!Number.isFinite(shares) || !Number.isFinite(averageCost)) {
+      flashActionError("Adet veya maliyet geçersiz - örn. 12,5 ya da 1.500,50 yazın.")
+      return
+    }
 
     try {
       const res = await authFetch(`/portfolio/${activePortfolio.id}/assets`, {
@@ -395,8 +401,8 @@ export default function PortfolioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: assetTicker.toUpperCase(),
-          shares: parseFloat(assetShares),
-          average_cost: parseFloat(assetCost)
+          shares,
+          average_cost: averageCost
         })
       })
       if (res.ok) {
@@ -433,14 +439,20 @@ export default function PortfolioPage() {
   const handleEditAsset = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedAsset || !editShares || !editCost) return
+    const shares = parseTLAmount(editShares)
+    const averageCost = parseTLAmount(editCost)
+    if (!Number.isFinite(shares) || !Number.isFinite(averageCost)) {
+      flashActionError("Adet veya maliyet geçersiz - örn. 12,5 ya da 1.500,50 yazın.")
+      return
+    }
 
     try {
       const res = await authFetch(`/portfolio/assets/${selectedAsset.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shares: parseFloat(editShares),
-          average_cost: parseFloat(editCost)
+          shares,
+          average_cost: averageCost
         })
       })
       if (res.ok) {
@@ -460,13 +472,18 @@ export default function PortfolioPage() {
   const handleSellAsset = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedAsset || !sellShares) return
+    const shares = parseTLAmount(sellShares)
+    if (!Number.isFinite(shares)) {
+      flashActionError("Adet geçersiz - örn. 12,5 yazın.")
+      return
+    }
 
     try {
       const res = await authFetch(`/portfolio/assets/${selectedAsset.id}/sell`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shares: parseFloat(sellShares)
+          shares
         })
       }, 0) // never silently retry a sell on a network failure - could double-sell
       if (res.ok) {
@@ -661,14 +678,14 @@ export default function PortfolioPage() {
                     <button
                       type="button"
                       onClick={() => setAssetTicker("USDTRY")}
-                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-emerald-500/40 cursor-pointer"
+                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-emerald-500/40 cursor-pointer"
                     >
                       USD/TRY
                     </button>
                     <button
                       type="button"
                       onClick={() => setAssetTicker("XAUTRYG")}
-                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 cursor-pointer"
+                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 cursor-pointer"
                     >
                       Gram Altın
                     </button>
@@ -676,26 +693,26 @@ export default function PortfolioPage() {
                 </div>
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Adet (Lot)</label>
-                  <Input 
-                    type="number"
-                    step="any"
+                  <Input
+                    type="text"
+                    inputMode="decimal"
                     value={assetShares}
                     onChange={(e) => setAssetShares(e.target.value)}
-                    placeholder="100" 
-                    className="col-span-2 bg-secondary/50" 
-                    required 
+                    placeholder="100"
+                    className="col-span-2 bg-secondary/50"
+                    required
                   />
                 </div>
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Ort. Maliyet</label>
-                  <Input 
-                    type="number"
-                    step="any"
+                  <Input
+                    type="text"
+                    inputMode="decimal"
                     value={assetCost}
                     onChange={(e) => setAssetCost(e.target.value)}
-                    placeholder="312.50" 
-                    className="col-span-2 bg-secondary/50" 
-                    required 
+                    placeholder="312,50"
+                    className="col-span-2 bg-secondary/50"
+                    required
                   />
                 </div>
                 <DialogFooter className="pt-4 border-t border-border/50">
@@ -717,24 +734,26 @@ export default function PortfolioPage() {
               <form onSubmit={handleEditAsset} className="space-y-4 py-4">
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Adet (Lot)</label>
-                  <Input 
-                    type="number"
-                    step="any"
+                  <Input
+                    type="text"
+                    inputMode="decimal"
                     value={editShares}
                     onChange={(e) => setEditShares(e.target.value)}
-                    className="col-span-2 bg-secondary/50" 
-                    required 
+                    placeholder="12,5"
+                    className="col-span-2 bg-secondary/50"
+                    required
                   />
                 </div>
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Ort. Maliyet</label>
-                  <Input 
-                    type="number"
-                    step="any"
+                  <Input
+                    type="text"
+                    inputMode="decimal"
                     value={editCost}
                     onChange={(e) => setEditCost(e.target.value)}
-                    className="col-span-2 bg-secondary/50" 
-                    required 
+                    placeholder="1.500,50"
+                    className="col-span-2 bg-secondary/50"
+                    required
                   />
                 </div>
                 <DialogFooter className="pt-4 border-t border-border/50">
@@ -756,15 +775,14 @@ export default function PortfolioPage() {
               <form onSubmit={handleSellAsset} className="space-y-4 py-4">
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Satılacak Adet</label>
-                  <Input 
-                    type="number"
-                    step="any"
+                  <Input
+                    type="text"
+                    inputMode="decimal"
                     value={sellShares}
                     onChange={(e) => setSellShares(e.target.value)}
                     placeholder={`Maks: ${selectedAsset?.shares ?? 0}`}
-                    max={selectedAsset?.shares ?? undefined}
-                    className="col-span-2 bg-secondary/50" 
-                    required 
+                    className="col-span-2 bg-secondary/50"
+                    required
                   />
                 </div>
                 <DialogFooter className="pt-4 border-t border-border/50">
@@ -797,7 +815,7 @@ export default function PortfolioPage() {
                 {dailyGain.isPartial && <span className="text-muted-foreground font-normal">(kısmi)</span>}
               </p>
             )}
-            <p className="text-[10px] text-muted-foreground mt-1">Toplam Maliyet: ₺{totalCost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-xs text-muted-foreground mt-1">Toplam Maliyet: ₺{totalCost.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             {(cashBalance > 0 || viopMargin > 0) && (
               // Admin-managed balances (Yönetilen Portföyler'den eklenir) -
               // read-only here, just surfaced so a deposit/teminat an admin
@@ -808,7 +826,7 @@ export default function PortfolioPage() {
               // (USD) has its own self-service module below instead of
               // being shown here, since the user can add/withdraw it
               // themselves.
-              <p className="text-[10px] text-muted-foreground mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {cashBalance > 0 && <>Nakit: ₺{cashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
                 {cashBalance > 0 && viopMargin > 0 && " · "}
                 {viopMargin > 0 && <>VİOP Teminatı: ₺{viopMargin.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</>}
@@ -816,7 +834,7 @@ export default function PortfolioPage() {
             )}
             <button
               onClick={handleToggleLiveEstimate}
-              className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
             >
               <Zap className="h-3 w-3" />
               Tahmini Getiri
@@ -839,7 +857,7 @@ export default function PortfolioPage() {
                 ({profitPercentage.toFixed(2)}%)
               </span>
             </div>
-            <p className="text-[10px] text-emerald-500/80 mt-1 font-semibold">Tüm zamanların en yüksek seviyesinde</p>
+            <p className="text-xs text-emerald-500/80 mt-1 font-semibold">Tüm zamanların en yüksek seviyesinde</p>
             {liveEstimate?.estimated_daily_gain_value != null && (
               <p className="inline-flex items-center gap-1 text-xs font-bold mt-2 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/25 text-orange-400">
                 <Zap className="h-3 w-3 shrink-0" />
@@ -871,7 +889,7 @@ export default function PortfolioPage() {
                 </>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               {analyticsLoading ? "Hesaplanıyor..." : analytics?.risk_metrics_note || "Son 6 aylık gerçek getiri verisiyle (XU100'e göre) hesaplandı"}
             </p>
           </CardContent>
@@ -885,7 +903,7 @@ export default function PortfolioPage() {
             </div>
             <div className="flex items-baseline justify-between">
               <span className="text-2xl font-black text-foreground">
-                {advancedMetrics.healthScore} <span className="text-[10px] text-muted-foreground font-bold">/100</span>
+                {advancedMetrics.healthScore} <span className="text-xs text-muted-foreground font-bold">/100</span>
               </span>
               <span className="text-xs font-bold text-purple-400 font-mono">
                 Sharpe: {analyticsLoading ? "…" : analytics?.sharpe != null ? analytics.sharpe.toFixed(2) : "—"}
@@ -910,10 +928,10 @@ export default function PortfolioPage() {
           track, unlike plain parked cash). */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
         <DollarSign className="h-4 w-4 text-sky-400 shrink-0" />
-        <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Döviz Nakit (USD)</span>
+        <span className="text-xs font-bold uppercase text-muted-foreground shrink-0">Döviz Nakit (USD)</span>
         <span className="text-sm font-extrabold font-mono text-foreground mr-1">
           ${usdCashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          <span className="text-[10px] font-semibold text-muted-foreground ml-1">(₺{usdCashValueTry.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+          <span className="text-xs font-semibold text-muted-foreground ml-1">(₺{usdCashValueTry.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
         </span>
         <Input
           value={usdCashAmount}
@@ -1028,7 +1046,7 @@ export default function PortfolioPage() {
                     </ResponsiveContainer>
                   </div>
                   {equityHistory.length <= 1 && (
-                    <p className="text-[10px] text-muted-foreground mt-2">
+                    <p className="text-xs text-muted-foreground mt-2">
                       Bu grafik, portföyünüzün gerçek günlük değeriyle gün geçtikçe dolacak - geçmişe dönük veri
                       tutulmadığı için geriye doğru doldurulamaz, bugünden itibaren birikmeye başlar.
                     </p>
@@ -1100,7 +1118,7 @@ export default function PortfolioPage() {
                                   <span className={profit >= 0 ? "text-emerald-400" : "text-rose-500"}>
                                     {profit >= 0 ? "+" : ""}₺{profit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
                                   </span>
-                                  <span className={`text-[10px] ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                  <span className={`text-xs ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                                     Toplam {profit >= 0 ? "+" : ""}{profitPct.toFixed(1)}%
                                   </span>
                                 </div>
@@ -1137,7 +1155,7 @@ export default function PortfolioPage() {
                                   setSellShares("")
                                   setIsOpenSellModal(true)
                                 }}
-                                className="text-[10px] px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 rounded mr-2 transition-all cursor-pointer font-semibold"
+                                className="text-xs px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 rounded mr-2 transition-all cursor-pointer font-semibold"
                               >
                                 Sat
                               </button>
@@ -1148,7 +1166,7 @@ export default function PortfolioPage() {
                                   setEditCost(item.average_cost.toString())
                                   setIsOpenEditModal(true)
                                 }}
-                                className="text-[10px] px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 rounded mr-2 transition-all cursor-pointer font-semibold"
+                                className="text-xs px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 rounded mr-2 transition-all cursor-pointer font-semibold"
                               >
                                 Düzenle
                               </button>
@@ -1194,14 +1212,14 @@ export default function PortfolioPage() {
                         <span className="font-bold font-mono text-emerald-400 block">
                           +₺{item.total_profit.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">
+                        <span className="text-xs text-muted-foreground font-mono">
                           +{item.profit_percentage.toFixed(1)}%
                         </span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-[10px] text-muted-foreground py-4 text-center">Henüz kârda varlık bulunmuyor.</p>
+                  <p className="text-xs text-muted-foreground py-4 text-center">Henüz kârda varlık bulunmuyor.</p>
                 )}
               </CardContent>
             </Card>
@@ -1223,14 +1241,14 @@ export default function PortfolioPage() {
                         <span className="font-bold font-mono text-rose-500 block">
                           ₺{item.total_profit.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}
                         </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">
+                        <span className="text-xs text-muted-foreground font-mono">
                           {item.profit_percentage.toFixed(1)}%
                         </span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-[10px] text-muted-foreground py-4 text-center">Zararda varlık bulunmuyor.</p>
+                  <p className="text-xs text-muted-foreground py-4 text-center">Zararda varlık bulunmuyor.</p>
                 )}
               </CardContent>
             </Card>
@@ -1251,7 +1269,7 @@ export default function PortfolioPage() {
                 <div className="flex bg-secondary/40 p-0.5 rounded-lg border border-border/30">
                   <button 
                     onClick={() => setDistributionTab("hisse")}
-                    className={`text-[9px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
+                    className={`text-[11px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
                       distributionTab === "hisse" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -1259,7 +1277,7 @@ export default function PortfolioPage() {
                   </button>
                   <button
                     onClick={() => setDistributionTab("sektor")}
-                    className={`text-[9px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
+                    className={`text-[11px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
                       distributionTab === "sektor" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -1267,7 +1285,7 @@ export default function PortfolioPage() {
                   </button>
                   <button
                     onClick={() => setDistributionTab("tur")}
-                    className={`text-[9px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
+                    className={`text-[11px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
                       distributionTab === "tur" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -1329,7 +1347,7 @@ export default function PortfolioPage() {
                 <Activity className="h-4.5 w-4.5 text-rose-400 mr-2" />
                 Portföy Stres Testi
               </CardTitle>
-              <CardDescription className="text-[10px]">Beta&apos;ya dayalı yaklaşık senaryo simülasyonu</CardDescription>
+              <CardDescription className="text-xs">Beta&apos;ya dayalı yaklaşık senaryo simülasyonu</CardDescription>
             </CardHeader>
             <CardContent>
               <PortfolioStressTest beta={analytics?.beta ?? null} currentValue={currentValue} />
@@ -1373,7 +1391,7 @@ export default function PortfolioPage() {
                         disabled={alert.is_triggered}
                       >
                         {alert.is_triggered ? (
-                          <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/15 text-[10px] font-bold">
+                          <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/15 text-xs font-bold">
                             Tetiklendi
                           </span>
                         ) : alert.is_active ? (

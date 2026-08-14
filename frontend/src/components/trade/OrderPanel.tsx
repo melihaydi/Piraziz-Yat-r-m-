@@ -43,7 +43,7 @@ export default function OrderPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderType, selectedSymbol])
 
-  const lotNum = parseFloat(lot) || 0
+  const lotNum = parseFloat(lot.replace(",", ".")) || 0
   const lastPrice = instrument?.price || 0
   const limitPriceNum = parseFloat(limitPrice.replace(",", ".")) || 0
   const stopPriceNum = parseFloat(stopPrice.replace(",", ".")) || 0
@@ -191,8 +191,8 @@ export default function OrderPanel() {
           <div>
             <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Lot</label>
             <input
-              type="number"
-              min={1}
+              type="text"
+              inputMode="decimal"
               value={lot}
               onChange={e => setLot(e.target.value)}
               className="w-full h-9 mt-1 px-3 rounded-lg bg-[#1c1d26] border border-slate-800 text-sm font-bold text-white focus:outline-none focus:border-white/30"

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useCallback } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import {
   AreaChart,
@@ -35,7 +35,8 @@ import { Skeleton } from "@/components/ui/Skeleton"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
-import { pollWhileVisible } from "@/lib/usePolling"
+import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
+import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
 // Fallback index chart points in case of connection limits
 
@@ -58,9 +59,15 @@ export default function Home() {
   const [indexChartLoading, setIndexChartLoading] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState<string>("XU100")
   
-  // Popüler Fonlar - Anlık Getiri (same live estimate as /funds page)
-  const [popularFunds, setPopularFunds] = useState<any[]>([])
-  const [loadingPopularFunds, setLoadingPopularFunds] = useState(true)
+  // Popüler Fonlar - Anlık Getiri (same live estimate as /funds page) - reads
+  // from a shared module-level store (popularFundsStore.ts) instead of
+  // fetching independently, so navigating home -> funds -> home doesn't fire
+  // a fresh request each time; only the first page to mount this session does.
+  const { funds: popularFunds, loading: loadingPopularFunds } = useSyncExternalStore(
+    subscribePopularFunds,
+    getPopularFundsSnapshot,
+    getPopularFundsSnapshot
+  )
 
   // A short economy-news strip under the funds card - just the newest few
   // headlines from the same /news feed the full Ekonomi Haberleri page uses.
@@ -129,18 +136,6 @@ export default function Home() {
         })
     }
 
-    // 3. Fetch the "Popüler Fonlar - Anlık Getiri" live estimate (same
-    // endpoint the funds page uses).
-    const fetchPopularFunds = () => {
-      authFetch(`/funds/popular/live-estimate`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data.funds)) setPopularFunds(data.funds)
-        })
-        .catch(err => console.error("Failed to load popular funds live estimate:", err))
-        .finally(() => setLoadingPopularFunds(false))
-    }
-
     const fetchNewsFeed = () => {
       authFetch(`/news/`)
         .then(res => (res.ok ? res.json() : []))
@@ -193,27 +188,21 @@ export default function Home() {
 
     // Initial fetch
     fetchMarketSummary()
-    fetchPopularFunds()
     fetchNewsFeed()
     loadFavorites()
 
-    // Market summary reads from an in-memory cache on the backend (no extra
-    // network cost per call), so it can refresh close to real-time.
-    // pollWhileVisible rather than setInterval: at 2s this is 30 requests a
-    // minute, and a browser keeps firing setInterval in a background tab, so
-    // a dashboard left open in another tab kept that up indefinitely against
-    // a 1GB host while rendering nothing. Now it pauses when hidden and
-    // refetches on return.
-    const stopMarket = pollWhileVisible(fetchMarketSummary, 2000)
-    // Favorites involve fetching the full stock/fund lists, so keep that on a
-    // slower cadence to avoid unnecessary load.
-    const stopFavorites = pollWhileVisible(loadFavorites, 10000)
-    const stopPopularFunds = pollWhileVisible(fetchPopularFunds, 15000)
+    // Market summary and favorites (which re-reads the full stock/fund
+    // lists) are both live BIST price data - pollWhileVisibleAndOpen adds a
+    // second gate on top of tab-visibility: the backend doesn't refresh
+    // this data outside the Mon-Fri 09:30-18:15 Istanbul cash session either
+    // (see bistSession.ts), so polling through evenings/weekends was pure
+    // waste against a 1GB host, for numbers that were never going to move.
+    const stopMarket = pollWhileVisibleAndOpen(fetchMarketSummary, 2000)
+    const stopFavorites = pollWhileVisibleAndOpen(loadFavorites, 10000)
 
     return () => {
       stopMarket()
       stopFavorites()
-      stopPopularFunds()
     }
   }, [])
 
@@ -301,7 +290,7 @@ export default function Home() {
                       }`}
                     >
                       <span className="font-extrabold">{idx}</span>
-                      <span className={`text-[10px] font-mono mt-0.5 font-bold ${isActive ? "text-primary-foreground/90" : (chg >= 0 ? "text-emerald-400" : "text-rose-400")}`}>
+                      <span className={`text-xs font-mono mt-0.5 font-bold ${isActive ? "text-primary-foreground/90" : (chg >= 0 ? "text-emerald-400" : "text-rose-400")}`}>
                         {chg >= 0 ? "+" : ""}{chg.toFixed(2)}%
                       </span>
                     </button>
@@ -359,7 +348,7 @@ export default function Home() {
                 <Zap className="h-5 w-5 mr-2 text-amber-400" />
                 Popüler Fonlar - Anlık Getiri
               </CardTitle>
-              <CardDescription className="text-[10px]">
+              <CardDescription className="text-xs">
                 TEFAS fonların NAV&apos;ını günde bir kez yayınlar - bu bölüm, her fonun son bilinen varlık dağılımını o
                 varlıkların canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri
                 hesaplar. Gerçek bir NAV yeniden hesaplaması değildir.
@@ -389,17 +378,17 @@ export default function Home() {
                             {f.code}
                           </span>
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-1.5 truncate">{f.name}</div>
+                        <div className="text-xs text-muted-foreground mt-1.5 truncate">{f.name}</div>
                         <div className="flex items-baseline justify-between mt-2">
                           <span className={`text-xl font-black font-mono ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
                             {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
                           </span>
-                          <span className="text-[9px] text-muted-foreground">
+                          <span className="text-[11px] text-muted-foreground">
                             kapsam %{f.resolved_weight_pct.toFixed(0)}
                           </span>
                         </div>
                         {f.fund_size && (
-                          <div className="text-[9px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
+                          <div className="text-[11px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
                         )}
                       </div>
                     )
@@ -447,13 +436,13 @@ export default function Home() {
                       className="flex items-start justify-between gap-3 px-2 py-2.5 hover:bg-secondary/25 rounded-lg transition-colors group"
                     >
                       <div className="min-w-0">
-                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wide">{n.source}</span>
+                        <span className="text-xs font-bold text-purple-400 uppercase tracking-wide">{n.source}</span>
                         <p className="text-xs font-semibold text-foreground leading-snug line-clamp-2 mt-0.5 group-hover:text-purple-200 transition-colors">
                           {n.title}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[10px] text-muted-foreground">{n.pub_date}</span>
+                        <span className="text-xs text-muted-foreground">{n.pub_date}</span>
                         <ExternalLink className="h-3 w-3 text-muted-foreground" />
                       </div>
                     </a>
@@ -498,7 +487,7 @@ export default function Home() {
                       </div>
                       <div className="text-right">
                         <span className="font-mono font-bold">₺{stock.price.toFixed(2)}</span>
-                        <span className={`block text-[10px] font-semibold ${stock.change_percent >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                        <span className={`block text-xs font-semibold ${stock.change_percent >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                           {stock.change_percent >= 0 ? "+" : ""}{stock.change_percent.toFixed(2)}%
                         </span>
                       </div>
@@ -518,7 +507,7 @@ export default function Home() {
                       </div>
                       <div className="text-right">
                         <span className="font-mono font-bold">₺{fund.price.toFixed(4)}</span>
-                        <span className={`block text-[10px] font-semibold ${fund.daily_return >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                        <span className={`block text-xs font-semibold ${fund.daily_return >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                           {fund.daily_return >= 0 ? "+" : ""}{fund.daily_return.toFixed(2)}%
                         </span>
                       </div>
@@ -543,7 +532,7 @@ export default function Home() {
                 <Calendar className="h-4.5 w-4.5 text-purple-400 mr-2 animate-pulse" />
                 Ekonomi Takvimi
               </CardTitle>
-              <CardDescription className="text-[10px] mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar (canlı, TradingView)</CardDescription>
+              <CardDescription className="text-xs mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar (canlı, TradingView)</CardDescription>
             </CardHeader>
             <CardContent>
               <EconomicCalendarWidget height={320} />
@@ -582,7 +571,7 @@ export default function Home() {
                     <div key={idx.name} className="flex items-center justify-between text-sm py-1">
                       <div className="flex flex-col">
                         <span className="font-semibold text-foreground">{idx.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{idx.label}</span>
+                        <span className="text-xs text-muted-foreground">{idx.label}</span>
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="font-mono text-xs text-muted-foreground">

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
+import { isBistSessionOpen } from "./bistSession"
 
 /**
  * setInterval for data polling that pauses while the tab is hidden.
@@ -61,6 +62,55 @@ export function pollWhileVisible(callback: () => void, intervalMs: number): () =
   return () => {
     stop()
     document.removeEventListener("visibilitychange", onVisibilityChange)
+  }
+}
+
+/**
+ * Same as pollWhileVisible, plus a second gate: BIST live price/fund data
+ * doesn't change outside the cash session (Mon-Fri 09:30-18:15 Istanbul
+ * time, see bistSession.ts) - the backend itself already skips its own
+ * background refresh work then, so polling from here just re-requested the
+ * same stale cached response over and over, all evening and all weekend,
+ * for data that was never going to change. Re-checks the session boundary
+ * once a minute (not just on visibility change) so a tab left open across
+ * 09:30 or 18:15 starts/stops on its own without needing a focus event.
+ */
+export function pollWhileVisibleAndOpen(callback: () => void, intervalMs: number): () => void {
+  let timerId: ReturnType<typeof setInterval> | null = null
+
+  const stop = () => {
+    if (timerId !== null) {
+      clearInterval(timerId)
+      timerId = null
+    }
+  }
+
+  const start = () => {
+    if (timerId !== null) return
+    timerId = setInterval(callback, intervalMs)
+  }
+
+  const evaluate = (fireImmediately: boolean) => {
+    if (document.visibilityState === "visible" && isBistSessionOpen()) {
+      if (fireImmediately) callback()
+      start()
+    } else {
+      stop()
+    }
+  }
+
+  const onVisibilityChange = () => evaluate(document.visibilityState === "visible")
+
+  evaluate(true)
+  document.addEventListener("visibilitychange", onVisibilityChange)
+  // Catches the session opening/closing while the tab stays visible the
+  // whole time (e.g. left open overnight into the next trading day).
+  const sessionCheckId = setInterval(() => evaluate(false), 60000)
+
+  return () => {
+    stop()
+    document.removeEventListener("visibilitychange", onVisibilityChange)
+    clearInterval(sessionCheckId)
   }
 }
 

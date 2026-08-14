@@ -87,8 +87,8 @@ export default function TradePerformancePage() {
   const loadTaxReport = React.useCallback(() => {
     if (!account) return
     setTaxLoading(true)
-    const stockPct = parseFloat(stockStopajPct) || 0
-    const viopPct = parseFloat(viopStopajPct) || 0
+    const stockPct = parseFloat(stockStopajPct.replace(",", ".")) || 0
+    const viopPct = parseFloat(viopStopajPct.replace(",", ".")) || 0
     authFetch(`/trade/tax-report?stock_stopaj_pct=${stockPct}&viop_stopaj_pct=${viopPct}&account_id=${activeAccountId}`)
       .then(res => res.json())
       .then(d => setTaxData(d))
@@ -202,8 +202,8 @@ export default function TradePerformancePage() {
             <div>
               <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Hisse Stopaj %</label>
               <input
-                type="number"
-                step="any"
+                type="text"
+                inputMode="decimal"
                 value={stockStopajPct}
                 onChange={e => setStockStopajPct(e.target.value)}
                 className="w-20 h-8 mt-1 px-2 rounded-md bg-[#1c1d26] border border-slate-800 text-xs font-bold text-white focus:outline-none focus:border-white/30"
@@ -212,8 +212,8 @@ export default function TradePerformancePage() {
             <div>
               <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">VİOP Stopaj %</label>
               <input
-                type="number"
-                step="any"
+                type="text"
+                inputMode="decimal"
                 value={viopStopajPct}
                 onChange={e => setViopStopajPct(e.target.value)}
                 className="w-20 h-8 mt-1 px-2 rounded-md bg-[#1c1d26] border border-slate-800 text-xs font-bold text-white focus:outline-none focus:border-white/30"

@@ -74,7 +74,7 @@ export default function StockDetailPage() {
           alert_type: alertType,
           trigger_condition: alertType === "strategy_signal"
             ? { direction: alertDirection }
-            : { operator: alertOperator, value: parseFloat(alertValue) || 1.0 }
+            : { operator: alertOperator, value: parseFloat(alertValue.replace(",", ".")) || 1.0 }
         })
       })
       if (res.ok) {
@@ -345,8 +345,8 @@ export default function StockDetailPage() {
                           {alertType === "volume_spike" ? "Ortalamanın Katı" : "Hedef Değer"}
                         </label>
                         <Input
-                          type="number"
-                          step="any"
+                          type="text"
+                          inputMode="decimal"
                           value={alertValue}
                           onChange={(e) => setAlertValue(e.target.value)}
                           placeholder={alertType === "volume_spike" ? "Ör: 2" : "Ör: 320"}

@@ -180,6 +180,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         className={cn(
           "border-r border-border bg-card flex flex-col h-screen z-40 transition-[transform,width] duration-250 ease-out",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
+          // Same safe-area reasoning as Header.tsx - this drawer is `fixed
+          // inset-y-0`, so on a notched phone/PWA its own top row (logo,
+          // close button) would otherwise sit behind the status bar too.
+          "pt-[env(safe-area-inset-top)] lg:pt-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >

@@ -193,6 +193,12 @@ export default function ManagedPortfoliosPage() {
 
   const addManagedAsset = async () => {
     if (!managedUserId || !newAssetTicker.trim() || !newAssetShares || !newAssetCost) return
+    const shares = parseTLAmount(newAssetShares)
+    const averageCost = parseTLAmount(newAssetCost)
+    if (!Number.isFinite(shares) || !Number.isFinite(averageCost)) {
+      setManagedError("Adet veya maliyet geçersiz - örn. 12,5 ya da 1.500,50 yazın.")
+      return
+    }
     setManagedBusy(true)
     setManagedError(null)
     try {
@@ -201,8 +207,8 @@ export default function ManagedPortfoliosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: newAssetTicker.trim().toUpperCase(),
-          shares: parseFloat(newAssetShares),
-          average_cost: parseFloat(newAssetCost),
+          shares,
+          average_cost: averageCost,
         }),
       })
       if (res.ok) {
@@ -310,6 +316,12 @@ export default function ManagedPortfoliosPage() {
 
   const saveEditAsset = async (asset: ManagedAsset) => {
     if (!editShares || !editCost) return
+    const shares = parseTLAmount(editShares)
+    const averageCost = parseTLAmount(editCost)
+    if (!Number.isFinite(shares) || !Number.isFinite(averageCost)) {
+      setManagedError("Adet veya maliyet geçersiz - örn. 12,5 ya da 1.500,50 yazın.")
+      return
+    }
     setManagedBusy(true)
     setManagedError(null)
     try {
@@ -318,8 +330,8 @@ export default function ManagedPortfoliosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: asset.ticker,
-          shares: parseFloat(editShares),
-          average_cost: parseFloat(editCost),
+          shares,
+          average_cost: averageCost,
         }),
       })
       if (res.ok) {
@@ -636,17 +648,21 @@ export default function ManagedPortfoliosPage() {
                           <>
                             <td className="px-2 text-right">
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 value={editShares}
                                 onChange={e => setEditShares(e.target.value)}
+                                placeholder="12,5"
                                 className="w-20 h-7 rounded border border-input bg-zinc-900/60 px-1.5 text-right text-xs"
                               />
                             </td>
                             <td className="px-2 text-right">
                               <input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 value={editCost}
                                 onChange={e => setEditCost(e.target.value)}
+                                placeholder="1.500,50"
                                 className="w-20 h-7 rounded border border-input bg-zinc-900/60 px-1.5 text-right text-xs"
                               />
                             </td>
@@ -771,18 +787,22 @@ export default function ManagedPortfoliosPage() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted-foreground">Adet</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={newAssetShares}
                     onChange={e => setNewAssetShares(e.target.value)}
+                    placeholder="12,5"
                     className="h-8 w-24 rounded-md border border-input bg-secondary/50 px-2 text-xs focus-visible:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted-foreground">Maliyet (₺)</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={newAssetCost}
                     onChange={e => setNewAssetCost(e.target.value)}
+                    placeholder="1.500,50"
                     className="h-8 w-24 rounded-md border border-input bg-secondary/50 px-2 text-xs focus-visible:outline-none"
                   />
                 </div>

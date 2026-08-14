@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useRef } from "react"
+import React, { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
 import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History } from "lucide-react"
@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import TradingViewChart from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
-import { pollWhileVisible } from "@/lib/usePolling"
+import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
+import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
 
@@ -95,32 +96,17 @@ export default function FundsPage() {
   // "Popüler Fonlar - Anlık Getiri": TEFAS only publishes one NAV per fund
   // per day, so this is an ESTIMATE built from each fund's last known
   // holdings x their live BIST prices (see backend get_live_estimated_return).
-  const [popularFunds, setPopularFunds] = useState<any[]>([])
-  const [popularLoading, setPopularLoading] = useState(true)
+  // Reads from a shared module-level store (popularFundsStore.ts), same one
+  // the homepage uses - navigating home -> funds -> home no longer fires a
+  // fresh request each time, only the first page to mount this session does.
+  const { funds: popularFunds, loading: popularLoading } = useSyncExternalStore(
+    subscribePopularFunds,
+    getPopularFundsSnapshot,
+    getPopularFundsSnapshot
+  )
   // A Set (not a single value) so expanding PBR doesn't collapse TMV -
   // each card toggles independently.
   const [expandedPopularCodes, setExpandedPopularCodes] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    let active = true
-    const fetchPopular = () => {
-      authFetch(`/funds/popular/live-estimate`)
-        .then(res => res.json())
-        .then(data => {
-          if (active && Array.isArray(data.funds)) setPopularFunds(data.funds)
-        })
-        .catch(err => console.error("Failed to load popular funds live estimate:", err))
-        .finally(() => { if (active) setPopularLoading(false) })
-    }
-    // pollWhileVisible (not plain setInterval) - stops entirely while the
-    // tab is hidden instead of quietly burning requests against the 1GB
-    // host forever (see usePolling.ts's docstring).
-    const stopPolling = pollWhileVisible(fetchPopular, 15000)
-    return () => {
-      active = false
-      stopPolling()
-    }
-  }, [])
 
   // Tahmin doğruluğu (geçmiş): her gün akşam (TEFAS'ın kendi NAV
   // yenilemesinden sonra), o günün canlı tahmini ile TEFAS'ın yayınladığı
@@ -280,8 +266,10 @@ export default function FundsPage() {
     }
 
     fetchFunds()
-    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
-    return pollWhileVisible(fetchFunds, 10000)
+    // pollWhileVisibleAndOpen - stops while the tab is hidden AND outside
+    // the BIST session (see usePolling.ts / bistSession.ts): this list's
+    // prices don't move outside 09:30-18:15 Mon-Fri Istanbul time either.
+    return pollWhileVisibleAndOpen(fetchFunds, 10000)
   }, [])
 
   // Fetch fund candles when selectedCode changes
@@ -388,7 +376,7 @@ export default function FundsPage() {
             <Zap className="h-4 w-4 mr-2 text-amber-400" />
             Popüler Fonlar - Anlık Getiri
           </CardTitle>
-          <CardDescription className="text-[10px]">
+          <CardDescription className="text-xs">
             TEFAS fonların NAV&apos;ını günde bir kez yayınlar - bu bölüm, her fonun son bilinen varlık dağılımını o
             varlıkların canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri
             hesaplar. Gerçek bir NAV yeniden hesaplaması değildir.
@@ -423,17 +411,17 @@ export default function FundsPage() {
                         </span>
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                       </div>
-                      <div className="text-[10px] text-muted-foreground mt-1.5 truncate">{f.name}</div>
+                      <div className="text-xs text-muted-foreground mt-1.5 truncate">{f.name}</div>
                       <div className="flex items-baseline justify-between mt-2">
                         <span className={`text-xl font-black font-mono ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
                           {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
                         </span>
-                        <span className="text-[9px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           kapsam %{f.resolved_weight_pct.toFixed(0)}
                         </span>
                       </div>
                       {f.fund_size && (
-                        <div className="text-[9px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
+                        <div className="text-[11px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
                       )}
                     </button>
                     {isExpanded && (
@@ -449,7 +437,7 @@ export default function FundsPage() {
                           .slice()
                           .sort((a: any, b: any) => b.weight - a.weight)
                           .map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between text-[10px] gap-2">
+                            <div key={h.ticker} className="flex items-center justify-between text-xs gap-2">
                               <div className="flex items-baseline gap-1.5 min-w-0">
                                 <span className="font-bold text-foreground truncate">{h.ticker}</span>
                                 <span className="text-muted-foreground/70 shrink-0">Ağırlık %{h.weight.toFixed(2)}</span>
@@ -477,7 +465,7 @@ export default function FundsPage() {
                               </div>
                             </div>
                           ))}
-                        <div className="flex items-center gap-3 pt-1.5 mt-1 border-t border-border/20 text-[8px] text-muted-foreground/60">
+                        <div className="flex items-center gap-3 pt-1.5 mt-1 border-t border-border/20 text-xs text-muted-foreground/60">
                           <span>Ağırlık: fondaki sabit pay</span>
                           <span>·</span>
                           <span>p (puan): fona bugünkü etkisi</span>
@@ -503,7 +491,7 @@ export default function FundsPage() {
             <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showEstimateHistory ? "rotate-180" : ""}`} />
           </button>
           {showEstimateHistory && (
-            <CardDescription className="text-[10px]">
+            <CardDescription className="text-xs">
               Her akşam kaydedilen o günün canlı tahmini, TEFAS&apos;ın ertesi sabah yayınladığı gerçek günlük getiriyle
               karşılaştırılır - tahminin ne kadar isabetli olduğunu görmek için.
             </CardDescription>
@@ -527,19 +515,19 @@ export default function FundsPage() {
                 {estimateAccuracySummary && (
                   <div className="flex items-center gap-4 mb-4 p-3 rounded-lg bg-secondary/15 border border-border/30">
                     <div>
-                      <div className="text-[9px] text-muted-foreground uppercase font-bold">Ortalama Sapma</div>
+                      <div className="text-[11px] text-muted-foreground uppercase font-bold">Ortalama Sapma</div>
                       <div className="text-lg font-black font-mono text-foreground">
                         ±{estimateAccuracySummary.meanAbsError.toFixed(2)} <span className="text-xs font-bold text-muted-foreground">puan</span>
                       </div>
                     </div>
                     <div className="h-8 w-px bg-border/40" />
                     <div>
-                      <div className="text-[9px] text-muted-foreground uppercase font-bold">İsabet Oranı</div>
+                      <div className="text-[11px] text-muted-foreground uppercase font-bold">İsabet Oranı</div>
                       <div className="text-lg font-black font-mono text-emerald-400">
                         %{estimateAccuracySummary.accuratePct.toFixed(0)}
                       </div>
                     </div>
-                    <div className="text-[9px] text-muted-foreground/70 ml-auto text-right leading-relaxed">
+                    <div className="text-[11px] text-muted-foreground/70 ml-auto text-right leading-relaxed">
                       Son {estimateAccuracySummary.sampleCount} ölçümde,<br />±0.5 puan içinde kalan tahmin oranı
                     </div>
                   </div>
@@ -547,7 +535,7 @@ export default function FundsPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="text-[10px] text-muted-foreground uppercase border-b border-border/40">
+                      <tr className="text-xs text-muted-foreground uppercase border-b border-border/40">
                         <th className="text-left py-2 pr-4">Tarih</th>
                         <th className="text-left py-2 pr-4">Fon</th>
                         <th className="text-right py-2 pr-4">Canlı Tahmin</th>
@@ -572,7 +560,7 @@ export default function FundsPage() {
                               {row.error_pct == null || !tier ? (
                                 <span className="font-mono text-muted-foreground">—</span>
                               ) : (
-                                <span className={`inline-flex items-center gap-1 font-mono font-bold px-1.5 py-0.5 rounded border text-[10px] ${tier.className}`}>
+                                <span className={`inline-flex items-center gap-1 font-mono font-bold px-1.5 py-0.5 rounded border text-xs ${tier.className}`}>
                                   {row.error_pct >= 0 ? "+" : ""}{row.error_pct.toFixed(2)} · {tier.label}
                                 </span>
                               )}
@@ -607,7 +595,7 @@ export default function FundsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Search */}
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-bold uppercase">Fon Kodu/Adı</label>
+                  <label className="text-xs text-muted-foreground font-bold uppercase">Fon Kodu/Adı</label>
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
@@ -621,7 +609,7 @@ export default function FundsPage() {
 
                 {/* Category */}
                 <div className="space-y-1">
-                  <label className="text-[10px] text-muted-foreground font-bold uppercase">Fon Türü (Kategori)</label>
+                  <label className="text-xs text-muted-foreground font-bold uppercase">Fon Türü (Kategori)</label>
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
@@ -655,7 +643,7 @@ export default function FundsPage() {
                     <RefreshCw className="h-3 w-3 mr-1" />
                     Temizle
                   </Button>
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                  <span className="text-xs font-bold text-muted-foreground uppercase">
                     {sortedAndFilteredFunds.length} Fon Listeleniyor
                   </span>
                 </div>
@@ -734,7 +722,7 @@ export default function FundsPage() {
                                 </button>
                               </td>
                               <td className="px-4 font-bold text-foreground">
-                                <span className={`px-2 py-0.5 rounded text-[10px] ${
+                                <span className={`px-2 py-0.5 rounded text-xs ${
                                   isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
                                 }`}>
                                   {fund.code}
@@ -778,7 +766,7 @@ export default function FundsPage() {
                     </span>
                     <div>
                       <CardTitle className="text-sm font-black line-clamp-1">{selectedFundDetails.name}</CardTitle>
-                      <CardDescription className="text-[10px] mt-0.5">{selectedFundDetails.category} Kategorisi</CardDescription>
+                      <CardDescription className="text-xs mt-0.5">{selectedFundDetails.category} Kategorisi</CardDescription>
                     </div>
                   </div>
                   <button 
@@ -810,7 +798,7 @@ export default function FundsPage() {
 
                 {/* Returns Table */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Tarihsel Getiri Performansı</span>
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Tarihsel Getiri Performansı</span>
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="bg-secondary/20 p-2.5 border border-border/30 rounded-lg flex items-center justify-between">
                       <span className="text-muted-foreground">Son 1 Hafta</span>
@@ -836,7 +824,7 @@ export default function FundsPage() {
                   >
                     Detaylı Analiz & Varlık Kırılımı (Premium)
                   </Button>
-                  <div className="text-[9px] text-muted-foreground text-center">
+                  <div className="text-[11px] text-muted-foreground text-center">
                     * Veriler TEFAS üzerinden anlık endeks değişim çarpanlarına göre simüle edilmiştir.
                   </div>
                 </div>
@@ -929,13 +917,13 @@ export default function FundsPage() {
                       <tr key={f.code} className="border-b border-border/30 h-11">
                         <td className="px-3">
                           <span
-                            className="px-2 py-0.5 rounded text-[10px] font-bold text-black"
+                            className="px-2 py-0.5 rounded text-xs font-bold text-black"
                             style={{ backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length] }}
                           >
                             {f.code}
                           </span>
                           {f.is_simulated && (
-                            <span className="ml-1.5 text-[9px] text-amber-400 font-semibold">simüle</span>
+                            <span className="ml-1.5 text-[11px] text-amber-400 font-semibold">simüle</span>
                           )}
                         </td>
                         <td className="px-3 text-right font-mono font-semibold">₺{Number(f.price).toFixed(4)}</td>
@@ -992,7 +980,7 @@ export default function FundsPage() {
                 </div>
               ))}
               {compareCodes.length < 2 && (
-                <span className="text-[10px] text-muted-foreground">En az 2 fon seçin</span>
+                <span className="text-xs text-muted-foreground">En az 2 fon seçin</span>
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">

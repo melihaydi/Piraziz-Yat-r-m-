@@ -13,7 +13,7 @@ import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
 import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
-import { pollWhileVisible } from "@/lib/usePolling"
+import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 
 const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
 
@@ -275,7 +275,10 @@ export default function ScreenerPage() {
     fetchStocks()
     // Backend reads from an in-memory TradingView WebSocket cache, so polling
     // every 2s doesn't add real network/API load, just keeps the table fresh.
-    const stopStocks = pollWhileVisible(fetchStocks, 2000)
+    // pollWhileVisibleAndOpen also skips this outside the BIST session
+    // (Mon-Fri 09:30-18:15 Istanbul time, see bistSession.ts) - prices don't
+    // move then either.
+    const stopStocks = pollWhileVisibleAndOpen(fetchStocks, 2000)
     return stopStocks
   }, [])
 

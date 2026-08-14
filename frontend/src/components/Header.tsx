@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch, getProfilePicKey } from "@/lib/auth"
-import { usePolling, pollWhileVisible } from "@/lib/usePolling"
+import { usePolling, pollWhileVisibleAndOpen } from "@/lib/usePolling"
+import { useBistSessionOpen } from "@/lib/bistSession"
 
 // role -> display label/styling. Previously the header just hardcoded
 // "Pro Üye" for every single user regardless of their real subscription
@@ -151,8 +152,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
     // now caches /portfolio/signals for 2 minutes (see portfolio.py), so
     // polling much faster than that just burns requests without fresher
     // data. 60s still catches new alarm triggers promptly.
-    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
-    return pollWhileVisible(checkSignalsAndAlarms, 60000)
+    // pollWhileVisibleAndOpen - also skips this outside the BIST session
+    // (see bistSession.ts): both /portfolio/signals and /alert/check are
+    // price-driven, so there's nothing new to detect outside 09:30-18:15
+    // Mon-Fri Istanbul time either.
+    return pollWhileVisibleAndOpen(checkSignalsAndAlarms, 60000)
   }, [])
 
   // Frantic Strateji signal history notifications - previously the only
@@ -210,8 +214,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
     // Matches StrategyEngine's own 180s scan cycle closely enough (60s)
     // that a new signal is announced within a minute of firing, without
     // polling meaningfully faster than the data actually changes.
-    // pollWhileVisible - stops while the tab is hidden (see usePolling.ts).
-    return pollWhileVisible(checkStrategyHistory, 60000)
+    // pollWhileVisibleAndOpen - also skips this outside the BIST session
+    // (see bistSession.ts) - Frantic Algoritmik Strateji's own scan loop
+    // doesn't run then either (see strategy_engine.py).
+    return pollWhileVisibleAndOpen(checkStrategyHistory, 60000)
   }, [role])
 
   // Profile picture is a real per-browser choice (a data URL, never sent to
@@ -324,8 +330,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
   // usePolling (not setInterval) so this stops entirely while the tab is
   // hidden. Being app-wide, this was the single largest source of idle
   // traffic: a parked tab kept requesting market-summary 12x/minute
-  // forever, and nothing rendered any of it.
-  usePolling(fetchIndexes, 5000)
+  // forever, and nothing rendered any of it. Also gated on the BIST session
+  // (Mon-Fri 09:30-18:15 Istanbul time, see bistSession.ts) - the index
+  // doesn't move outside those hours either, and this header is mounted on
+  // every single page.
+  const bistSessionOpen = useBistSessionOpen()
+  usePolling(fetchIndexes, 5000, bistSessionOpen)
 
   // 2. Fetch all tickers (stocks) for search autocomplete
   useEffect(() => {
@@ -382,7 +392,14 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }, [searchQuery, tickersList, fundsList])
 
   return (
-    <header className="border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-20">
+    <header className="border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-20 pt-[env(safe-area-inset-top)]">
+    {/* iOS PWA/standalone mode (and some Android browsers) render content
+        edge-to-edge under the status bar/notch because layout.tsx sets
+        viewportFit: "cover" for a true full-screen app feel - without the
+        safe-area padding above, this row's own content (hamburger button,
+        search, badge) sat physically behind the status bar: visible on a
+        plain desktop-width browser tab, but literally unreachable/invisible
+        on a real notched phone or the installed PWA. */}
     <div className="h-16 flex items-center justify-between px-3 md:px-8 gap-2">
       {/* Mobile/tablet menu toggle - opens the off-canvas Sidebar drawer */}
       <button

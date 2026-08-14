@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { authFetch } from "@/lib/auth"
-import { pollWhileVisible } from "@/lib/usePolling"
+import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 
 export type InstrumentType = "stock" | "viop"
 export type Broker = "info_yatirim" | "midas"
@@ -416,7 +416,9 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         .catch(err => console.error("Failed to load trade watchlist:", err))
     }
     fetchWatchlist()
-    const stop = pollWhileVisible(fetchWatchlist, 2000)
+    // pollWhileVisibleAndOpen - also skips this outside the BIST session
+    // (see bistSession.ts), same reasoning as every other live-price poll.
+    const stop = pollWhileVisibleAndOpen(fetchWatchlist, 2000)
     return () => {
       active = false
       stop()
@@ -434,7 +436,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         .catch(err => console.error("Failed to load VİOP contracts:", err))
     }
     fetchViop()
-    const stop = pollWhileVisible(fetchViop, 2000)
+    const stop = pollWhileVisibleAndOpen(fetchViop, 2000)
     return () => {
       active = false
       stop()
@@ -450,7 +452,10 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   const hasAccount = !!account
   useEffect(() => {
     if (!hasAccount) return
-    return pollWhileVisible(refreshAccount, 3000)
+    // Also gated on the BIST session (see bistSession.ts) - correctly so,
+    // since server-side fill checks (see comment below) should only
+    // trigger against a live session price in the first place.
+    return pollWhileVisibleAndOpen(refreshAccount, 3000)
   }, [hasAccount, refreshAccount])
 
   // Pending (resting LIMIT) orders - polled on the same cadence as the
@@ -461,7 +466,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
   // just picks up the resulting state.
   useEffect(() => {
     if (!hasAccount) return
-    return pollWhileVisible(refreshPendingOrders, 3000)
+    return pollWhileVisibleAndOpen(refreshPendingOrders, 3000)
   }, [hasAccount, refreshPendingOrders])
 
   // Whenever the tab switches, default the selected symbol to something

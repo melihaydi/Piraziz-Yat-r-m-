@@ -94,7 +94,11 @@ export default function TradePage() {
     <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#101015] overflow-y-auto" : "min-h-screen bg-[#101015]"}>
       {/* Terminal chrome - replaces the app's global Header for this route,
        * so it carries its own brand mark + a way back to the main app. */}
-      <div className="sticky top-0 z-20 bg-gradient-to-b from-[#16171E] to-[#101015] border-b border-slate-800/80">
+      {/* Same safe-area reasoning as the global Header.tsx - this route skips
+          that shared header entirely, so it needs its own top padding to
+          keep this row out from behind a notch/status bar in standalone
+          PWA mode (see layout.tsx's viewportFit: "cover"). */}
+      <div className="sticky top-0 z-20 bg-gradient-to-b from-[#16171E] to-[#101015] border-b border-slate-800/80 pt-[env(safe-area-inset-top)]">
         <div className="flex items-center justify-between flex-wrap gap-3 px-3 sm:px-6 py-3">
           <div className="flex items-center gap-4">
             {!isFullscreen && (
