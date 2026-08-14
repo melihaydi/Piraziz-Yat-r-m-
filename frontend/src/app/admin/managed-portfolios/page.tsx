@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus, Landmark, DollarSign } from "lucide-react"
+import React, { useEffect, useMemo, useState } from "react"
+import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Minus, Landmark, DollarSign, Search } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -75,6 +75,10 @@ export default function ManagedPortfoliosPage() {
   const [forbidden, setForbidden] = useState(false)
 
   const [users, setUsers] = useState<AdminUser[]>([])
+  // Kullanıcı sayısı büyüdükçe düz <select> içinde arama yapmak pratik
+  // olmaktan çıkar - yıldızlı hızlı-erişim listesi dururken, e-posta/isim
+  // filtreli bir arama kutusu seçim listesini daraltır.
+  const [userQuery, setUserQuery] = useState("")
   const [managedUserId, setManagedUserId] = useState<number | "">("")
   const [managedPortfolio, setManagedPortfolio] = useState<ManagedPortfolio | null>(null)
   const [managedLoading, setManagedLoading] = useState(false)
@@ -150,6 +154,14 @@ export default function ManagedPortfoliosPage() {
       .catch(() => setForbidden(true))
       .finally(() => setCheckingAccess(false))
   }, [])
+
+  const filteredUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase()
+    if (!q) return users
+    return users.filter(u =>
+      u.email.toLowerCase().includes(q) || (u.full_name || "").toLowerCase().includes(q)
+    )
+  }, [users, userQuery])
 
   const togglePinned = (userId: number) => {
     setPinnedIds(prev => {
@@ -447,14 +459,26 @@ export default function ManagedPortfoliosPage() {
             </div>
           )}
 
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={userQuery}
+              onChange={e => setUserQuery(e.target.value)}
+              placeholder="E-posta veya isim ile ara..."
+              className="pl-9 h-9 text-xs"
+            />
+          </div>
+
           <div className="flex items-center gap-2">
             <select
               value={managedUserId}
               onChange={e => onManagedUserChange(e.target.value)}
               className="h-9 w-full max-w-sm rounded-md border border-input bg-secondary/50 px-3 text-xs font-semibold focus-visible:outline-none cursor-pointer"
             >
-              <option value="">Kullanıcı seçin...</option>
-              {users.map(u => (
+              <option value="">
+                {filteredUsers.length === 0 ? "Eşleşen kullanıcı yok" : "Kullanıcı seçin..."}
+              </option>
+              {filteredUsers.map(u => (
                 <option key={u.id} value={u.id}>{u.full_name ? `${u.full_name} (${u.email})` : u.email}</option>
               ))}
             </select>

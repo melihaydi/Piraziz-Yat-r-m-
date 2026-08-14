@@ -1,9 +1,10 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { ShieldCheck, Loader2, ShieldAlert, LifeBuoy } from "lucide-react"
+import React, { useEffect, useMemo, useState } from "react"
+import { ShieldCheck, Loader2, ShieldAlert, LifeBuoy, Search, KeyRound, UserX } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
 import { authFetch } from "@/lib/auth"
 
 interface AdminUser {
@@ -39,6 +40,11 @@ export default function AdminPage() {
   const [forbidden, setForbidden] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
+  // Kullanıcı sayısı büyüdükçe düz liste taranamaz hale gelir - e-posta/isim
+  // üzerinden basit bir client-side filtre, backend'de ayrı bir arama
+  // endpoint'i gerektirmeden tabloyu kullanılabilir tutar.
+  const [userSearch, setUserSearch] = useState("")
 
   const [tickets, setTickets] = useState<SupportTicket[]>([])
   const [ticketsLoading, setTicketsLoading] = useState(true)
@@ -162,6 +168,60 @@ export default function AdminPage() {
     }
   }
 
+  const triggerPasswordReset = async (id: number, email: string) => {
+    if (!window.confirm(`${email} adresine şifre sıfırlama e-postası gönderilecek. Devam edilsin mi?`)) return
+    setBusyId(id)
+    setActionError(null)
+    setActionNotice(null)
+    try {
+      const res = await authFetch(`/admin/users/${id}/reset-password`, { method: "POST" })
+      const body = await res.json().catch(() => null)
+      if (res.ok) {
+        setActionNotice(body?.detail || "Şifre sıfırlama e-postası gönderildi.")
+        setTimeout(() => setActionNotice(null), 5000)
+      } else {
+        setActionError(body?.detail || "Şifre sıfırlama e-postası gönderilemedi.")
+      }
+    } catch (e) {
+      setActionError("Sunucuya ulaşılamadı.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const deleteUser = async (id: number, email: string) => {
+    if (!window.confirm(
+      `${email} hesabı silinecek.\n\nBu geri alınamaz: hesap pasif hale gelir, e-posta/isim anonimleştirilir ve ` +
+      `kullanıcı bir daha giriş yapamaz. Portföy/işlem geçmişi denetim kaydı için saklanır.\n\nEmin misiniz?`
+    )) return
+    setBusyId(id)
+    setActionError(null)
+    setActionNotice(null)
+    try {
+      const res = await authFetch(`/admin/users/${id}`, { method: "DELETE" })
+      const body = await res.json().catch(() => null)
+      if (res.ok) {
+        setUsers(prev => prev.filter(u => u.id !== id))
+        setActionNotice(body?.detail || "Hesap silindi.")
+        setTimeout(() => setActionNotice(null), 5000)
+      } else {
+        setActionError(body?.detail || "Hesap silinemedi.")
+      }
+    } catch (e) {
+      setActionError("Sunucuya ulaşılamadı.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase()
+    if (!q) return users
+    return users.filter(u =>
+      u.email.toLowerCase().includes(q) || (u.full_name || "").toLowerCase().includes(q)
+    )
+  }, [users, userSearch])
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-48 space-y-4">
@@ -189,6 +249,13 @@ export default function AdminPage() {
         </div>
       )}
 
+      {actionNotice && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm font-semibold text-emerald-400 flex items-center justify-between gap-3">
+          <span>{actionNotice}</span>
+          <button onClick={() => setActionNotice(null)} className="text-emerald-400/70 hover:text-emerald-300 cursor-pointer shrink-0">✕</button>
+        </div>
+      )}
+
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
           <ShieldCheck className="h-7 w-7 text-red-400" />
@@ -199,8 +266,23 @@ export default function AdminPage() {
 
       <Card glass={true}>
         <CardHeader>
-          <CardTitle className="text-lg">Kullanıcılar ({users.length})</CardTitle>
-          <CardDescription>Gerçek bir ödeme entegrasyonu olmadığı için üyelik seviyesi burada manuel atanır.</CardDescription>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-lg">
+                Kullanıcılar ({filteredUsers.length}{filteredUsers.length !== users.length ? ` / ${users.length}` : ""})
+              </CardTitle>
+              <CardDescription>Gerçek bir ödeme entegrasyonu olmadığı için üyelik seviyesi burada manuel atanır.</CardDescription>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={userSearch}
+                onChange={e => setUserSearch(e.target.value)}
+                placeholder="E-posta veya isim ara..."
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -213,10 +295,14 @@ export default function AdminPage() {
                   <th className="px-3 md:px-6 text-center">Durum</th>
                   <th className="px-3 md:px-6 text-center">2FA</th>
                   <th className="px-3 md:px-6">Kayıt Tarihi</th>
+                  <th className="px-3 md:px-6 text-center">İşlemler</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
+                {filteredUsers.length === 0 && (
+                  <tr><td colSpan={7} className="text-center text-muted-foreground py-8 text-xs">Aramayla eşleşen kullanıcı yok.</td></tr>
+                )}
+                {filteredUsers.map(u => (
                   <tr key={u.id} className="border-b border-border/40 hover:bg-secondary/20 transition-colors h-14">
                     <td className="px-3 md:px-6 font-bold text-foreground">
                       <div className="flex items-center gap-2">
@@ -273,6 +359,28 @@ export default function AdminPage() {
                     </td>
                     <td className="px-3 md:px-6 text-muted-foreground text-xs font-mono">
                       {new Date(u.created_at).toLocaleDateString("tr-TR")}
+                    </td>
+                    <td className="px-3 md:px-6">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => triggerPasswordReset(u.id, u.email)}
+                          disabled={busyId === u.id}
+                          title="Şifre sıfırlama e-postası gönder"
+                          className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-amber-400 hover:border-amber-500/30 cursor-pointer disabled:opacity-50 transition-colors"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                        </button>
+                        {!u.is_superuser && (
+                          <button
+                            onClick={() => deleteUser(u.id, u.email)}
+                            disabled={busyId === u.id}
+                            title="Hesabı sil"
+                            className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-rose-400 hover:border-rose-500/30 cursor-pointer disabled:opacity-50 transition-colors"
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

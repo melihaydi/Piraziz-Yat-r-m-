@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from app.models.user import User
@@ -98,3 +100,70 @@ def test_admin_can_deactivate_another_account(client, admin_headers, plain_heade
     )
     assert res.status_code == 200
     assert res.json()["is_active"] is False
+
+
+def test_non_superuser_cannot_trigger_password_reset(client, plain_headers, admin_headers, db):
+    target = db.query(User).filter(User.email == "admin@example.com").first()
+    res = client.post(f"/api/v1/admin/users/{target.id}/reset-password", headers=plain_headers)
+    assert res.status_code == 403
+
+
+def test_admin_can_trigger_password_reset_email(client, admin_headers, plain_headers, db):
+    target = db.query(User).filter(User.email == "plainuser@example.com").first()
+    with patch("app.api.v1.endpoints.admin.send_email") as mock_email:
+        res = client.post(f"/api/v1/admin/users/{target.id}/reset-password", headers=admin_headers)
+    assert res.status_code == 200
+    mock_email.assert_called_once()
+    assert mock_email.call_args[0][0] == "plainuser@example.com"
+
+
+def test_password_reset_rejected_for_inactive_account(client, admin_headers, plain_headers, db):
+    target = db.query(User).filter(User.email == "plainuser@example.com").first()
+    target.is_active = False
+    db.commit()
+    res = client.post(f"/api/v1/admin/users/{target.id}/reset-password", headers=admin_headers)
+    assert res.status_code == 400
+
+
+def test_non_superuser_cannot_delete_account(client, plain_headers, admin_headers, db):
+    target = db.query(User).filter(User.email == "admin@example.com").first()
+    res = client.delete(f"/api/v1/admin/users/{target.id}", headers=plain_headers)
+    assert res.status_code == 403
+
+
+def test_admin_cannot_delete_own_account(client, admin_headers, db):
+    admin = db.query(User).filter(User.email == "admin@example.com").first()
+    res = client.delete(f"/api/v1/admin/users/{admin.id}", headers=admin_headers)
+    assert res.status_code == 400
+
+
+def test_admin_cannot_delete_another_superuser(client, admin_headers, db):
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "secondadmin@example.com", "password": "mypassword", "terms_accepted": True},
+    )
+    second_admin = db.query(User).filter(User.email == "secondadmin@example.com").first()
+    second_admin.is_superuser = True
+    db.commit()
+    res = client.delete(f"/api/v1/admin/users/{second_admin.id}", headers=admin_headers)
+    assert res.status_code == 400
+
+
+def test_admin_can_delete_a_plain_account(client, admin_headers, plain_headers, db):
+    target = db.query(User).filter(User.email == "plainuser@example.com").first()
+    target_id = target.id
+    res = client.delete(f"/api/v1/admin/users/{target_id}", headers=admin_headers)
+    assert res.status_code == 200
+
+    db.expire_all()
+    deleted = db.query(User).filter(User.id == target_id).first()
+    assert deleted.is_active is False
+    assert deleted.email == f"deleted-user-{target_id}@bipterminal.local"
+    assert deleted.full_name is None
+    assert deleted.totp_enabled is False
+
+    # The now-anonymized account's old token must stop working (deps.py's
+    # get_current_user rejects an inactive account's token with 400, not
+    # 401 - "Inactive user").
+    res2 = client.get("/api/v1/auth/me", headers=plain_headers)
+    assert res2.status_code == 400

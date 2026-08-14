@@ -10,6 +10,8 @@ from datetime import timedelta
 
 from app.core.redis import cache_service
 from app.services.market_data import market_data_service
+from app.db.session import SessionLocal
+from app.models.fund_composition_override import FundCompositionOverride
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +427,74 @@ class TefasService:
         self._cache_key = "tefas:persisted_cache"
         self._load_persisted_cache()
 
+        # Admin-edited composition overrides (see "Fon Ağırlık Ayarlamaları"
+        # in the admin panel / FundCompositionOverride model) - keyed by
+        # fund_code, checked first in get_live_estimated_return before
+        # falling back to the hardcoded FUND_DETAILS_MAP default. Loaded
+        # once here at startup; refresh_composition_override() re-reads a
+        # single fund the moment an admin saves a change, so it takes effect
+        # immediately without a service restart.
+        self._composition_overrides: Dict[str, Dict[str, Any]] = {}
+        self._load_composition_overrides()
+
+    def _load_composition_overrides(self):
+        # This runs at module-import time (see the `tefas_service =
+        # TefasService()` singleton at the bottom of this file), which can
+        # happen before the DB schema exists yet (a fresh test run, a first
+        # local checkout before migrations have run) - caught and logged
+        # rather than fatal, same reasoning as _load_persisted_cache's Redis
+        # handling. Worst case, overrides just start empty and every fund
+        # falls back to its FUND_DETAILS_MAP default until the next restart.
+        try:
+            db = SessionLocal()
+            try:
+                rows = db.query(FundCompositionOverride).all()
+                for row in rows:
+                    self._composition_overrides[row.fund_code] = {
+                        "assets_distribution": row.assets_distribution,
+                        "as_of": row.as_of.isoformat() if row.as_of else None,
+                    }
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Could not load fund composition overrides: {e}")
+
+    def refresh_composition_override(self, fund_code: str):
+        """Re-reads one fund's override row from the DB into the in-memory
+        cache - called right after an admin PUTs a change via the admin
+        panel, so get_live_estimated_return picks it up on its very next
+        call instead of waiting for a redeploy/restart. Removes the
+        in-memory entry (falling back to FUND_DETAILS_MAP) if the row was
+        deleted."""
+        fund_code = fund_code.upper()
+        db = SessionLocal()
+        try:
+            row = db.query(FundCompositionOverride).filter(FundCompositionOverride.fund_code == fund_code).first()
+            if row:
+                self._composition_overrides[fund_code] = {
+                    "assets_distribution": row.assets_distribution,
+                    "as_of": row.as_of.isoformat() if row.as_of else None,
+                }
+            else:
+                self._composition_overrides.pop(fund_code, None)
+        finally:
+            db.close()
+
+    def _resolve_composition(self, code: str) -> Optional[Dict[str, Any]]:
+        """{"assets_distribution": [...], "as_of": str|None} for a fund
+        code, preferring an admin-edited override (self._composition_overrides)
+        over the hardcoded FUND_DETAILS_MAP default. None if the fund has
+        neither - callers use this both for the drift-factor build and for
+        get_live_estimated_return, so an override takes effect in both
+        places at once."""
+        override = self._composition_overrides.get(code)
+        if override:
+            return override
+        details = FUND_DETAILS_MAP.get(code)
+        if not details or "assets_distribution" not in details:
+            return None
+        return {"assets_distribution": details["assets_distribution"], "as_of": details.get("as_of")}
+
     def _load_persisted_cache(self):
         data = cache_service.get_json(self._cache_key)
         if not data:
@@ -698,11 +768,15 @@ class TefasService:
             self._is_building_drift = True
         try:
             tickers_by_as_of: Dict[str, set] = {}
-            for details in FUND_DETAILS_MAP.values():
-                as_of = details.get("as_of")
-                if not as_of or "assets_distribution" not in details:
+            all_codes = set(FUND_DETAILS_MAP.keys()) | set(self._composition_overrides.keys())
+            for code in all_codes:
+                comp = self._resolve_composition(code)
+                if not comp:
                     continue
-                for item in details["assets_distribution"]:
+                as_of = comp["as_of"]
+                if not as_of:
+                    continue
+                for item in comp["assets_distribution"]:
                     ticker = str(item["name"]).upper()
                     if ticker in _KNOWN_STOCK_TICKERS:
                         tickers_by_as_of.setdefault(as_of, set()).add(ticker)
@@ -997,8 +1071,8 @@ class TefasService:
         holding's live change - not a real intraday NAV recalculation.
         """
         code = code.upper()
-        details = FUND_DETAILS_MAP.get(code)
-        if not details:
+        comp = self._resolve_composition(code)
+        if not comp:
             return None
         _visited = (_visited or set()) | {code}
 
@@ -1029,12 +1103,12 @@ class TefasService:
         # inflating it away). Funds with no "as_of" set keep the plain
         # static weights (drifted_weights stays empty, .get() below falls
         # through to item["value"]).
-        as_of = details.get("as_of")
+        as_of = comp["as_of"]
         drifted_weights: Dict[str, float] = {}
         if as_of:
             raw_total = 0.0
             drifted_total = 0.0
-            for item in details["assets_distribution"]:
+            for item in comp["assets_distribution"]:
                 t = str(item["name"]).upper()
                 w = float(item["value"])
                 raw_total += w
@@ -1045,7 +1119,7 @@ class TefasService:
             for t in drifted_weights:
                 drifted_weights[t] *= scale
 
-        for item in details["assets_distribution"]:
+        for item in comp["assets_distribution"]:
             name = item["name"]
             ticker = name.upper()
             weight = drifted_weights.get(ticker, float(item["value"]))
@@ -1067,7 +1141,7 @@ class TefasService:
             # real TEFAS daily return instead - a real, if lagging, number
             # beats a mostly-empty recursive one.
             MIN_TRUSTED_RESOLVED_PCT = 20.0
-            if ticker in FUND_DETAILS_MAP and ticker not in _visited:
+            if (ticker in FUND_DETAILS_MAP or ticker in self._composition_overrides) and ticker not in _visited:
                 sub = self.get_live_estimated_return(ticker, _visited, delay_minutes)
                 if sub is not None and sub["resolved_weight_pct"] >= MIN_TRUSTED_RESOLVED_PCT:
                     change = sub["estimated_change_pct"]

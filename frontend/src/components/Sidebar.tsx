@@ -17,7 +17,8 @@ import {
   Bot,
   ShieldCheck,
   StickyNote,
-  Users
+  Users,
+  PieChart
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
@@ -158,6 +159,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       name: "Yönetilen Portföyler",
       href: "/admin/managed-portfolios",
       icon: Users,
+      activeClass: "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)] font-extrabold",
+      hoverClass: "text-muted-foreground hover:bg-red-500/5 hover:text-red-400",
+      iconClass: "text-red-400"
+    }, {
+      // Same superuser-only visibility - lets an admin correct a tracked
+      // fund's live-estimate holding weights without a code change/deploy
+      // (see admin/fund-compositions/page.tsx).
+      name: "Fon Ağırlık Ayarlamaları",
+      href: "/admin/fund-compositions",
+      icon: PieChart,
       activeClass: "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)] font-extrabold",
       hoverClass: "text-muted-foreground hover:bg-red-500/5 hover:text-red-400",
       iconClass: "text-red-400"

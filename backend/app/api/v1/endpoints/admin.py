@@ -1,20 +1,26 @@
 import html
+from datetime import date, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.api.v1.endpoints.auth import PASSWORD_RESET_TOKEN_MINUTES
 from app.api.v1.endpoints.portfolio import calculate_asset_metrics, _daily_change, _usd_try_rate
+from app.core import security
 from app.core.audit import log_audit
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.email import send_email
 from app.models.audit_log import AuditLog
+from app.models.fund_composition_override import FundCompositionOverride
 from app.models.portfolio import Portfolio, PortfolioAsset
 from app.models.support_ticket import SupportTicket
 from app.models.user import User
 from app.schemas.support import SupportTicketAdminResponse, SupportTicketUpdate
 from app.schemas.user import UserOut
+from app.services.tefas import tefas_service, FUND_DETAILS_MAP, BASE_FUNDS
 
 router = APIRouter()
 
@@ -114,6 +120,86 @@ def reset_user_2fa(
     log_audit(db, "admin_2fa_reset", request=request, user_id=_admin.id, resource_type="user",
               resource_id=target.id, details={"target_email": target.email})
     return target
+
+
+@router.post("/users/{user_id}/reset-password")
+@limiter.limit("10/minute")
+def admin_trigger_password_reset(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Sends the target user the exact same password-reset email
+    /auth/forgot-password would (same short-lived scope="password_reset"
+    token) - superuser only. Deliberately does NOT set or reveal a new
+    password itself: the admin never sees/chooses the user's credential,
+    the user still picks their own via the emailed link, same as
+    self-service. Audit-logged since triggering this on someone else's
+    account is a real support action worth a paper trail."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+    if not target.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hesap pasif - şifre sıfırlama e-postası gönderilemez.")
+
+    token = security.create_access_token(
+        target.id, expires_delta=timedelta(minutes=PASSWORD_RESET_TOKEN_MINUTES), scope="password_reset"
+    )
+    link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+    send_email(
+        target.email,
+        "Şifre Sıfırlama - BIP Terminal",
+        f"""
+        <p>Merhaba{f' {html.escape(target.full_name)}' if target.full_name else ''},</p>
+        <p>Hesabın için bir yönetici tarafından şifre sıfırlama isteği oluşturuldu. Aşağıdaki bağlantıya tıklayarak yeni bir şifre belirleyebilirsin:</p>
+        <p><a href="{link}">Şifremi Sıfırla</a></p>
+        <p>Bu bağlantı {PASSWORD_RESET_TOKEN_MINUTES} dakika geçerlidir.</p>
+        """,
+    )
+    log_audit(db, "admin_password_reset_triggered", request=request, user_id=_admin.id, resource_type="user",
+              resource_id=target.id, details={"target_email": target.email})
+    return {"detail": "Şifre sıfırlama e-postası gönderildi."}
+
+
+@router.delete("/users/{user_id}")
+@limiter.limit("10/minute")
+def admin_delete_user(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Admin-initiated account deletion - mirrors /auth/me/delete's own
+    soft-delete + anonymize pattern exactly (is_active=False, email
+    scrambled to an unusable placeholder, name/2FA cleared) rather than a
+    hard DB delete: this user's trade/portfolio/note/alert rows stay in
+    place for financial/audit history, they just stop being linkable to a
+    real person. Refuses to delete another superuser (use a role change
+    first if that's really intended - a stray admin-panel click shouldn't
+    be able to lock out another admin) or the caller's own account (use
+    Settings' self-service delete for that, which re-confirms the password
+    first). The target's pre-anonymization email is preserved in the audit
+    log details as the only remaining record of who this was."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kullanıcı bulunamadı.")
+    if target.id == admin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Kendi hesabınızı buradan silemezsiniz - Ayarlar sayfasını kullanın.")
+    if target.is_superuser:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bir yönetici hesabı buradan silinemez.")
+
+    target_email = target.email
+    target.is_active = False
+    target.email = f"deleted-user-{target.id}@bipterminal.local"
+    target.full_name = None
+    target.totp_secret = None
+    target.totp_enabled = False
+    target.totp_recovery_codes = None
+    db.commit()
+    log_audit(db, "admin_account_deleted", request=request, user_id=admin.id, resource_type="user",
+              resource_id=target.id, details={"target_email": target_email})
+    return {"detail": "Hesap silindi."}
 
 
 @router.get("/audit-log")
@@ -591,3 +677,148 @@ def delete_managed_asset(
     log_audit(db, "managed_portfolio_asset_removed", request=request, user_id=admin.id, resource_type="portfolio_asset",
               resource_id=asset_id, details={"target_user_id": target_user_id, "ticker": ticker})
     return None
+
+
+# --- Fon Ağırlık Ayarlamaları (fund composition overrides) -----------------
+# Lets an admin correct a tracked fund's holding weights (the ones
+# "Popüler Fonlar - Anlık Getiri" weights each holding's live price change
+# by - see tefas_service.get_live_estimated_return) from the admin panel
+# instead of needing a code change + full deploy every time TEFAS publishes
+# an updated composition. Persisted in FundCompositionOverride; takes effect
+# immediately via tefas_service.refresh_composition_override(), no restart.
+
+class FundCompositionHoldingIn(BaseModel):
+    name: str
+    value: float
+
+
+class FundCompositionIn(BaseModel):
+    assets_distribution: List[FundCompositionHoldingIn]
+    # Reference date for weight-drift adjustment (see
+    # get_live_estimated_return's own docstring) - optional, leave unset to
+    # keep the plain static weights with no drift adjustment.
+    as_of: Optional[date] = None
+
+
+def _fund_composition_dict(code: str, override: Optional[FundCompositionOverride]) -> dict:
+    details = FUND_DETAILS_MAP.get(code, {})
+    if override:
+        assets_distribution = override.assets_distribution
+        as_of = override.as_of.isoformat() if override.as_of else None
+        is_override = True
+    else:
+        assets_distribution = details.get("assets_distribution", [])
+        as_of = details.get("as_of")
+        is_override = False
+    return {
+        "fund_code": code,
+        "name": BASE_FUNDS.get(code, {}).get("name", code),
+        "fund_size": details.get("fund_size"),
+        "assets_distribution": assets_distribution,
+        "as_of": as_of,
+        "is_override": is_override,
+        "total_weight_pct": round(sum(float(h["value"]) for h in assets_distribution), 2) if assets_distribution else 0.0,
+    }
+
+
+@router.get("/fund-compositions")
+@limiter.limit("60/minute")
+def list_fund_compositions(
+    request: Request,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Every fund with a known holdings composition (hardcoded default or
+    admin override) - superuser only."""
+    overrides = {row.fund_code: row for row in db.query(FundCompositionOverride).all()}
+    codes = sorted(
+        {c for c, d in FUND_DETAILS_MAP.items() if "assets_distribution" in d} | set(overrides.keys())
+    )
+    return [_fund_composition_dict(code, overrides.get(code)) for code in codes]
+
+
+@router.get("/fund-compositions/{code}")
+@limiter.limit("60/minute")
+def get_fund_composition(
+    request: Request,
+    code: str,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    code = code.upper()
+    override = db.query(FundCompositionOverride).filter(FundCompositionOverride.fund_code == code).first()
+    if code not in FUND_DETAILS_MAP and not override:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fon bulunamadı.")
+    return _fund_composition_dict(code, override)
+
+
+@router.put("/fund-compositions/{code}")
+@limiter.limit("30/minute")
+def save_fund_composition(
+    request: Request,
+    code: str,
+    payload: FundCompositionIn,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Overwrites a fund's live-estimate holding weights - superuser only.
+    Takes effect immediately (tefas_service.refresh_composition_override
+    reloads the in-memory cache right after this commits), no deploy
+    needed. The total doesn't have to be exactly 100 (a real TEFAS
+    composition often doesn't either - the remainder is uncounted cash/
+    bonds/other, and a fund-of-funds can legitimately double-count an
+    underlying holding past 100) - the frontend warns on a large deviation
+    but this endpoint doesn't reject it outright, since the admin might
+    genuinely mean it."""
+    code = code.upper()
+    if not payload.assets_distribution:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="En az bir varlık girilmeli.")
+    for h in payload.assets_distribution:
+        if not h.name.strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Boş sembol adı olamaz.")
+        if h.value < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{h.name}: ağırlık negatif olamaz.")
+
+    distribution = [{"name": h.name.strip().upper(), "value": h.value} for h in payload.assets_distribution]
+
+    override = db.query(FundCompositionOverride).filter(FundCompositionOverride.fund_code == code).first()
+    if override:
+        override.assets_distribution = distribution
+        override.as_of = payload.as_of
+        override.updated_by_user_id = admin.id
+    else:
+        override = FundCompositionOverride(
+            fund_code=code, assets_distribution=distribution, as_of=payload.as_of, updated_by_user_id=admin.id,
+        )
+        db.add(override)
+    db.commit()
+    db.refresh(override)
+
+    tefas_service.refresh_composition_override(code)
+
+    total = round(sum(h["value"] for h in distribution), 2)
+    log_audit(db, "fund_composition_updated", request=request, user_id=admin.id, resource_type="fund_composition",
+              resource_id=code, details={"fund_code": code, "total_weight_pct": total, "holdings_count": len(distribution)})
+    return _fund_composition_dict(code, override)
+
+
+@router.delete("/fund-compositions/{code}")
+@limiter.limit("30/minute")
+def reset_fund_composition(
+    request: Request,
+    code: str,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Removes an admin override, reverting the fund to its hardcoded
+    FUND_DETAILS_MAP default - superuser only."""
+    code = code.upper()
+    override = db.query(FundCompositionOverride).filter(FundCompositionOverride.fund_code == code).first()
+    if not override:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bu fon için özel bir ayar yok.")
+    db.delete(override)
+    db.commit()
+    tefas_service.refresh_composition_override(code)
+    log_audit(db, "fund_composition_reset", request=request, user_id=admin.id, resource_type="fund_composition",
+              resource_id=code, details={"fund_code": code})
+    return _fund_composition_dict(code, None)
