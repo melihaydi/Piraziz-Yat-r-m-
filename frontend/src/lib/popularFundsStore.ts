@@ -20,7 +20,16 @@ let loading = true
 let started = false
 const listeners = new Set<Listener>()
 
+// useSyncExternalStore requires getSnapshot to return a STABLE reference
+// when nothing has changed - it compares with Object.is, and a fresh
+// `{ funds, loading }` literal on every call looks like a change on every
+// single render, which sends React into an infinite re-render loop (this
+// shipped broken once already: the homepage and /funds page both hung).
+// Cached here and only replaced when fetchOnce() actually gets new data.
+let snapshot: { funds: any[]; loading: boolean } = { funds, loading }
+
 function notify() {
+  snapshot = { funds, loading }
   listeners.forEach(l => l())
 }
 
@@ -52,5 +61,5 @@ export function subscribePopularFunds(listener: Listener): () => void {
 }
 
 export function getPopularFundsSnapshot() {
-  return { funds, loading }
+  return snapshot
 }
