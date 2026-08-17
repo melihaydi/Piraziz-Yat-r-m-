@@ -30,7 +30,7 @@ _TR_TZ = ZoneInfo("Europe/Istanbul")
 # app/api/v1/endpoints/funds.py) - kept as a separate constant here rather
 # than imported from that endpoint module, since a service pulling from an
 # API-layer module would be backwards layering.
-TRACKED_FUND_CODES: List[str] = ["TMV", "PBR", "DFI", "TLY"]
+TRACKED_FUND_CODES: List[str] = ["TMV", "PBR", "TLY", "THF"]
 
 
 class FundEstimateSnapshotService:

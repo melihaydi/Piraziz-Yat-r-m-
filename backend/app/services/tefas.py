@@ -69,6 +69,11 @@ BASE_FUNDS = {
     "DFI": {"name": "Atlas Portföy Serbest Fon", "category": "Serbest", "price": 5.0932, "category_tr": "Serbest Fon"},
     "TLY": {"name": "Tera Portföy Birinci Serbest Fon", "category": "Serbest", "price": 7457.48, "category_tr": "Serbest Fon"},
     "TMV": {"name": "Tera Portföy Algoritmik Stratejiler Serbest Fon", "category": "Serbest", "price": 7.7990, "category_tr": "Serbest Fon"},
+    # THF - added to POPULAR_LIVE_FUNDS in funds.py replacing DFI (2026-08-17).
+    # Name/price are placeholders only (same pattern as PRY/HMV above) -
+    # _fetch_prices_sync() overwrites both from TEFAS's own real per-fund
+    # data the moment the first real crawl succeeds.
+    "THF": {"name": "THF Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
     "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"},
     "PKZ": {"name": "Pusula Portföy İkinci Serbest (Hisse Senedi Yoğun) Fon", "category": "Serbest Yoğun", "price": 13.4416, "category_tr": "Serbest Fon"},
     "PCS": {"name": "Pusula Portföy Para Piyasası Fonu", "category": "Para Piyasası", "price": 8.2528, "category_tr": "Para Piyasası Fonu"},
@@ -120,6 +125,7 @@ FALLBACKS = {
     "DFI": {"price": 5.0932, "daily": -0.45, "weekly": 1.95, "monthly": 6.84},
     "TLY": {"price": 7457.4882, "daily": 0.05, "weekly": 0.38, "monthly": 1.52},
     "TMV": {"price": 7.7990, "daily": 0.66, "weekly": 3.12, "monthly": 9.45},
+    "THF": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PUK": {"price": 1.1661, "daily": -0.64, "weekly": 1.05, "monthly": 3.88},
     "PKZ": {"price": 13.4416, "daily": -4.6673, "weekly": -2.15, "monthly": 5.85},
     "PCS": {"price": 8.2528, "daily": -3.7028, "weekly": -1.82, "monthly": 3.12},
@@ -313,6 +319,58 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             {"name": "MANAS", "value": 0.0},
             # Bond holding - fixed daily-return path below (0.11%/day, per the user).
             {"name": "BONO", "value": 0.1}
+        ]
+    },
+    "THF": {
+        # fund_size/manager are unconfirmed placeholders (same "₺250,000,000"
+        # default get_fund() already falls back to for any fund with no
+        # known details) - manager is tentatively "Tera Portföy" purely
+        # because THF's holdings heavily overlap TLY/TMV's (TEHOL, OZATD,
+        # TERA, TRHOL, ANELE, PEKGY, SVGYO, EUPWR, MANAS, plus the same
+        # SABIT/VIOP structure as TMV), not from a confirmed source - update
+        # once TEFAS's own crawl or the user confirms the real manager.
+        "fund_size": "₺250,000,000",
+        "risk_level": 6,
+        "manager": "Tera Portföy (tahmini - doğrulanmadı)",
+        # User-provided composition (2026-08-17), replacing DFI in the
+        # "Popüler Fonlar - Anlık Getiri" section (see POPULAR_LIVE_FUNDS in
+        # funds.py). The disclosed "Sabit Getiriler" (%31.2) leg is
+        # deliberately excluded per the user - only the equity + VİOP legs
+        # are tracked here. "VİOP" -> VIOP, plain ASCII per TMV's own
+        # precedent (a market segment, not a tradable ticker - left
+        # unresolved rather than guessing a quote for it).
+        "as_of": "2026-08-17",
+        "assets_distribution": [
+            {"name": "TEHOL", "value": 6.8},
+            {"name": "OZATD", "value": 6.2},
+            {"name": "KARCL", "value": 6.0},
+            {"name": "ASELS", "value": 5.3},
+            {"name": "TERA", "value": 4.7},
+            {"name": "TRHOL", "value": 4.0},
+            {"name": "ANELE", "value": 2.9},
+            {"name": "THYAO", "value": 2.9},
+            {"name": "YKBNK", "value": 2.8},
+            {"name": "PEKGY", "value": 2.7},
+            {"name": "EUPWR", "value": 2.1},
+            {"name": "SVGYO", "value": 2.1},
+            {"name": "TUPRS", "value": 2.1},
+            {"name": "HALKB", "value": 1.9},
+            {"name": "BSOKE", "value": 1.9},
+            {"name": "TABGD", "value": 1.7},
+            {"name": "BRSAN", "value": 1.6},
+            {"name": "KGYO", "value": 1.6},
+            {"name": "ATATR", "value": 1.6},
+            {"name": "EGEGY", "value": 1.5},
+            {"name": "GLRMK", "value": 1.4},
+            {"name": "MANAS", "value": 1.4},
+            {"name": "BARMA", "value": 1.2},
+            {"name": "RUZYE", "value": 0.9},
+            {"name": "MCARD", "value": 0.9},
+            {"name": "NETCD", "value": 0.3},
+            {"name": "ORZAX", "value": 0.1},
+            {"name": "MOBTL", "value": 0.1},
+            {"name": "RNPOL", "value": 0.1},
+            {"name": "VIOP", "value": 31.2}
         ]
     },
     "PUK": {

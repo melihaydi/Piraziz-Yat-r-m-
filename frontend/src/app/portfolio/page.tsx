@@ -655,7 +655,7 @@ export default function PortfolioPage() {
               <DialogHeader>
                 <DialogTitle>Portföye Varlık (Hisse veya Fon) Ekle</DialogTitle>
                 <DialogDescription>
-                  Portföyünüze yeni hisse senedi (örn: THYAO) veya TEFAS yatırım fonu (örn: PHE, DFI) ekleyin.
+                  Portföyünüze yeni hisse senedi (örn: THYAO) veya TEFAS yatırım fonu (örn: PHE, THF) ekleyin.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleAddAsset} className="space-y-4 py-4">

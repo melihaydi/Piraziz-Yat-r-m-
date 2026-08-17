@@ -212,7 +212,11 @@ class MarketDataService:
             # Added for TLY's real disclosed composition (tefas.py) so each
             # holding resolves to a real live quote instead of a name-only
             # placeholder - same rationale as the OZATD/TEHOL/etc. block above.
-            "BIGEN", "SARAE", "METEN", "EFOR"
+            "BIGEN", "SARAE", "METEN", "EFOR",
+            # Added for THF's real disclosed composition (tefas.py) - same
+            # rationale as the OZATD/TEHOL/etc. block above.
+            "KARCL", "HALKB", "BSOKE", "TABGD", "KGYO", "ATATR", "EGEGY", "GLRMK",
+            "BARMA", "RUZYE", "MCARD", "NETCD", "ORZAX", "MOBTL", "RNPOL"
         ]
         
         self.tickers = []
@@ -251,6 +255,16 @@ class MarketDataService:
             "SARAE": "Şa-Ra Enerji İnşaat Ticaret ve Sanayi A.Ş.",
             "METEN": "Metgun Enerji Yatırımları A.Ş.",
             "EFOR": "Efor Yatırım Sanayi ve Ticaret A.Ş.",
+            # THF's disclosed composition - only the tickers whose real
+            # company name is confidently known are filled in here; the rest
+            # fall through to the f"{t} Ticaret A.Ş." placeholder below (same
+            # as every other unconfirmed ticker in this map) rather than
+            # risk stating a wrong official name.
+            "HALKB": "Türkiye Halk Bankası A.Ş.",
+            "BSOKE": "Batısöke Söke Çimento Sanayi A.Ş.",
+            "TABGD": "Tab Gıda Sanayi ve Ticaret A.Ş.",
+            "KGYO": "Körfez Gayrimenkul Yatırım Ortaklığı A.Ş.",
+            "ORZAX": "Orzax Sağlık Ürünleri Sanayi ve Ticaret A.Ş.",
         }
         
         for t in allowed_list:

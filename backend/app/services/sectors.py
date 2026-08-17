@@ -22,9 +22,9 @@ SECTOR_MAP = {
     # Sınai / Teknoloji / Çimento
     "SISE": "Cam Sanayi", "ARCLK": "Dayanıklı Tüketim", "VESTL": "Dayanıklı Tüketim", "FROTO": "Otomotiv", "TOASO": "Otomotiv",
     "MIATK": "Teknoloji", "REEDR": "Teknoloji", "ARDYZ": "Teknoloji",
-    "CIMSA": "Çimento", "AKCNS": "Çimento", "OYAKC": "Çimento",
+    "CIMSA": "Çimento", "AKCNS": "Çimento", "OYAKC": "Çimento", "BSOKE": "Çimento",
     # GYO (REIT)
-    "EKGYO": "GYO", "ISGYO": "GYO", "TRGYO": "GYO", "HLGYO": "GYO", "AKFGY": "GYO",
+    "EKGYO": "GYO", "ISGYO": "GYO", "TRGYO": "GYO", "HLGYO": "GYO", "AKFGY": "GYO", "KGYO": "GYO",
     # İnşaat
     "ENKAI": "İnşaat",
     # Madencilik
