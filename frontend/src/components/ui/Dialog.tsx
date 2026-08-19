@@ -16,8 +16,13 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    // data-slot, globals.css'teki açılış/kapanış animasyonlarının bağlandığı
+    // yer. Buradaki eski `animate-in`/`fade-out-0` sınıfları
+    // tailwindcss-animate eklentisine aitti ve o eklenti bu projede kurulu
+    // olmadığı için hiçbir CSS üretmiyorlardı - kaldırıldılar.
+    data-slot="dialog-overlay"
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/80 backdrop-blur-sm",
       className
     )}
     {...props}
@@ -33,8 +38,13 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
+      data-slot="dialog-content"
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-1/2 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-1/2 sm:rounded-lg md:w-full",
+        // Açılış/kapanış animasyonu data-slot üzerinden globals.css'te
+        // (eski tailwindcss-animate sınıfları ölüydü - bkz. overlay).
+        // rounded-lg artık her boyutta: köşe yumuşaklığı sm altında da
+        // sürsün, telefonda keskin köşeli bir kutu belirmesin.
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] overflow-y-auto translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl shadow-black/40 rounded-lg md:w-full",
         className
       )}
       {...props}

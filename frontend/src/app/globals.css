@@ -27,6 +27,11 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  /* Çıplak `rounded` bu tanım olmadan Tailwind'in 4px varsayılanına
+     düşüyordu ve sayfada ~20 öğe o keskin köşeyi kullanıyordu - tanımlanan
+     yumuşak köşe sistemini (14/12/10px) tek tek delen asıl sebep buydu.
+     Artık çıplak `rounded` da skalanın içinde. */
+  --radius-DEFAULT: calc(var(--radius) - 6px);
 }
 
 :root {
@@ -118,6 +123,146 @@ h1, h2, h3 {
 .text-\[9px\]  { font-size: 10.5px; line-height: 1.4; }
 .text-\[10px\] { font-size: 11.5px; line-height: 1.45; }
 .text-\[11px\] { font-size: 12.5px; line-height: 1.45; }
+
+/* --- Tipografi ölçeği ----------------------------------------------------
+   Ölçüm: Portföyüm sayfasındaki ~116 metin öğesinin 63'ü tek bir boyutta
+   (12px) toplanmıştı, sonra doğrudan 30px'e atlıyordu - arada 18px iki, 16px
+   bir kez geçiyordu. Yani sayfada "başlık" ve "veri" dışında kademe yoktu ve
+   her şey aynı ağırlıkta okunuyordu. Yoğunluk bir terminal için doğru tercih,
+   ama hiyerarşisiz yoğunluk yorucu.
+
+   Aşağıdaki semantik sınıflar, hangi bilginin hangi kademede olduğunu ismiyle
+   söyler; boyutun yanında AĞIRLIK ve RENK de taşırlar, çünkü hiyerarşiyi
+   tek başına punto kurmuyor. */
+
+/* Sayfa başlığı */
+.t-display { font-size: 1.875rem; line-height: 1.15; font-weight: 800; letter-spacing: -0.028em; }
+/* Kartın taşıdığı asıl rakam - portföy değeri, toplam K/Z */
+.t-metric  { font-size: 1.75rem;  line-height: 1.2;  font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+/* İkincil rakam - kart içi destekleyici değer */
+.t-metric-sm { font-size: 1.125rem; line-height: 1.3; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Bölüm başlığı */
+.t-section { font-size: 1rem;     line-height: 1.35; font-weight: 700; letter-spacing: -0.015em; }
+/* Gövde metni */
+.t-body    { font-size: 0.875rem; line-height: 1.5; }
+/* Tablo/liste içi veri */
+.t-data    { font-size: 0.8125rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
+/* Etiket - üstteki değerin ne olduğunu söyleyen küçük başlık.
+   12px, 11px değil: bu proje küçük metin için bilinçli bir okunabilirlik
+   tabanı belirlemiş (aşağıdaki .text-\[11px\] kuralı 11px'i 12.5px'e
+   yükseltiyor, çünkü koyu kart zemininde daha küçüğü okunmuyordu). Yeni
+   ölçeğin o kararı delmemesi gerekir. Büyük harf + harf aralığı zaten
+   etiketi gövde metninden ayırıyor, küçültmeye gerek yok. */
+.t-label   { font-size: 0.75rem; line-height: 1.4; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+/* Dipnot / açıklama - bilinçli olarak geri çekilmiş */
+.t-caption { font-size: 0.75rem;  line-height: 1.5; color: hsl(var(--muted-foreground)); }
+
+/* --- Hareket katmanı -----------------------------------------------------
+   Ölçüm: sayfadaki 468 öğeden HİÇBİRİ animasyonlu değildi, 45'i yalnızca
+   hover geçişine sahipti. "Akıcı" hissinin kaybolduğu yer tam olarak burası:
+   kartlar birden beliriyor, modallar sertçe açılıyor, rakamlar zıplıyordu.
+
+   Süreler kasıtlı olarak kısa (180-420ms): bir finans uygulamasında veri
+   okumak isteyen kullanıcıyı bekletmemeli, hareket yalnızca "bir şey değişti"
+   sinyalini vermeli. Hepsi prefers-reduced-motion altında kapanıyor. */
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.animate-rise  { animation: rise-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.animate-fade  { animation: fade-in 0.3s ease both; }
+.animate-pop   { animation: pop-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Kademeli giriş: bir ızgaradaki kartlar aynı anda değil, sırayla belirir.
+   Doğrudan çocuklara uygulanır, böylece her kart için ayrı sınıf yazmak
+   gerekmez. 8 kademeden sonrası beklemez - daha uzun gecikme, sayfanın
+   yavaş yüklendiği hissini verir. */
+.stagger > *              { animation: rise-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 45ms; }
+.stagger > *:nth-child(3) { animation-delay: 90ms; }
+.stagger > *:nth-child(4) { animation-delay: 135ms; }
+.stagger > *:nth-child(5) { animation-delay: 180ms; }
+.stagger > *:nth-child(6) { animation-delay: 225ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(n+8) { animation-delay: 300ms; }
+
+/* Canlı güncellenen rakamlar için: değer değiştiğinde kısa bir vurgu.
+   Fiyat/K-Z gibi sürekli değişen alanlarda "yeni veri geldi" sinyali. */
+@keyframes value-flash-up   { 0% { color: hsl(var(--bull)); } 100% { color: inherit; } }
+@keyframes value-flash-down { 0% { color: hsl(var(--bear)); } 100% { color: inherit; } }
+.flash-up   { animation: value-flash-up 0.9s ease-out; }
+.flash-down { animation: value-flash-down 0.9s ease-out; }
+
+/* --- Modal / popover hareketi -------------------------------------------
+   Dialog.tsx `data-[state=open]:animate-in`, `zoom-in-95`,
+   `slide-in-from-top-1/2` gibi sınıflar taşıyor - bunlar tailwindcss-animate
+   eklentisine ait ve o eklenti bu projede KURULU DEĞİL. Yani o sınıfların
+   hiçbiri CSS üretmiyordu: uygulamadaki her modal sıfır animasyonla,
+   birdenbire ekrana yapışıyordu.
+
+   Eklentiyi bağımlılık olarak eklemek yerine ihtiyaç duyulan iki geçişi
+   burada Radix'in kendi data-state özniteliğine bağlıyoruz - hem yeni
+   paket gelmiyor hem süreler yukarıdaki hareket katmanıyla aynı dilde. */
+@keyframes overlay-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes dialog-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+}
+
+[data-slot="dialog-overlay"][data-state="open"],
+[data-radix-popper-content-wrapper] > [data-state="open"] { animation: overlay-in 0.18s ease both; }
+[data-slot="dialog-overlay"][data-state="closed"] { animation: overlay-out 0.15s ease both; }
+[data-slot="dialog-content"][data-state="open"]   { animation: dialog-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+[data-slot="dialog-content"][data-state="closed"] { animation: dialog-out 0.16s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise, .animate-fade, .animate-pop,
+  .stagger > *, .flash-up, .flash-down,
+  [data-slot="dialog-overlay"], [data-slot="dialog-content"] {
+    animation: none !important;
+  }
+}
+
+/* --- Dokunma hedefleri ---------------------------------------------------
+   Ölçüm: 375px genişlikte etkileşimli 30 öğenin TAMAMI 40px'in altındaydı;
+   "Geri" ve "Tahmini Getiri" 16px, "+ Portföy"/"Sat"/"Düzenle" 26px. Apple
+   44pt, Google 48dp öneriyor. Bir yatırım uygulamasında "Sat" düğmesine
+   yanlışlıkla basılması ciddi sonuç doğurur.
+
+   Her çağrı yerini tek tek düzeltmek yerine merkezî bir taban: dokunmatik
+   girdili dar ekranlarda etkileşimli öğeler en az 44px yüksekliğe çıkar.
+   `pointer: coarse` kontrolü şart - masaüstünde fare hassas olduğu için
+   düğmeleri şişirmek yoğun terminal görünümünü bozardı. */
+@media (max-width: 767px) and (pointer: coarse) {
+  button:not(.tap-exempt),
+  a[role="button"]:not(.tap-exempt),
+  [role="tab"]:not(.tap-exempt) {
+    min-height: 44px;
+  }
+  /* Satır içi metin bağlantıları hariç: bunları 44px yapmak paragrafı
+     parçalar. Onlar için yatay dolgu yeterli. */
+  main a:not([role="button"]):not(.tap-exempt) {
+    padding-block: 0.25rem;
+  }
+}
 
 /* Custom Utilities for Glassmorphism & premium UI */
 .glass {

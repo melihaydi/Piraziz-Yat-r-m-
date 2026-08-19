@@ -47,6 +47,7 @@ import {
   DialogFooter,
   DialogTrigger
 } from "@/components/ui/Dialog"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs"
 import { authFetch } from "@/lib/auth"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { parseTLAmount } from "@/lib/utils"
@@ -817,8 +818,8 @@ export default function PortfolioPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Portföy ve Alarm Sistemi</h1>
-          <p className="text-muted-foreground mt-1">Maliyet hesaplaması, sektör dağılımları ve TradingView tetikleyici alarmlar.</p>
+          <h1 className="t-display">Portföy ve Alarm Sistemi</h1>
+          <p className="t-caption mt-1.5">Maliyet hesaplaması, sektör dağılımları ve TradingView tetikleyici alarmlar.</p>
           {/* Portföy seçici - yalnızca birden fazla portföy varsa sekme
               olarak görünür; tek portföyü olan kullanıcı gereksiz bir
               arayüz elemanıyla karşılaşmasın. */}
@@ -1401,15 +1402,15 @@ export default function PortfolioPage() {
       </div>
 
       {/* Metrics Summary Row (Request 6!) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 stagger">
         <Card glass={true}>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-semibold uppercase">PORTFÖY DEĞERİ</span>
+              <span className="t-label">PORTFÖY DEĞERİ</span>
               <Briefcase className="h-4 w-4 text-purple-400" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
-              <span className="text-3xl font-extrabold font-mono text-foreground">
+              <span className="t-metric font-mono text-foreground">
                 ₺{currentValue.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -1452,7 +1453,7 @@ export default function PortfolioPage() {
         <Card glass={true}>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-semibold uppercase">TOPLAM KÂR / ZARAR</span>
+              <span className="t-label">TOPLAM KÂR / ZARAR</span>
               <TrendingUp className="h-4 w-4 text-emerald-400" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
@@ -1478,7 +1479,7 @@ export default function PortfolioPage() {
         <Card glass={true}>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-semibold uppercase">BETA / VOLATİLİTE</span>
+              <span className="t-label">BETA / VOLATİLİTE</span>
               <Activity className="h-4 w-4 text-cyan-400" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
@@ -1486,7 +1487,7 @@ export default function PortfolioPage() {
                 <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
               ) : (
                 <>
-                  <span className="text-3xl font-extrabold font-mono text-foreground">
+                  <span className="t-metric font-mono text-foreground">
                     {analytics?.beta != null ? analytics.beta.toFixed(2) : "—"}
                   </span>
                   <span className="text-xs text-muted-foreground font-medium">
@@ -1504,7 +1505,7 @@ export default function PortfolioPage() {
         <Card glass={true} className="border-purple-500/15">
           <CardContent className="pt-6 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground font-semibold uppercase">PORTFÖY SAĞLIĞI</span>
+              <span className="t-label">PORTFÖY SAĞLIĞI</span>
               <Sparkles className="h-4 w-4 text-purple-400" />
             </div>
             <div className="flex items-baseline justify-between">
@@ -1606,7 +1607,7 @@ export default function PortfolioPage() {
       {showLiveEstimate && (
         <Card glass={true} className="border-amber-500/20">
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
+            <CardTitle className="t-section flex items-center gap-2">
               <Zap className="h-5 w-5 text-amber-400" />
               Tahmini Portföy Getirisi
             </CardTitle>
@@ -1651,14 +1652,28 @@ export default function PortfolioPage() {
         </Card>
       )}
 
-      {/* Grid Layout: Assets table vs Distribution & Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Assets List Table */}
-        <div className="lg:col-span-2 space-y-8">
+      {/* Sekmeler: sayfa mobilde 5,2 ekran uzunluğundaydı ve 11 ayrı kart
+          tek akışta sıralanıyordu. Bilgiyi konusuna göre ayırmak hem o
+          yorucu kaydırmayı bitiriyor hem de kullanıcının aradığı şeye
+          doğrudan gitmesini sağlıyor. Bölümlerin kendi içeriği değişmedi,
+          yalnızca gruplandılar. */}
+      <Tabs defaultValue="genel" className="w-full">
+        {/* Yapışkan: ölçümde sekme çubuğu mobilde y=1410'daydı, yani
+            kullanıcı sekmelere ulaşmak için önce bütün özet kartlarını
+            geçmek zorundaydı - sekmeye tıklamak için aşağı, içeriği görmek
+            için yukarı kaydırmak gerekiyordu. Üstte kalınca gezinme her an
+            elin altında. */}
+        <TabsList className="sticky top-0 z-20 h-auto flex-wrap justify-start gap-1 bg-secondary/40 p-1 backdrop-blur-md supports-[backdrop-filter]:bg-secondary/60">
+          <TabsTrigger value="genel" className="t-body">Genel</TabsTrigger>
+          <TabsTrigger value="varliklar" className="t-body">Varlıklar</TabsTrigger>
+          <TabsTrigger value="analiz" className="t-body">Analiz</TabsTrigger>
+          <TabsTrigger value="alarmlar" className="t-body">Alarmlar</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="genel" className="mt-6 space-y-8">
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-lg">Portföy Değeri (Zaman İçinde)</CardTitle>
+              <CardTitle className="t-section">Portföy Değeri (Zaman İçinde)</CardTitle>
               <CardDescription>
                 {benchmarkVerdict
                   ? "Portföyünüzün günlük değeri, XU100 endeksiyle karşılaştırmalı"
@@ -1768,10 +1783,12 @@ export default function PortfolioPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
 
+        <TabsContent value="varliklar" className="mt-6 space-y-8">
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-lg">Portföy Varlıkları</CardTitle>
+              <CardTitle className="t-section">Portföy Varlıkları</CardTitle>
               <CardDescription>BIP üzerinde kayıtlı aktif hisse senedi varlıklarınız</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -1966,11 +1983,13 @@ export default function PortfolioPage() {
               </CardContent>
             </Card>
           </div>
-        </div>
+        </TabsContent>
 
-        {/* Right Side Column: Chart & Alerts list */}
-        <div className="space-y-8">
-          
+        {/* Analiz: dağılım + risk. İkisi de "portföyüm nasıl kurulmuş"
+            sorusuna cevap veriyor, bu yüzden aynı sekmede ve yan yana. */}
+        <TabsContent value="analiz" className="mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+
           {/* Asset Weight Distribution (Request 6!) */}
           <Card glass={true}>
             <CardHeader className="pb-2">
@@ -2066,11 +2085,14 @@ export default function PortfolioPage() {
               <PortfolioStressTest beta={analytics?.beta ?? null} currentValue={currentValue} />
             </CardContent>
           </Card>
+          </div>
+        </TabsContent>
 
+        <TabsContent value="alarmlar" className="mt-6">
           {/* Active Alerts List */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-lg flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Bell className="h-4 w-4 text-primary mr-2" />
                 Alarmlarım
               </CardTitle>
@@ -2127,10 +2149,8 @@ export default function PortfolioPage() {
               )}
             </CardContent>
           </Card>
-
-        </div>
-
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

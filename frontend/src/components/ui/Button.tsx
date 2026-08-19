@@ -28,6 +28,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           variant === "link" && "text-primary underline-offset-4 hover:underline",
           variant === "glass" && "glass text-foreground hover:bg-white/10 hover:border-white/20 transition-all",
           // Sizes
+          // Yükseklikler dokunmatik dar ekranda globals.css'teki 44px tabanına
+          // yükseliyor (min-height); masaüstünde bu değerler korunuyor, çünkü
+          // fare hassas ve düğmeleri şişirmek yoğun terminal görünümünü bozar.
           size === "default" && "h-9 px-4 py-2",
           size === "sm" && "h-8 rounded-md px-3 text-xs",
           size === "lg" && "h-10 rounded-md px-8",
