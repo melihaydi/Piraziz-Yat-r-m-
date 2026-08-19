@@ -448,3 +448,71 @@ def test_twr_returns_none_without_enough_history(db):
     assert portfolio_ledger.compute_time_weighted_return(
         [{"date": "2026-01-01", "total_value": 100.0}], []
     ) is None
+
+
+# --- TWR: incelemede cikan hatalarin regresyon testleri --------------------
+
+def test_twr_does_not_flip_sign_when_flow_lands_after_the_snapshot(db):
+    """Gunluk anlik goruntu 20:00'de aliniyor; o saatten sonra girilen bir
+    islem AYNI takvim gunune yaziliyor ama o gunun degerinde henuz yok.
+    Korumasiz halde (1000-5000)/1000 = -4 cikiyor ve getiri -%500
+    gorunuyordu; ertesi gun zincir -%2500'e kadar sapiyordu."""
+    history = [
+        {"date": "2026-01-01", "total_value": 1000.0},
+        {"date": "2026-01-02", "total_value": 1000.0},   # 20:00 anlik goruntusu
+        {"date": "2026-01-03", "total_value": 6000.0},   # varlik ertesi gun gorunuyor
+    ]
+    txs = [_Tx("BUY", 5000.0, 2)]  # 2 Ocak aksami girildi
+
+    result = portfolio_ledger.compute_time_weighted_return(history, txs)
+    # Sonuc mantikli bir aralikta kalmali - isaret donmemeli.
+    assert result["twr_pct"] > -100
+    assert result["days_skipped"] >= 1
+
+
+def test_twr_buckets_flows_by_istanbul_date_not_utc(db):
+    """Istanbul UTC+3: gece 01:30'da yapilan islem UTC'de bir ONCEKI gune
+    duser. Anlik goruntu tarihleri Istanbul gunu oldugu icin akis yanlis
+    gune yazilirdi."""
+    from datetime import timedelta
+    class _TzTx:
+        def __init__(self):
+            self.transaction_type = "CASH"
+            self.amount = 100.0
+            # 2 Ocak 01:30 Istanbul = 1 Ocak 22:30 UTC
+            self.executed_at = datetime(2026, 1, 1, 22, 30, tzinfo=timezone.utc)
+
+    history = [
+        {"date": "2026-01-01", "total_value": 1000.0},
+        {"date": "2026-01-02", "total_value": 1100.0},
+    ]
+    result = portfolio_ledger.compute_time_weighted_return(history, [_TzTx()])
+    # Akis 2 Ocak'a yazilirsa getiri sifir olur (100 TL giris, 100 TL artis).
+    # UTC'ye gore 1 Ocak'a yazilsaydi getiri %10 gorunurdu.
+    assert result["twr_pct"] == pytest.approx(0.0)
+
+
+def test_twr_net_flow_only_counts_the_charted_window(db):
+    """Anlik goruntuler baslamadan once girilen geriye donuk bir islem
+    grafikte hic gorunmuyor; "bu donemde giren para" diye sunulmamali."""
+    history = [
+        {"date": "2026-06-01", "total_value": 1000.0},
+        {"date": "2026-06-02", "total_value": 1100.0},
+    ]
+    eski = _Tx("CASH", 50000.0, 1)          # 2026-01-01, grafik disinda
+    result = portfolio_ledger.compute_time_weighted_return(history, [eski])
+    assert result["net_flow"] == pytest.approx(0.0)
+    assert result["has_flows"] is False
+
+
+def test_twr_returns_a_chartable_series(db):
+    """Grafik cizgisi ile baslikta yazan rakam ayni seriden gelmeli."""
+    history = [
+        {"date": "2026-01-01", "total_value": 100.0},
+        {"date": "2026-01-02", "total_value": 110.0},
+    ]
+    result = portfolio_ledger.compute_time_weighted_return(history, [])
+    assert [s["date"] for s in result["series"]] == ["2026-01-01", "2026-01-02"]
+    assert result["series"][0]["twr_pct"] == 0.0
+    # Serinin son noktasi ozetteki rakamla ayni olmali.
+    assert result["series"][-1]["twr_pct"] == pytest.approx(result["twr_pct"])

@@ -12,8 +12,9 @@ Her fonksiyon hem PortfolioAsset'i (güncel durum) hem PortfolioTransaction'ı
 yüzden aynı çağrıda yapılıyorlar.
 """
 import logging
-from datetime import datetime
+from datetime import date, datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,29 @@ from app.models.portfolio import PortfolioAsset
 from app.models.portfolio_transaction import PortfolioTransaction
 
 logger = logging.getLogger(__name__)
+
+# Uygulamanın "gün" kavramı İstanbul saatine göre: günlük portföy anlık
+# görüntüleri datetime.now(_TR_TZ).date() ile yazılıyor (portfolio_snapshot.py)
+# ve BIST seansı da bu saat diliminde tanımlı.
+_TR_TZ = ZoneInfo("Europe/Istanbul")
+
+
+def local_date(value: datetime) -> date:
+    """Bir işlem zamanını İSTANBUL takvim gününe çevirir.
+
+    Doğrudan .date() almak ya da .replace(tzinfo=None) demek yanlış: Postgres
+    saat dilimi bilgisiyle (UTC) döndürüyor ve İstanbul UTC+3. Gece 00:00-03:00
+    arasında yapılan bir işlem UTC'de bir ÖNCEKİ güne düşer; anlık görüntü
+    tarihleri ise İstanbul günü olduğu için akış yanlış güne yazılır - yıllık
+    kazanç özetinde ise 1 Ocak gecesi yapılan bir satış bir önceki vergi yılına
+    düşerdi.
+
+    Saat dilimi bilgisi olmayan değerler (SQLite testleri) zaten yerel kabul
+    edilir; onları çevirmek tarihi kaydırırdı.
+    """
+    if value.tzinfo is None:
+        return value.date()
+    return value.astimezone(_TR_TZ).date()
 
 
 def _record(
@@ -193,7 +217,7 @@ def compute_time_weighted_return(history: list, transactions: list) -> Optional[
     for tx in transactions:
         if not tx.executed_at:
             continue
-        day = tx.executed_at.replace(tzinfo=None).date().isoformat()
+        day = local_date(tx.executed_at).isoformat()
         if tx.transaction_type == "BUY":
             flows_by_date[day] = flows_by_date.get(day, 0.0) + tx.amount
         elif tx.transaction_type == "SELL":
@@ -203,16 +227,34 @@ def compute_time_weighted_return(history: list, transactions: list) -> Optional[
 
     cumulative = 1.0
     counted = 0
+    skipped = 0
+    # Grafiğin çizeceği seri: her gün için o güne kadarki birikimli TWR.
+    # Bunu da burada üretiyoruz, çünkü ön yüzün ham değer değişimini çizip
+    # başlıkta TWR göstermesi ikisinin çelişmesine yol açıyordu.
+    series = [{"date": history[0]["date"], "twr_pct": 0.0}]
+
     for prev, curr in zip(history, history[1:]):
         v_prev = prev["total_value"]
         v_curr = curr["total_value"]
-        if not v_prev:
-            # Sıfır değerden başlayan bir günün yüzde getirisi tanımsız -
-            # uydurmak yerine o alt dönem atlanıyor.
-            continue
         flow = flows_by_date.get(curr["date"], 0.0)
+
+        # İki koruma:
+        #  - v_prev sıfırsa yüzde getiri tanımsız.
+        #  - (v_curr - flow) sıfır ya da negatifse alt dönem çarpanı negatife
+        #    döner ve zincirin işaretini bozar. Bu, uydurma bir durum değil:
+        #    günlük anlık görüntü 20:00'de alınıyor, o saatten sonra girilen
+        #    bir işlem aynı takvim gününe yazılıyor ama o günün değerinde
+        #    HENÜZ yok. Korumasız hâlde 1.000 TL'lik portföye akşam 5.000
+        #    TL'lik varlık eklemek (1000-5000)/1000 = -4 veriyor ve getiri
+        #    -%500 olarak görünüyordu.
+        if not v_prev or (v_curr - flow) <= 0:
+            skipped += 1
+            series.append({"date": curr["date"], "twr_pct": round((cumulative - 1) * 100, 2)})
+            continue
+
         cumulative *= (v_curr - flow) / v_prev
         counted += 1
+        series.append({"date": curr["date"], "twr_pct": round((cumulative - 1) * 100, 2)})
 
     if counted == 0:
         return None
@@ -220,14 +262,25 @@ def compute_time_weighted_return(history: list, transactions: list) -> Optional[
     twr_pct = (cumulative - 1) * 100
     simple_pct = (history[-1]["total_value"] / history[0]["total_value"] - 1) * 100 if history[0]["total_value"] else None
 
+    # net_flow YALNIZCA grafiğin kapsadığı günleri sayar. Tüm defteri
+    # toplamak, kullanıcının anlık görüntüler başlamadan önce geriye dönük
+    # girdiği işlemleri de "bu dönemde giren para" diye göstermek olurdu -
+    # oysa o para grafikte hiç görünmüyor.
+    charted_dates = {h["date"] for h in history}
+    charted_flows = {d: v for d, v in flows_by_date.items() if d in charted_dates}
+
     return {
         "twr_pct": round(twr_pct, 2),
         # Ham (para akışını yok sayan) değişim - ikisi arasındaki fark,
         # kullanıcının koyduğu/çektiği paranın eğriye etkisidir.
         "simple_change_pct": round(simple_pct, 2) if simple_pct is not None else None,
-        "net_flow": round(sum(flows_by_date.values()), 2),
-        "has_flows": any(abs(v) > 1e-9 for v in flows_by_date.values()),
+        "net_flow": round(sum(charted_flows.values()), 2),
+        "has_flows": any(abs(v) > 1e-9 for v in charted_flows.values()),
         "days_counted": counted,
+        # Hesaplanamayan alt dönem varsa sonuç eksiktir; sessizce tam
+        # gibi sunmak yerine söylüyoruz.
+        "days_skipped": skipped,
+        "series": series,
     }
 
 

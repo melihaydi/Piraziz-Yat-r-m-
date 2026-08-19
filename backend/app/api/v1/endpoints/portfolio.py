@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -266,10 +267,22 @@ def get_portfolio_history(
     # karşılaştırma da o yüzden bu düzeltme olmadan yanıltıcıdır.
     portfolio_ids = _user_portfolio_ids(db, current_user.id)
     transactions = []
-    if portfolio_ids:
+    if portfolio_ids and history:
+        # Yalnızca grafiğin kapsadığı aralık çekiliyor ve yalnızca akış
+        # doğuran tipler. Önceden burada koşulsuz bir .all() vardı: TWR için
+        # kullanıcının BÜTÜN hareket defteri, her sayfa açılışında ve her
+        # işlemden sonra (loadData her mutasyonda bunu yeniden çağırıyor)
+        # baştan sona okunuyordu. Hesaba giren tek şey bu aralıktaki akışlar
+        # olduğu için gerisi zaten boşa okumaydı; defter büyüdükçe maliyeti
+        # sınırsız artıyordu.
+        first_day = datetime.fromisoformat(history[0]["date"])
         transactions = (
             db.query(PortfolioTransaction)
-            .filter(PortfolioTransaction.portfolio_id.in_(portfolio_ids))
+            .filter(
+                PortfolioTransaction.portfolio_id.in_(portfolio_ids),
+                PortfolioTransaction.transaction_type.in_(("BUY", "SELL", "CASH")),
+                PortfolioTransaction.executed_at >= first_day,
+            )
             .order_by(PortfolioTransaction.executed_at.asc())
             .all()
         )
@@ -306,7 +319,16 @@ def _benchmark_series(history: List[dict]) -> List[dict]:
         # Tek nokta için "performans" diye bir şey yok, karşılaştırma da yok.
         return []
 
-    cache_key = f"portfolio:benchmark:{_BENCHMARK_SYMBOL}:{history[0]['date']}:{history[-1]['date']}"
+    # Anahtar TÜM tarih kümesinden türetiliyor, yalnızca ilk/son günden
+    # değil: dönen seri kullanıcının kendi anlık görüntü günlerine
+    # hizalanıyor, dolayısıyla başlangıcı ve sonu aynı ama arası farklı iki
+    # kullanıcı (biri bir süre uygulamayı açmamışsa) aynı anahtarı paylaşıp
+    # birbirinin serisini okuyordu - grafikte kendi eğrisiyle örtüşmeyen
+    # fazladan ya da eksik noktalar beliriyordu.
+    dates_fingerprint = hashlib.sha1(
+        ",".join(h["date"] for h in history).encode()
+    ).hexdigest()[:16]
+    cache_key = f"portfolio:benchmark:{_BENCHMARK_SYMBOL}:{dates_fingerprint}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -338,8 +360,14 @@ def _benchmark_series(history: List[dict]) -> List[dict]:
         return []
 
     base_index = aligned[0][1]
-    base_portfolio = history[0]["total_value"]
-    if not base_index or not base_portfolio:
+    # Yalnızca endeksin kendi tabanı kontrol ediliyor. Burada bir de
+    # portföyün ilk günkü değeri kontrol ediliyordu, ama o değer bu
+    # fonksiyonun ürettiği seride hiç kullanılmıyor - endeks yalnızca kendi
+    # ilk kapanışına göre normalize ediliyor. Sonuç: anlık görüntüleri
+    # varlık girilmeden önce başlamış (ilk gün değeri 0) bir kullanıcı,
+    # bütün endeks verisi elde olmasına rağmen karşılaştırma çizgisini
+    # hiçbir zaman göremiyordu.
+    if not base_index:
         return []
 
     series = [
@@ -962,18 +990,17 @@ def get_annual_summary(
     if not all_tx:
         return empty
 
-    start = datetime(year, 1, 1)
-    end = datetime(year + 1, 1, 1)
-
     def _in_year(tx) -> bool:
         executed = tx.executed_at
         if executed is None:
             return False
-        # Karşılaştırmadan önce tz bilgisini düşürüyoruz: SQLite naive,
-        # Postgres aware datetime döner ve ikisini doğrudan karşılaştırmak
-        # TypeError verir.
-        naive = executed.replace(tzinfo=None)
-        return start <= naive < end
+        # İSTANBUL takvim yılına göre. Daha önce burada .replace(tzinfo=None)
+        # vardı, yani Postgres'in UTC değeri yerel saat sanılıyordu: İstanbul
+        # UTC+3 olduğu için 1 Ocak gecesi 01:30'da yapılan bir satış UTC'de
+        # 31 Aralık 22:30 görünüp BİR ÖNCEKİ vergi yılına düşüyordu. Bu ekran
+        # kullanıcıya açıkça "Yıllık Kazanç Özeti" olarak sunulduğu için
+        # işlemin hangi yıla sayıldığı doğrudan önemli.
+        return portfolio_ledger.local_date(executed).year == year
 
     year_tx = [t for t in all_tx if _in_year(t)]
 
@@ -1000,7 +1027,7 @@ def get_annual_summary(
             e["dividend_income"] += t.amount
 
     available_years = sorted({
-        t.executed_at.replace(tzinfo=None).year for t in all_tx if t.executed_at
+        portfolio_ledger.local_date(t.executed_at).year for t in all_tx if t.executed_at
     }, reverse=True)
 
     return {

@@ -28,6 +28,8 @@ def _evaluate_portfolio_alerts(db: Session, user: User, alerts: list) -> list:
     from app.api.v1.endpoints.portfolio import _fetch_live_price
     from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 
+    from app.core.redis import cache_service
+
     assets = (
         db.query(PortfolioAsset).join(Portfolio)
         .filter(Portfolio.user_id == user.id).all()
@@ -36,8 +38,20 @@ def _evaluate_portfolio_alerts(db: Session, user: User, alerts: list) -> list:
         return []
 
     tickers = sorted({a.ticker.upper() for a in assets})
-    with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
-        price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
+
+    # Fiyatlar kısa ömürlü önbellekten. Bu fonksiyon Header'ın 60 saniyede
+    # bir attığı /alert/check yoklamasında çalışıyor; önbelleksiz hâlde
+    # kullanıcının HER holdingi için (fon kodları tefas'ın özyinelemeli
+    # çözümlemesinden geçerek) her dakika, her açık sekmede yeniden fiyat
+    # çekiliyordu. Alarm eşikleri dakikalık hassasiyet gerektirmiyor, üstelik
+    # aynı veriyi /portfolio/ ve /analytics zaten kendi önbelleklerinde
+    # tutuyor.
+    cache_key = f"alerts:prices:{','.join(tickers)}"
+    price_by_ticker = cache_service.get_json(cache_key)
+    if price_by_ticker is None:
+        with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
+            price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
+        cache_service.set_json(cache_key, price_by_ticker, expire_seconds=45)
 
     total_value = 0.0
     worst = None  # (ticker, zarar_yüzdesi)

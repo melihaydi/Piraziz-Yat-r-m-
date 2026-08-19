@@ -283,3 +283,12 @@ def test_deleting_portfolio_removes_its_transaction_history(client, auth_headers
     assert db.query(PortfolioTransaction).filter(
         PortfolioTransaction.portfolio_id == second["id"]
     ).count() == 0
+
+
+# NOT: "1 Ocak gecesi yapilan satis dogru vergi yilina sayiliyor mu" senaryosu
+# burada API seviyesinde test EDILEMIYOR: SQLite saat dilimi bilgisini
+# saklamiyor, yazilan tz-aware deger naive olarak geri geliyor ve UTC/Istanbul
+# ayrimi test ortaminda hic olusmuyor (production Postgres'te olusuyor).
+# Donusumun kendisi portfolio_ledger.local_date uzerinden
+# test_portfolio_ledger.py::test_twr_buckets_flows_by_istanbul_date_not_utc
+# ile dogrudan test ediliyor.

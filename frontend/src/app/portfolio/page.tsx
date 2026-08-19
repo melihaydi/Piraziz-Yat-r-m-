@@ -439,16 +439,27 @@ export default function PortfolioPage() {
     const base = equityHistory[0].total_value
     if (!base) return []
     const indexByDate = new Map(benchmark.map(b => [b.date, b.index_change_pct]))
+    // Portföy çizgisi HAM değer değişimini değil, para giriş/çıkışından
+    // arındırılmış birikimli getiriyi (TWR) çizer. Önceden çizgi ham
+    // değişimi gösterirken başlıktaki rakam TWR'ydi: para yatıran bir
+    // kullanıcı aynı kartta "Portföy +%10" başlığıyla +%1000'de biten bir
+    // eğriyi yan yana görüyordu. Karşılaştırmanın anlamlı olması için
+    // endeksle aynı ölçekte olması gereken seri de zaten bu.
+    const twrByDate = new Map<string, number>(
+      (performance?.series || []).map((s: any) => [s.date, s.twr_pct]),
+    )
     return equityHistory.map(h => ({
       date: h.date,
       total_value: h.total_value,
-      portfolio_pct: Number(((h.total_value / base - 1) * 100).toFixed(2)),
+      portfolio_pct: twrByDate.has(h.date)
+        ? twrByDate.get(h.date)!
+        : Number(((h.total_value / base - 1) * 100).toFixed(2)),
       // Endeks kapanışı olmayan gün (tatil/eksik veri) null kalır -
       // Recharts bu noktada çizgiyi kesintiye uğratır, ki uydurulmuş bir
       // ara değer çizmekten dürüst olanı budur.
       index_pct: indexByDate.has(h.date) ? indexByDate.get(h.date)! : null,
     }))
-  }, [equityHistory, benchmark])
+  }, [equityHistory, benchmark, performance])
 
   // "Endeksi yendim mi" - son güne ait iki yüzdenin farkı.
   //
@@ -1657,15 +1668,23 @@ export default function PortfolioPage() {
           yorucu kaydırmayı bitiriyor hem de kullanıcının aradığı şeye
           doğrudan gitmesini sağlıyor. Bölümlerin kendi içeriği değişmedi,
           yalnızca gruplandılar. */}
-      <Tabs defaultValue="genel" className="w-full">
+      {/* Varsayılan sekme Varlıklar: sayfaya girildiğinde ilk görülmesi
+          gereken şey kullanıcının neye sahip olduğu. Portföy değeri grafiği
+          zaman içindeki seyri anlatıyor, ama "elimde ne var" sorusu her
+          zaman ondan önce geliyor. */}
+      <Tabs defaultValue="varliklar" className="w-full">
         {/* Yapışkan: ölçümde sekme çubuğu mobilde y=1410'daydı, yani
             kullanıcı sekmelere ulaşmak için önce bütün özet kartlarını
             geçmek zorundaydı - sekmeye tıklamak için aşağı, içeriği görmek
             için yukarı kaydırmak gerekiyordu. Üstte kalınca gezinme her an
             elin altında. */}
         <TabsList className="sticky top-0 z-20 h-auto flex-wrap justify-start gap-1 bg-secondary/40 p-1 backdrop-blur-md supports-[backdrop-filter]:bg-secondary/60">
-          <TabsTrigger value="genel" className="t-body">Genel</TabsTrigger>
+          {/* Varlıklar başta: hem varsayılan sekme hem de en soldaki olsun -
+              aktif sekmenin ortada durması kafa karıştırıcıydı. "Genel"
+              adı da değişti; o sekmede yalnızca zaman içindeki değer grafiği
+              var, "Performans" ne bulacağını doğrudan söylüyor. */}
           <TabsTrigger value="varliklar" className="t-body">Varlıklar</TabsTrigger>
+          <TabsTrigger value="genel" className="t-body">Performans</TabsTrigger>
           <TabsTrigger value="analiz" className="t-body">Analiz</TabsTrigger>
           <TabsTrigger value="alarmlar" className="t-body">Alarmlar</TabsTrigger>
         </TabsList>
@@ -1732,7 +1751,9 @@ export default function PortfolioPage() {
                             labelStyle={{ color: "#94a3b8" }}
                             formatter={(value: any, name: any) => [
                               value == null ? "—" : `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}%`,
-                              name === "portfolio_pct" ? "Portföyünüz" : "XU100",
+                              name === "portfolio_pct"
+                                ? (benchmarkVerdict?.hasFlows ? "Portföyünüz (para akışı arındırılmış)" : "Portföyünüz")
+                                : "XU100",
                             ]}
                           />
                           <Area
