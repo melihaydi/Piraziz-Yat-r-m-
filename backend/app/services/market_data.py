@@ -159,11 +159,18 @@ logger = logging.getLogger(__name__)
 # ~-73% "crash" (real BIST daily limit is ~+-10%).
 # https://www.ekonomim.com/sirketler/katilimevim-yuzde-238-bedelsiz-sermaye-artiracak-haberi-909371
 #
-# ratio = 1 + bonus_pct/100 (e.g. 238.16% bonus -> 3.3816x more shares,
-# so the pre-action prev_close must be divided by that factor).
-_CORPORATE_ACTION_RATIO: Dict[str, float] = {
-    "KTLEV": 3.3816,
-}
+# The ratios themselves now live in services/corporate_actions.py, which is
+# the single source of truth: the SAME action also has to adjust users'
+# portfolio holdings (lot count up, average cost down), and having the
+# ratio defined in two places was how that half of the problem went
+# unnoticed - the quote was corrected here while every portfolio holding
+# the stock kept showing a fake ~70% loss.
+def _corporate_action_ratio(symbol: str) -> Optional[float]:
+    # Imported lazily: corporate_actions imports the portfolio ledger, which
+    # imports models - and this module is imported during model/service
+    # startup, so a module-level import would be circular.
+    from app.services.corporate_actions import ratio_by_ticker
+    return ratio_by_ticker().get(symbol)
 # Only correct while the raw change still looks implausible - this makes the
 # fix self-disable once TradingView's feed catches up, instead of needing to
 # be manually removed later (and risking a double-correction if left in).
@@ -526,8 +533,8 @@ class MarketDataService:
 
     def _correct_stale_corporate_action(self, symbol: str, item: Dict[str, Any]) -> None:
         """Mutates `item` in place to correct change/change_percent for a
-        known-stale corporate-action ratio (see _CORPORATE_ACTION_RATIO)."""
-        ratio = _CORPORATE_ACTION_RATIO.get(symbol)
+        known-stale corporate-action ratio (see corporate_actions.py)."""
+        ratio = _corporate_action_ratio(symbol)
         if not ratio:
             return
         raw_change_pct = item.get("change_percent")

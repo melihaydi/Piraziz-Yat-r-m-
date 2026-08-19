@@ -5,6 +5,7 @@ from app.models.company import Company
 from app.models.financial import FinancialStatement
 from app.models.kap import KapNotification
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
+from app.models.portfolio_transaction import PortfolioTransaction
 from app.models.alert import Alert
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.models.note import Note
@@ -24,6 +25,7 @@ __all__ = [
     "Portfolio",
     "PortfolioAsset",
     "PortfolioSnapshot",
+    "PortfolioTransaction",
     "Alert",
     "FundEstimateSnapshot",
     "Note",

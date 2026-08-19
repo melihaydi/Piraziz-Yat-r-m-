@@ -29,7 +29,9 @@ import {
   Zap,
   ChevronDown,
   DollarSign,
-  Minus
+  Minus,
+  History,
+  Coins
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -49,6 +51,14 @@ import { parseTLAmount } from "@/lib/utils"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
+
+// Hareket defteri tipleri (backend TRANSACTION_TYPES ile aynı).
+const TX_LABELS: Record<string, string> = {
+  BUY: "ALIŞ",
+  SELL: "SATIŞ",
+  DIVIDEND: "TEMETTÜ",
+  BONUS: "BEDELSİZ",
+}
 
 function PortfolioStressTest({ beta, currentValue }: { beta: number | null; currentValue: number }) {
   const [scenario, setScenario] = useState(-10)
@@ -128,6 +138,16 @@ export default function PortfolioPage() {
   const [editShares, setEditShares] = useState("")
   const [editCost, setEditCost] = useState("")
   const [sellShares, setSellShares] = useState("")
+  const [sellPrice, setSellPrice] = useState("")
+
+  // Hareket geçmişi + gerçekleşen performans
+  const [transactions, setTransactions] = useState<any[]>([])
+  const [realized, setRealized] = useState<any>(null)
+  const [isOpenHistoryModal, setIsOpenHistoryModal] = useState(false)
+  const [isOpenDividendModal, setIsOpenDividendModal] = useState(false)
+  const [dividendTicker, setDividendTicker] = useState("")
+  const [dividendPerShare, setDividendPerShare] = useState("")
+  const [dividendTax, setDividendTax] = useState("")
 
   // Surfaces a failure from any of the mutation handlers below (add/edit/
   // sell/delete asset, add/toggle/delete alert) - previously these only
@@ -254,10 +274,27 @@ export default function PortfolioPage() {
     }
   }
 
+  // Hareket defteri + gerçekleşen (kapatılmış) performans. Ayrı bir yükleme
+  // olarak duruyor çünkü ikisi de düz DB okuması - ana spinner'ı bekletmeye
+  // veya analytics'in yavaş fiyat çekmelerine bağlanmaya gerek yok.
+  const loadLedger = async () => {
+    try {
+      const [txRes, realizedRes] = await Promise.all([
+        authFetch("/portfolio/transactions?limit=200"),
+        authFetch("/portfolio/realized"),
+      ])
+      if (txRes.ok) setTransactions(await txRes.json())
+      if (realizedRes.ok) setRealized(await realizedRes.json())
+    } catch (err) {
+      console.error("Failed to load portfolio ledger:", err)
+    }
+  }
+
   const loadData = () => {
     loadCore()
     loadAnalytics()
     loadEquityHistory()
+    loadLedger()
   }
 
   // Initial fetch shows a spinner; background refreshes (the interval
@@ -471,23 +508,74 @@ export default function PortfolioPage() {
       flashActionError("Adet geçersiz - örn. 12,5 yazın.")
       return
     }
+    // Satış fiyatı gerçekleşen kâr/zararın hesaplandığı yer - boş
+    // bırakılırsa backend anlık fiyatı kullanır ("piyasadan sattım").
+    const price = sellPrice.trim() ? parseTLAmount(sellPrice) : null
+    if (price !== null && (!Number.isFinite(price) || price <= 0)) {
+      flashActionError("Satış fiyatı geçersiz - örn. 312,50 yazın.")
+      return
+    }
 
     try {
       const res = await authFetch(`/portfolio/assets/${selectedAsset.id}/sell`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shares
+          shares,
+          ...(price !== null ? { price } : {}),
         })
       }, 0) // never silently retry a sell on a network failure - could double-sell
       if (res.ok) {
         setIsOpenSellModal(false)
         setSelectedAsset(null)
         setSellShares("")
+        setSellPrice("")
         loadData()
       } else {
         const body = await res.json().catch(() => null)
         flashActionError(body?.detail || "Satış gerçekleştirilemedi.")
+      }
+    } catch (err) {
+      flashActionError("Sunucuya ulaşılamadı.")
+    }
+  }
+
+  // Temettü kaydı - pozisyonun lotunu/maliyetini değiştirmez, sadece
+  // gelir olarak deftere yazılır (bkz. backend portfolio_ledger).
+  const handleAddDividend = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!activePortfolio || !dividendTicker || !dividendPerShare) return
+
+    const perShare = parseTLAmount(dividendPerShare)
+    if (!Number.isFinite(perShare) || perShare <= 0) {
+      flashActionError("Lot başına temettü geçersiz - örn. 2,50 yazın.")
+      return
+    }
+    const tax = dividendTax.trim() ? parseTLAmount(dividendTax) : 0
+    if (!Number.isFinite(tax) || tax < 0) {
+      flashActionError("Stopaj tutarı geçersiz.")
+      return
+    }
+
+    try {
+      const res = await authFetch(`/portfolio/${activePortfolio.id}/dividends`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker: dividendTicker.toUpperCase(),
+          per_share: perShare,
+          tax,
+        })
+      }, 0)
+      if (res.ok) {
+        setIsOpenDividendModal(false)
+        setDividendTicker("")
+        setDividendPerShare("")
+        setDividendTax("")
+        loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Temettü kaydedilemedi.")
       }
     } catch (err) {
       flashActionError("Sunucuya ulaşılamadı.")
@@ -581,7 +669,23 @@ export default function PortfolioPage() {
           <h1 className="text-3xl font-extrabold tracking-tight">Portföy ve Alarm Sistemi</h1>
           <p className="text-muted-foreground mt-1">Maliyet hesaplaması, sektör dağılımları ve TradingView tetikleyici alarmlar.</p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            className="cursor-pointer flex items-center"
+            onClick={() => setIsOpenHistoryModal(true)}
+          >
+            <History className="h-4 w-4 mr-2 text-cyan-400" />
+            İşlem Geçmişi
+          </Button>
+          <Button
+            variant="outline"
+            className="cursor-pointer flex items-center"
+            onClick={() => setIsOpenDividendModal(true)}
+          >
+            <Coins className="h-4 w-4 mr-2 text-amber-400" />
+            Temettü Ekle
+          </Button>
           {/* Create Alarm Dialog */}
           <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
             <DialogTrigger asChild>
@@ -763,7 +867,8 @@ export default function PortfolioPage() {
               <DialogHeader>
                 <DialogTitle>Hisse Satışı ({selectedAsset?.ticker})</DialogTitle>
                 <DialogDescription>
-                  Portföyünüzden satmak istediğiniz hisse lot miktarını belirtin.
+                  Satılacak lot miktarını ve satış fiyatını girin. Gerçekleşen
+                  kâr/zarar bu fiyata göre hesaplanıp işlem geçmişinize kaydedilir.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSellAsset} className="space-y-4 py-4">
@@ -779,10 +884,155 @@ export default function PortfolioPage() {
                     required
                   />
                 </div>
+                <div className="grid grid-cols-3 items-center gap-4">
+                  <label className="text-sm font-semibold text-muted-foreground text-right">Satış Fiyatı</label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={sellPrice}
+                    onChange={(e) => setSellPrice(e.target.value)}
+                    placeholder={selectedAsset?.current_price ? `Anlık: ${selectedAsset.current_price.toFixed(2)}` : "Boş = anlık fiyat"}
+                    className="col-span-2 bg-secondary/50"
+                  />
+                </div>
+                {selectedAsset && sellShares && sellPrice && (() => {
+                  const s = parseTLAmount(sellShares)
+                  const p = parseTLAmount(sellPrice)
+                  if (!Number.isFinite(s) || !Number.isFinite(p)) return null
+                  const pnl = (p - (selectedAsset.average_cost || 0)) * s
+                  return (
+                    <p className={`text-xs font-bold text-center ${pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      Tahmini gerçekleşen K/Z: {pnl >= 0 ? "+" : ""}₺
+                      {pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  )
+                })()}
                 <DialogFooter className="pt-4 border-t border-border/50">
                   <Button type="submit" variant="destructive" className="w-full cursor-pointer">Satışı Gerçekleştir</Button>
                 </DialogFooter>
               </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Temettü kaydı */}
+          <Dialog open={isOpenDividendModal} onOpenChange={setIsOpenDividendModal}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Temettü Ekle</DialogTitle>
+                <DialogDescription>
+                  Aldığınız temettüyü kaydedin. Pozisyonunuz değişmez; sadece
+                  gelir olarak işlenir ve toplam getirinize eklenir.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddDividend} className="space-y-4 py-4">
+                <div className="grid grid-cols-3 items-center gap-4">
+                  <label className="text-sm font-semibold text-muted-foreground text-right">Hisse</label>
+                  <Input
+                    value={dividendTicker}
+                    onChange={(e) => setDividendTicker(e.target.value.toUpperCase())}
+                    placeholder="Örn: THYAO"
+                    className="col-span-2 bg-secondary/50 uppercase"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-3 items-center gap-4">
+                  <label className="text-sm font-semibold text-muted-foreground text-right">Lot Başına</label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={dividendPerShare}
+                    onChange={(e) => setDividendPerShare(e.target.value)}
+                    placeholder="Örn: 2,50"
+                    className="col-span-2 bg-secondary/50"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-3 items-center gap-4">
+                  <label className="text-sm font-semibold text-muted-foreground text-right">Stopaj</label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={dividendTax}
+                    onChange={(e) => setDividendTax(e.target.value)}
+                    placeholder="Opsiyonel"
+                    className="col-span-2 bg-secondary/50"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  Lot adedi portföyünüzdeki mevcut pozisyondan alınır.
+                </p>
+                <DialogFooter className="pt-4 border-t border-border/50">
+                  <Button type="submit" className="w-full cursor-pointer">Temettüyü Kaydet</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* İşlem geçmişi */}
+          <Dialog open={isOpenHistoryModal} onOpenChange={setIsOpenHistoryModal}>
+            <DialogContent className="sm:max-w-[720px]">
+              <DialogHeader>
+                <DialogTitle>İşlem Geçmişi</DialogTitle>
+                <DialogDescription>
+                  Portföyünüzdeki tüm hareketler - alış, satış, temettü ve bedelsiz.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[60vh] overflow-y-auto overflow-x-auto py-2">
+                {transactions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">
+                    Henüz kayıtlı hareket yok. Bundan sonraki alış, satış ve
+                    temettüleriniz burada listelenecek.
+                  </p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="text-muted-foreground border-b border-border/50">
+                      <tr>
+                        <th className="text-left py-2 font-semibold">Tarih</th>
+                        <th className="text-left py-2 font-semibold">Tip</th>
+                        <th className="text-left py-2 font-semibold">Hisse</th>
+                        <th className="text-right py-2 font-semibold">Adet</th>
+                        <th className="text-right py-2 font-semibold">Fiyat</th>
+                        <th className="text-right py-2 font-semibold">Tutar</th>
+                        <th className="text-right py-2 font-semibold">K/Z</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono">
+                      {transactions.map((t) => (
+                        <tr key={t.id} className="border-b border-border/20">
+                          <td className="py-2 whitespace-nowrap">
+                            {new Date(t.executed_at).toLocaleDateString("tr-TR")}
+                          </td>
+                          <td className="py-2">
+                            <span className={`px-1.5 py-0.5 rounded font-sans font-bold text-[10px] ${
+                              t.transaction_type === "BUY" ? "bg-emerald-500/15 text-emerald-400"
+                              : t.transaction_type === "SELL" ? "bg-rose-500/15 text-rose-400"
+                              : t.transaction_type === "DIVIDEND" ? "bg-amber-500/15 text-amber-400"
+                              : "bg-cyan-500/15 text-cyan-400"
+                            }`}>
+                              {TX_LABELS[t.transaction_type] || t.transaction_type}
+                            </span>
+                          </td>
+                          <td className="py-2 font-bold">{t.ticker}</td>
+                          <td className="py-2 text-right">{t.shares.toLocaleString("tr-TR")}</td>
+                          <td className="py-2 text-right">
+                            {t.transaction_type === "BONUS" ? "-" : `₺${t.price.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </td>
+                          <td className="py-2 text-right">
+                            {t.transaction_type === "BONUS" ? "-" : `₺${t.amount.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </td>
+                          <td className={`py-2 text-right font-bold ${
+                            t.realized_pnl == null ? "text-muted-foreground"
+                            : t.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"
+                          }`}>
+                            {t.realized_pnl == null ? "-"
+                              : `${t.realized_pnl >= 0 ? "+" : ""}₺${t.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -912,6 +1162,44 @@ export default function PortfolioPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Gerçekleşen (kapatılmış) performans - yukarıdaki kartların
+          gösterdiği "şu an elimdekinin kârı"ndan AYRI bir şey: satılıp
+          bitmiş işlerden kalan kâr/zarar ve cebe giren temettü. İkisi
+          birbirine karıştırılmamalı, bu yüzden kendi şeridinde duruyor. */}
+      {realized && (realized.sell_count > 0 || realized.dividend_count > 0) && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
+          <div className="flex items-center gap-2 shrink-0">
+            <History className="h-4 w-4 text-cyan-400" />
+            <span className="text-xs font-bold uppercase text-muted-foreground">Gerçekleşen</span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] text-muted-foreground font-semibold">Satışlardan:</span>
+            <span className={`text-sm font-extrabold font-mono ${realized.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+              {realized.realized_pnl >= 0 ? "+" : ""}₺{realized.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span className="text-[11px] text-muted-foreground">({realized.sell_count} satış)</span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] text-muted-foreground font-semibold">Temettü:</span>
+            <span className="text-sm font-extrabold font-mono text-amber-400">
+              ₺{realized.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[11px] text-muted-foreground font-semibold">Toplam:</span>
+            <span className={`text-sm font-extrabold font-mono ${realized.total_realized >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+              {realized.total_realized >= 0 ? "+" : ""}₺{realized.total_realized.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <button
+            onClick={() => setIsOpenHistoryModal(true)}
+            className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer ml-auto"
+          >
+            Tümünü gör →
+          </button>
+        </div>
+      )}
 
       {/* Döviz Nakit (USD) - self-service, unlike Nakit/VİOP Teminatı above
           (still admin-only via Yönetilen Portföyler for now). Stored in raw

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -9,9 +10,14 @@ from app.core.limiter import limiter
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
-from app.schemas.portfolio import PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse
+from app.models.portfolio_transaction import PortfolioTransaction
+from app.schemas.portfolio import (
+    PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse,
+    AssetSell, DividendCreate, PortfolioTransactionResponse,
+)
 from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
+from app.services import portfolio_ledger
 from app.services.portfolio_analytics import compute_portfolio_analytics
 from app.core.redis import cache_service
 
@@ -469,43 +475,21 @@ def add_asset_to_portfolio(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    """Add a stock asset to the portfolio or recalculate weighted cost if it already exists."""
+    """Add a stock asset to the portfolio or recalculate weighted cost if it
+    already exists. Records a BUY row in the portfolio ledger either way -
+    see app/services/portfolio_ledger.py, which owns the weighted-average
+    merge so this and the admin managed-portfolio equivalent can't drift."""
     portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
     if not portfolio:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
 
-    ticker_upper = asset_in.ticker.upper()
-    existing_asset = db.query(PortfolioAsset).filter(
-        PortfolioAsset.portfolio_id == id, 
-        PortfolioAsset.ticker == ticker_upper
-    ).first()
-
-    if existing_asset:
-        # Calculate weighted average cost
-        total_shares = existing_asset.shares + asset_in.shares
-        if total_shares > 0:
-            weighted_cost = (
-                (existing_asset.shares * existing_asset.average_cost) + 
-                (asset_in.shares * asset_in.average_cost)
-            ) / total_shares
-            existing_asset.average_cost = weighted_cost
-            existing_asset.shares = total_shares
-        
-        db.commit()
-        db.refresh(existing_asset)
-        asset_obj = existing_asset
-    else:
-        # Create new asset
-        db_asset = PortfolioAsset(
-            portfolio_id=id,
-            ticker=ticker_upper,
-            shares=asset_in.shares,
-            average_cost=asset_in.average_cost
-        )
-        db.add(db_asset)
-        db.commit()
-        db.refresh(db_asset)
-        asset_obj = db_asset
+    asset_obj = portfolio_ledger.record_buy(
+        db, portfolio_id=id, ticker=asset_in.ticker,
+        shares=asset_in.shares, price=asset_in.average_cost,
+        executed_at=asset_in.executed_at,
+    )
+    db.commit()
+    db.refresh(asset_obj)
 
     metrics = calculate_asset_metrics(asset_obj)
     return PortfolioAssetResponse(**metrics)
@@ -536,9 +520,6 @@ from pydantic import BaseModel
 class AssetUpdate(BaseModel):
     shares: float
     average_cost: float
-
-class AssetSell(BaseModel):
-    shares: float
 
 class UsdCashAdjustIn(BaseModel):
     # Signed delta in raw USD, not TL - positive deposits, negative
@@ -619,7 +600,16 @@ def sell_portfolio_asset(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    """Sell a partial or complete amount of shares. Deletes asset if remaining shares <= 0."""
+    """Sell a partial or complete amount of shares, recording the realized
+    profit/loss against the position's average cost at sale time (see
+    portfolio_ledger.record_sell). Deletes the asset if nothing is left.
+
+    Previously this just decremented `shares` (or deleted the row) and kept
+    NO record at all - not the date, not even the sale price, which it
+    didn't ask for - so a user could never see what they had actually
+    earned. `price` is optional purely so an older client that doesn't send
+    it still works; in that case the current live price is used, which is
+    the closest honest stand-in for "sold at market right now"."""
     asset = db.query(PortfolioAsset).join(Portfolio).filter(
         PortfolioAsset.id == asset_id,
         Portfolio.user_id == current_user.id
@@ -628,18 +618,178 @@ def sell_portfolio_asset(
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
 
-    if sell_in.shares >= asset.shares:
-        # Sell entire lot
-        db.delete(asset)
-        db.commit()
+    if sell_in.shares <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Satış adedi sıfırdan büyük olmalı.")
+    if sell_in.shares > asset.shares + 1e-9:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Yetersiz pozisyon: elinizde {asset.shares:g} lot var.",
+        )
+
+    sell_price = sell_in.price
+    if sell_price is None:
+        sell_price = _fetch_live_price(asset.ticker) or asset.average_cost
+
+    remaining, _realized = portfolio_ledger.record_sell(
+        db, asset, shares=sell_in.shares, price=sell_price,
+        executed_at=sell_in.executed_at,
+    )
+    db.commit()
+
+    if remaining is None:
         return None
-    else:
-        # Partial sell
-        asset.shares -= sell_in.shares
-        db.commit()
-        db.refresh(asset)
-        metrics = calculate_asset_metrics(asset)
-        return PortfolioAssetResponse(**metrics)
+
+    db.refresh(remaining)
+    metrics = calculate_asset_metrics(remaining)
+    return PortfolioAssetResponse(**metrics)
+
+
+def _user_portfolio_ids(db: Session, user_id: int) -> List[int]:
+    return [row[0] for row in db.query(Portfolio.id).filter(Portfolio.user_id == user_id).all()]
+
+
+@router.get("/transactions", response_model=List[PortfolioTransactionResponse])
+def get_portfolio_transactions(
+    ticker: Optional[str] = None,
+    limit: int = 200,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """The user's portfolio ledger (alış/satış/temettü/bedelsiz), newest
+    first, across all their portfolios - optionally filtered to one ticker
+    for the per-holding history view."""
+    portfolio_ids = _user_portfolio_ids(db, current_user.id)
+    if not portfolio_ids:
+        return []
+
+    query = db.query(PortfolioTransaction).filter(
+        PortfolioTransaction.portfolio_id.in_(portfolio_ids)
+    )
+    if ticker:
+        query = query.filter(PortfolioTransaction.ticker == ticker.upper())
+
+    rows = query.order_by(
+        PortfolioTransaction.executed_at.desc(), PortfolioTransaction.id.desc()
+    ).limit(max(1, min(limit, 1000))).all()
+    return [PortfolioTransactionResponse.model_validate(r) for r in rows]
+
+
+@router.get("/realized")
+def get_realized_performance(
+    year: Optional[int] = None,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Gerçekleşen (kapatılmış) performans - portföyün ANLIK değerinden
+    bağımsız olarak, satışlardan elde edilen kâr/zarar ve alınan temettü.
+
+    Bu, sayfanın geri kalanının gösterdiği "şu an elimdekinin kârı"
+    (unrealized) rakamından ayrı bir şey: burada satılıp bitmiş işler ve
+    cebe giren temettü var. İkisinin toplamı gerçek toplam getiridir.
+
+    `year` verilirse sadece o takvim yılı (yıllık kazanç özeti için).
+    """
+    portfolio_ids = _user_portfolio_ids(db, current_user.id)
+    if not portfolio_ids:
+        return {
+            "year": year, "realized_pnl": 0.0, "dividend_income": 0.0,
+            "total_realized": 0.0, "sell_count": 0, "dividend_count": 0, "by_ticker": [],
+        }
+
+    query = db.query(PortfolioTransaction).filter(
+        PortfolioTransaction.portfolio_id.in_(portfolio_ids),
+        PortfolioTransaction.transaction_type.in_(("SELL", "DIVIDEND")),
+    )
+    if year:
+        # Yıl sınırlarını Python tarafında kurmak, SQLite ve Postgres'te
+        # farklı davranan tarih fonksiyonlarına (strftime vs EXTRACT)
+        # bağımlı kalmamak için tercih edildi.
+        start = datetime(year, 1, 1)
+        end = datetime(year + 1, 1, 1)
+        query = query.filter(
+            PortfolioTransaction.executed_at >= start,
+            PortfolioTransaction.executed_at < end,
+        )
+
+    rows = query.all()
+
+    realized_pnl = sum(r.realized_pnl or 0.0 for r in rows if r.transaction_type == "SELL")
+    dividend_income = sum(r.amount for r in rows if r.transaction_type == "DIVIDEND")
+
+    per_ticker: dict = {}
+    for r in rows:
+        entry = per_ticker.setdefault(r.ticker, {"ticker": r.ticker, "realized_pnl": 0.0, "dividend_income": 0.0})
+        if r.transaction_type == "SELL":
+            entry["realized_pnl"] += r.realized_pnl or 0.0
+        else:
+            entry["dividend_income"] += r.amount
+
+    by_ticker = sorted(
+        (
+            {**v, "total": round(v["realized_pnl"] + v["dividend_income"], 2),
+             "realized_pnl": round(v["realized_pnl"], 2),
+             "dividend_income": round(v["dividend_income"], 2)}
+            for v in per_ticker.values()
+        ),
+        key=lambda x: x["total"], reverse=True,
+    )
+
+    return {
+        "year": year,
+        "realized_pnl": round(realized_pnl, 2),
+        "dividend_income": round(dividend_income, 2),
+        "total_realized": round(realized_pnl + dividend_income, 2),
+        "sell_count": sum(1 for r in rows if r.transaction_type == "SELL"),
+        "dividend_count": sum(1 for r in rows if r.transaction_type == "DIVIDEND"),
+        "by_ticker": by_ticker,
+    }
+
+
+@router.post("/{id}/dividends", response_model=PortfolioTransactionResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
+def add_dividend(
+    request: Request,
+    id: int,
+    payload: DividendCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Alınan temettüyü kaydeder. Pozisyonun lotunu/maliyetini değiştirmez -
+    sadece nakit geliri olarak deftere işlenir, böylece toplam getiri
+    (fiyat kazancı + temettü) hesaplanabilir."""
+    portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
+    if not portfolio:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
+
+    if payload.per_share <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lot başına temettü sıfırdan büyük olmalı.")
+
+    shares = payload.shares
+    if shares is None:
+        # Lot verilmediyse mevcut pozisyondan al - kullanıcının elindeki
+        # lotu elle yazmasını gerektirmemek için.
+        asset = db.query(PortfolioAsset).filter(
+            PortfolioAsset.portfolio_id == id,
+            PortfolioAsset.ticker == payload.ticker.upper(),
+        ).first()
+        if not asset:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bu hisse portföyünüzde yok - lot adedini elle girin.",
+            )
+        shares = asset.shares
+
+    if shares <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lot adedi sıfırdan büyük olmalı.")
+
+    tx = portfolio_ledger.record_dividend(
+        db, portfolio_id=id, ticker=payload.ticker, shares=shares,
+        per_share=payload.per_share, tax=payload.tax,
+        executed_at=payload.executed_at,
+    )
+    db.commit()
+    db.refresh(tx)
+    return PortfolioTransactionResponse.model_validate(tx)
 
 # The Header component polls this every 15s, on every page, for every
 # logged-in user (it's a global "AL/SAT" notification badge, not the
@@ -661,7 +811,6 @@ def get_portfolio_signals(
     current_user: User = Depends(deps.get_current_user)
 ):
     """Generate technical analysis buy/sell alerts for portfolio assets."""
-    from datetime import datetime
     assets = db.query(PortfolioAsset).join(Portfolio).filter(
         Portfolio.user_id == current_user.id
     ).all()

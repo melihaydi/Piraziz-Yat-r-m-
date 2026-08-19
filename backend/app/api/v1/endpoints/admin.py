@@ -20,6 +20,7 @@ from app.models.support_ticket import SupportTicket
 from app.models.user import User
 from app.schemas.support import SupportTicketAdminResponse, SupportTicketUpdate
 from app.schemas.user import UserOut
+from app.services import corporate_actions, portfolio_ledger
 from app.services.tefas import tefas_service, FUND_DETAILS_MAP, BASE_FUNDS
 
 router = APIRouter()
@@ -597,35 +598,22 @@ def add_managed_asset(
         db.commit()
         db.refresh(portfolio)
 
-    ticker_upper = asset_in.ticker.upper()
-    existing = db.query(PortfolioAsset).filter(
-        PortfolioAsset.portfolio_id == portfolio.id,
-        PortfolioAsset.ticker == ticker_upper,
-    ).first()
-
-    if existing:
-        total_shares = existing.shares + asset_in.shares
-        if total_shares > 0:
-            existing.average_cost = (
-                (existing.shares * existing.average_cost) + (asset_in.shares * asset_in.average_cost)
-            ) / total_shares
-            existing.shares = total_shares
-        db.commit()
-        db.refresh(existing)
-        asset = existing
-    else:
-        asset = PortfolioAsset(
-            portfolio_id=portfolio.id, ticker=ticker_upper,
-            shares=asset_in.shares, average_cost=asset_in.average_cost,
-        )
-        db.add(asset)
-        db.commit()
-        db.refresh(asset)
+    # Shares the ledger service with the self-service endpoint rather than
+    # repeating the weighted-average merge here (the two copies used to be
+    # maintained in parallel), so an admin-entered holding gets the exact
+    # same cost basis AND the same BUY history row the user's own would.
+    asset = portfolio_ledger.record_buy(
+        db, portfolio_id=portfolio.id, ticker=asset_in.ticker,
+        shares=asset_in.shares, price=asset_in.average_cost,
+        note=f"Admin girişi ({admin.email})",
+    )
+    db.commit()
+    db.refresh(asset)
 
     log_audit(db, "managed_portfolio_asset_added", request=request, user_id=admin.id, resource_type="portfolio_asset",
               resource_id=asset.id, details={
                   "target_user_id": user_id, "target_email": target.email,
-                  "ticker": ticker_upper, "shares": asset_in.shares, "average_cost": asset_in.average_cost,
+                  "ticker": asset.ticker, "shares": asset_in.shares, "average_cost": asset_in.average_cost,
               })
     return _asset_dict(asset)
 
@@ -826,3 +814,103 @@ def reset_fund_composition(
     log_audit(db, "fund_composition_reset", request=request, user_id=admin.id, resource_type="fund_composition",
               resource_id=code, details={"fund_code": code})
     return _fund_composition_dict(code, None)
+
+
+# --- Kurumsal işlemler (bedelsiz / bölünme) ---------------------------------
+# Bilinçli olarak admin tetiklemeli, otomatik değil: bu, kullanıcıların
+# gerçek pozisyon verisini geri alınamaz şekilde değiştiriyor. Önce
+# önizleme (GET) ile ne değişeceği görülür, sonra uygulanır (POST).
+
+
+def _plan_dict(p) -> dict:
+    return {
+        "asset_id": p.asset_id,
+        "portfolio_id": p.portfolio_id,
+        "ticker": p.ticker,
+        "current_shares": round(p.current_shares, 4),
+        "current_average_cost": round(p.current_average_cost, 4),
+        "new_shares": round(p.new_shares, 4),
+        "new_average_cost": round(p.new_average_cost, 4),
+        "applicable": p.applicable,
+        "reason": p.reason,
+    }
+
+
+@router.get("/corporate-actions")
+def list_corporate_actions(
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Bilinen bedelsiz/bölünme işlemleri ve her birinin kaç pozisyonu
+    etkileyeceği - superuser only."""
+    out = []
+    for action in corporate_actions.CORPORATE_ACTIONS:
+        plans = corporate_actions.plan_adjustments(db, action)
+        out.append({
+            "ticker": action.ticker,
+            "ratio": action.ratio,
+            "ex_date": action.ex_date.isoformat(),
+            "description": action.description,
+            "affected_count": sum(1 for p in plans if p.applicable),
+            "total_positions": len(plans),
+        })
+    return {"actions": out}
+
+
+@router.get("/corporate-actions/{ticker}/preview")
+def preview_corporate_action(
+    ticker: str,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Uygulamadan ÖNCE hangi pozisyonun nasıl değişeceğini gösterir -
+    hiçbir şeyi değiştirmez."""
+    action = corporate_actions.get_action(ticker)
+    if not action:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bu hisse için tanımlı kurumsal işlem yok.")
+    plans = corporate_actions.plan_adjustments(db, action)
+    return {
+        "ticker": action.ticker,
+        "ratio": action.ratio,
+        "ex_date": action.ex_date.isoformat(),
+        "description": action.description,
+        "plans": [_plan_dict(p) for p in plans],
+    }
+
+
+@router.post("/corporate-actions/{ticker}/apply")
+@limiter.limit("10/minute")
+def apply_corporate_action(
+    request: Request,
+    ticker: str,
+    db: Session = Depends(deps.get_db),
+    admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Bedelsiz/bölünme oranını uygulanabilir pozisyonlara uygular: lot
+    sayısı oran kadar artar, ortalama maliyet aynı oranda düşer (toplam
+    maliyet sabit kalır) ve her pozisyon için deftere BONUS hareketi yazılır.
+
+    Tekrar çalıştırmak güvenlidir: uygulanmış pozisyonlar BONUS kaydından
+    tanınıp atlanır."""
+    action = corporate_actions.get_action(ticker)
+    if not action:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bu hisse için tanımlı kurumsal işlem yok.")
+
+    plans = corporate_actions.apply_action(db, action)
+    applied = [p for p in plans if p.applicable]
+
+    log_audit(db, "corporate_action_applied", request=request, user_id=admin.id,
+              resource_type="corporate_action", resource_id=action.ticker,
+              details={
+                  "ticker": action.ticker, "ratio": action.ratio,
+                  "ex_date": action.ex_date.isoformat(),
+                  "applied_count": len(applied), "total_positions": len(plans),
+              })
+
+    return {
+        "ticker": action.ticker,
+        "ratio": action.ratio,
+        "applied_count": len(applied),
+        "skipped_count": len(plans) - len(applied),
+        "plans": [_plan_dict(p) for p in plans],
+    }

@@ -8,7 +8,45 @@ class PortfolioAssetBase(BaseModel):
     average_cost: float
 
 class PortfolioAssetCreate(PortfolioAssetBase):
-    pass
+    # Geçmişe dönük işlem girişi için - verilmezse "şimdi" kabul edilir.
+    # Sadece hareket defterindeki kaydın tarihini etkiler, pozisyonun
+    # kendisini değil (maliyet birleştirme sıraya değil tutara bakar).
+    executed_at: Optional[datetime] = None
+
+
+class AssetSell(BaseModel):
+    shares: float
+    # Satış fiyatı: gerçekleşen kâr/zararı hesaplamak için gerekli. Eski
+    # istemcilerle uyum için opsiyonel - verilmezse endpoint canlı fiyatı
+    # kullanır (bkz. sell_portfolio_asset).
+    price: Optional[float] = None
+    executed_at: Optional[datetime] = None
+
+
+class DividendCreate(BaseModel):
+    ticker: str
+    # Temettünün ödendiği lot adedi - verilmezse mevcut pozisyonun lotu.
+    shares: Optional[float] = None
+    per_share: float
+    # Stopaj kesintisi (brüt tutardan düşülür).
+    tax: float = 0.0
+    executed_at: Optional[datetime] = None
+
+
+class PortfolioTransactionResponse(BaseModel):
+    id: int
+    portfolio_id: int
+    ticker: str
+    transaction_type: str
+    shares: float
+    price: float
+    amount: float
+    commission: float
+    realized_pnl: Optional[float] = None
+    executed_at: datetime
+    note: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class PortfolioAssetResponse(PortfolioAssetBase):
     id: int
