@@ -203,20 +203,81 @@ export default function ScreenerPage() {
 
   const compareChartData = useMemo(() => buildStockComparisonChartData(compareResult), [compareResult])
 
-  // Load favorites from localStorage on mount
+  // Favoriler artık hesaba bağlı (sunucuda). Önceden yalnızca
+  // localStorage'daydı: tarayıcı verisi temizlenince kayboluyor, aynı
+  // hesapla girilen exe/web/Android'de üç ayrı liste oluşuyor ve sunucu
+  // listeyi göremediği için üstüne bildirim/özet gibi hiçbir şey
+  // kurulamıyordu.
   useEffect(() => {
-    const saved = localStorage.getItem("favorites_stocks")
-    if (saved) {
-      setFavorites(JSON.parse(saved))
+    let active = true
+
+    const load = async () => {
+      // Cihazda kalmış eski liste varsa bir kereliğine hesaba taşınır,
+      // sonra yerelden silinir. Göç yalnızca ekler (sunucudaki listeyi
+      // ezmez), bu yüzden iki cihazdan da çalıştırılması güvenli.
+      try {
+        const legacy = localStorage.getItem("favorites_stocks")
+        if (legacy) {
+          const tickers = JSON.parse(legacy)
+          if (Array.isArray(tickers) && tickers.length > 0) {
+            const res = await authFetch("/watchlist/migrate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tickers }),
+            })
+            if (res.ok) localStorage.removeItem("favorites_stocks")
+          } else {
+            localStorage.removeItem("favorites_stocks")
+          }
+        }
+      } catch {
+        // Bozuk/okunamayan yerel veri göçü engellemesin - sunucudaki
+        // liste yine de yüklenmeli.
+      }
+
+      try {
+        const res = await authFetch("/watchlist/")
+        if (res.ok && active) {
+          const items = await res.json()
+          setFavorites(items.map((i: any) => i.ticker))
+        }
+      } catch (e) {
+        console.error("İzleme listesi yüklenemedi:", e)
+      }
     }
+
+    load()
+    return () => { active = false }
   }, [])
 
   // Toggle favorite helper (stable reference via functional update, so memoized rows don't re-render unnecessarily)
   const toggleFavorite = useCallback((ticker: string) => {
     setFavorites(prev => {
-      const updated = prev.includes(ticker) ? prev.filter(t => t !== ticker) : [...prev, ticker]
-      localStorage.setItem("favorites_stocks", JSON.stringify(updated))
-      return updated
+      const isRemoving = prev.includes(ticker)
+      // İyimser güncelleme: yıldız anında dolsun/boşalsın, sunucu isteği
+      // arkada tamamlansın. Başarısız olursa geri alınıyor.
+      authFetch(
+        isRemoving ? `/watchlist/${ticker}` : "/watchlist/",
+        isRemoving
+          ? { method: "DELETE" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ticker }),
+            },
+      ).then(res => {
+        if (!res.ok) {
+          setFavorites(current =>
+            isRemoving ? [...current, ticker] : current.filter(t => t !== ticker),
+          )
+        }
+      }).catch(() => {
+        setFavorites(current =>
+          isRemoving ? [...current, ticker] : current.filter(t => t !== ticker),
+        )
+      })
+
+      return isRemoving ? prev.filter(t => t !== ticker) : [...prev, ticker]
     })
   }, [])
 

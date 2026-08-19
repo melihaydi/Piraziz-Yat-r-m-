@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -259,7 +260,25 @@ def get_portfolio_history(
         {"date": s.snapshot_date.isoformat(), "total_value": s.total_value}
         for s in snapshots
     ]
-    return {"history": history, "benchmark": _benchmark_series(history)}
+
+    # Zaman-ağırlıklı getiri: eğrinin ham yükselişi ile gerçek performansı
+    # ayırır. Para yatırınca eğri yükselir ama bu kazanç değildir - endeksle
+    # karşılaştırma da o yüzden bu düzeltme olmadan yanıltıcıdır.
+    portfolio_ids = _user_portfolio_ids(db, current_user.id)
+    transactions = []
+    if portfolio_ids:
+        transactions = (
+            db.query(PortfolioTransaction)
+            .filter(PortfolioTransaction.portfolio_id.in_(portfolio_ids))
+            .order_by(PortfolioTransaction.executed_at.asc())
+            .all()
+        )
+
+    return {
+        "history": history,
+        "benchmark": _benchmark_series(history),
+        "performance": portfolio_ledger.compute_time_weighted_return(history, transactions),
+    }
 
 
 # Portföy eğrisinin yanına konulacak endeks serisi. "Kazandım mı" sorusunun
@@ -514,10 +533,18 @@ def create_portfolio(
         db.commit()
         db.refresh(db_portfolio)
 
+    return _portfolio_response(db_portfolio)
+
+
+def _portfolio_response(portfolio: Portfolio) -> PortfolioResponse:
+    """Tek bir portföyü, varlıklarının anlık değerleriyle birlikte
+    serileştirir. Liste endpoint'i (get_user_portfolios) fiyatları toplu ve
+    eşzamanlı çektiği için ayrı bir yol izliyor; burası tek portföy dönen
+    uçlar (oluştur / yeniden adlandır) için."""
     assets_responses = []
     total_cost = 0.0
     total_value = 0.0
-    for asset in db_portfolio.assets:
+    for asset in portfolio.assets:
         metrics = calculate_asset_metrics(asset)
         assets_responses.append(PortfolioAssetResponse(**metrics))
         total_cost += asset.shares * asset.average_cost
@@ -526,17 +553,85 @@ def create_portfolio(
     profit_pct = (total_profit / total_cost * 100) if total_cost > 0 else 0.0
 
     return PortfolioResponse(
-        id=db_portfolio.id,
-        user_id=db_portfolio.user_id,
-        name=db_portfolio.name,
+        id=portfolio.id,
+        user_id=portfolio.user_id,
+        name=portfolio.name,
         assets=assets_responses,
+        cash_balance=portfolio.cash_balance,
+        viop_margin=portfolio.viop_margin,
+        usd_cash_balance=portfolio.usd_cash_balance,
+        usd_cash_value_try=round(portfolio.usd_cash_balance * _usd_try_rate(), 2),
         total_cost=total_cost,
         total_value=total_value,
         total_profit=total_profit,
         profit_percentage=profit_pct,
-        created_at=db_portfolio.created_at,
-        updated_at=db_portfolio.updated_at
+        created_at=portfolio.created_at,
+        updated_at=portfolio.updated_at
     )
+
+class PortfolioRename(BaseModel):
+    name: str
+
+
+@router.put("/{id}", response_model=PortfolioResponse)
+@limiter.limit("30/minute")
+def rename_portfolio(
+    request: Request,
+    id: int,
+    payload: PortfolioRename,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Portföyü yeniden adlandırır."""
+    portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
+    if not portfolio:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
+
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Portföy adı boş olamaz.")
+
+    portfolio.name = name
+    db.commit()
+    db.refresh(portfolio)
+    return _portfolio_response(portfolio)
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("20/minute")
+def delete_portfolio(
+    request: Request,
+    id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Portföyü ve içindeki her şeyi (varlıklar, hareket geçmişi) siler.
+
+    Son kalan portföy silinemez: uygulamanın her yeri en az bir portföyün
+    var olduğunu varsayıyor (varsayılan portföy araması, otomatik oluşturma
+    akışı), ve sıfır portföyle kullanıcı boş bir ekranda kalırdı. Sayım ve
+    silme, aradaki yarışı kapatmak için satır kilidi altında yapılıyor -
+    iki sekmeden iki farklı portföyü aynı anda silmek, ikisi de kontrolü
+    geçtiği için kullanıcıyı sıfır portföyle bırakabilirdi.
+    """
+    portfolio = db.query(Portfolio).filter(Portfolio.id == id, Portfolio.user_id == current_user.id).first()
+    if not portfolio:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
+
+    siblings = (
+        db.query(Portfolio).filter(Portfolio.user_id == current_user.id)
+        .with_for_update().all()
+    )
+    if len(siblings) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Son kalan portföyünüzü silemezsiniz.",
+        )
+
+    db.delete(portfolio)
+    db.commit()
+    return None
+
 
 @router.post("/{id}/assets", response_model=PortfolioAssetResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
@@ -587,8 +682,6 @@ def remove_asset_from_portfolio(
     db.commit()
     return None
 
-from pydantic import BaseModel
-
 class AssetUpdate(BaseModel):
     shares: float
     average_cost: float
@@ -632,6 +725,18 @@ def adjust_own_usd_cash(
                    f"${-payload.amount:.2f} çıkarılamaz.",
         )
     portfolio.usd_cash_balance = new_balance
+
+    # Deftere işaretli bir nakit hareketi olarak yazılıyor: bu para portföy
+    # değerini yükseltir/düşürür ama performans değildir. Zaman-ağırlıklı
+    # getiri bu kaydı görmezse, kullanıcının yatırdığı parayı kazanç sanar
+    # (bkz. portfolio_ledger.compute_time_weighted_return). Tutar, işlem
+    # anındaki kurdan TL'ye çevrilip saklanıyor - sonradan kur değişse de
+    # o gün gerçekte ne kadar para girdiği değişmemeli.
+    portfolio_ledger.record_cash_flow(
+        db, portfolio_id=portfolio.id,
+        amount_try=payload.amount * _usd_try_rate(),
+        note=f"Döviz nakit {'girişi' if payload.amount > 0 else 'çıkışı'} (${abs(payload.amount):.2f})",
+    )
     db.commit()
     db.refresh(portfolio)
 

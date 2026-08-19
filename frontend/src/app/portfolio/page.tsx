@@ -103,11 +103,17 @@ function PortfolioStressTest({ beta, currentValue }: { beta: number | null; curr
 
 export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<any[]>([])
+  // Seçili portföy, oturum boyunca korunur (localStorage: kullanıcı sayfayı
+  // yenileyince tekrar ilk portföye düşmesin).
+  const [activePortfolioId, setActivePortfolioId] = useState<number | null>(null)
+  const [isOpenPortfolioModal, setIsOpenPortfolioModal] = useState(false)
+  const [newPortfolioName, setNewPortfolioName] = useState("")
   const [alerts, setAlerts] = useState<any[]>([])
   const [analytics, setAnalytics] = useState<any>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [equityHistory, setEquityHistory] = useState<{ date: string; total_value: number }[]>([])
   const [benchmark, setBenchmark] = useState<{ date: string; index_change_pct: number }[]>([])
+  const [performance, setPerformance] = useState<any>(null)
   const [equityHistoryLoading, setEquityHistoryLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [liveEstimate, setLiveEstimate] = useState<any>(null)
@@ -130,6 +136,9 @@ export default function PortfolioPage() {
   // New Alert state
   const [alertTicker, setAlertTicker] = useState("")
   const [alertType, setAlertType] = useState("price")
+  // Portföyün bütününe bakan alarm tipleri - hisse kodu almazlar
+  // (backend'deki _PORTFOLIO_ALERT_TYPES ile aynı liste).
+  const isPortfolioAlert = alertType === "portfolio_change" || alertType === "position_loss"
   const [alertCondition, setAlertCondition] = useState("")
 
   // New Asset state
@@ -273,6 +282,7 @@ export default function PortfolioPage() {
         const data = await historyRes.json()
         setEquityHistory(data.history || [])
         setBenchmark(data.benchmark || [])
+        setPerformance(data.performance || null)
       }
     } catch (err) {
       console.error("Failed to load portfolio equity history:", err)
@@ -319,6 +329,65 @@ export default function PortfolioPage() {
     loadAnalytics()
     loadEquityHistory()
     loadLedger()
+  }
+
+  // Seçili portföyü hatırla / geçersizse geri düş. Silinen bir portföyün
+  // id'si localStorage'da kalmış olabilir - o durumda ilk portföye dönüyoruz,
+  // yoksa sayfa boş görünürdü.
+  useEffect(() => {
+    if (portfolios.length === 0) return
+    const stored = Number(localStorage.getItem("active_portfolio_id"))
+    const valid = portfolios.some(p => p.id === stored)
+    setActivePortfolioId(prev =>
+      portfolios.some(p => p.id === prev) ? prev : (valid ? stored : portfolios[0].id),
+    )
+  }, [portfolios])
+
+  const selectPortfolio = (id: number) => {
+    setActivePortfolioId(id)
+    localStorage.setItem("active_portfolio_id", String(id))
+  }
+
+  const handleCreatePortfolio = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const name = newPortfolioName.trim()
+    if (!name) return
+    try {
+      const res = await authFetch("/portfolio/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setNewPortfolioName("")
+        setIsOpenPortfolioModal(false)
+        selectPortfolio(created.id)
+        loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Portföy oluşturulamadı.")
+      }
+    } catch {
+      flashActionError("Sunucuya ulaşılamadı.")
+    }
+  }
+
+  const handleDeletePortfolio = async (id: number) => {
+    try {
+      const res = await authFetch(`/portfolio/${id}`, { method: "DELETE" }, 0)
+      if (res.ok) {
+        // Silinen portföy seçiliyse kalanların ilkine geç.
+        const remaining = portfolios.filter(p => p.id !== id)
+        if (remaining.length > 0) selectPortfolio(remaining[0].id)
+        loadData()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Portföy silinemedi.")
+      }
+    } catch {
+      flashActionError("Sunucuya ulaşılamadı.")
+    }
   }
 
   // Initial fetch shows a spinner; background refreshes (the interval
@@ -381,19 +450,34 @@ export default function PortfolioPage() {
   }, [equityHistory, benchmark])
 
   // "Endeksi yendim mi" - son güne ait iki yüzdenin farkı.
+  //
+  // Portföy tarafında ham değişim DEĞİL, zaman-ağırlıklı getiri (TWR)
+  // kullanılıyor: kullanıcı araya para yatırdıysa eğri yükselir ama bu
+  // performans değildir, endeks ise para girişi almaz - ham değişimle
+  // karşılaştırmak portföyü haksız yere üstün gösterirdi.
   const benchmarkVerdict = React.useMemo(() => {
     const withIndex = comparisonData.filter(d => d.index_pct != null)
     if (withIndex.length < 2) return null
     const last = withIndex[withIndex.length - 1]
+    const portfolioPct = performance?.twr_pct ?? last.portfolio_pct
     return {
-      portfolioPct: last.portfolio_pct,
+      portfolioPct,
       indexPct: last.index_pct as number,
-      diff: Number((last.portfolio_pct - (last.index_pct as number)).toFixed(2)),
+      diff: Number((portfolioPct - (last.index_pct as number)).toFixed(2)),
+      // Para giriş/çıkışı varsa kullanıcıya ham değişimin neden farklı
+      // göründüğünü açıklamamız gerekiyor.
+      hasFlows: Boolean(performance?.has_flows),
+      simplePct: performance?.simple_change_pct ?? null,
+      netFlow: performance?.net_flow ?? 0,
     }
-  }, [comparisonData])
+  }, [comparisonData, performance])
 
-  // Derive active portfolio (default to first one)
-  const activePortfolio = portfolios[0] || null
+  // Aktif portföy. Backend en başından beri kullanıcı başına birden fazla
+  // portföy destekliyordu ama burası her zaman portfolios[0]'ı gösteriyordu:
+  // ikinci portföy oluşsa bile arayüzde görünmez oluyordu (Trade modülünde
+  // tam bir hesap değiştirici varken portföy tarafında yoktu).
+  const activePortfolio =
+    portfolios.find(p => p.id === activePortfolioId) || portfolios[0] || null
 
   // Calculate stats
   const assetsList = activePortfolio ? activePortfolio.assets || [] : []
@@ -642,19 +726,29 @@ export default function PortfolioPage() {
   // Add Alert Handler
   const handleAddAlert = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!alertTicker || !alertCondition) return
+    // Portföy alarmlarının hissesi yoktur; diğerlerinde zorunlu.
+    if (!alertCondition) return
+    if (!isPortfolioAlert && !alertTicker) return
 
-    // Parse UI string (e.g. "> 310") into structured Dict for backend
-    const match = alertCondition.trim().match(/^([><=]+)\s*([\d.]+)/)
+    // "> 310" / "< -5" gibi bir ifadeyi yapısal koşula çevirir. Eksi işareti
+    // sayının parçası: portföy alarmlarının eşiği tipik olarak negatiftir
+    // ("%5'ten fazla düşerse"), eskiden bu desen negatifi yakalamıyordu ve
+    // "-5" sessizce 5 olarak okunurdu.
+    const match = alertCondition.trim().match(/^([><=]+)\s*(-?[\d.,]+)/)
     const operator = match ? match[1] : ">"
-    const value = match ? parseFloat(match[2]) : parseFloat(alertCondition) || 0.0
+    const rawValue = match ? match[2] : alertCondition
+    const value = parseTLAmount(rawValue)
+    if (!Number.isFinite(value)) {
+      flashActionError("Koşul geçersiz - örn. > 310,50 veya < -5 yazın.")
+      return
+    }
 
     try {
       const res = await authFetch(`/alert/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ticker: alertTicker.toUpperCase(),
+          ticker: isPortfolioAlert ? null : alertTicker.toUpperCase(),
           alert_type: alertType,
           trigger_condition: { operator, value }
         })
@@ -725,6 +819,39 @@ export default function PortfolioPage() {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Portföy ve Alarm Sistemi</h1>
           <p className="text-muted-foreground mt-1">Maliyet hesaplaması, sektör dağılımları ve TradingView tetikleyici alarmlar.</p>
+          {/* Portföy seçici - yalnızca birden fazla portföy varsa sekme
+              olarak görünür; tek portföyü olan kullanıcı gereksiz bir
+              arayüz elemanıyla karşılaşmasın. */}
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            {portfolios.length > 1 && portfolios.map(p => (
+              <button
+                key={p.id}
+                onClick={() => selectPortfolio(p.id)}
+                className={`px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition-colors ${
+                  p.id === activePortfolio?.id
+                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                    : "bg-secondary/40 text-muted-foreground border border-border/40 hover:bg-secondary/70"
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+            <button
+              onClick={() => setIsOpenPortfolioModal(true)}
+              className="px-2.5 py-1 rounded text-xs font-bold text-muted-foreground border border-dashed border-border/60 hover:text-foreground hover:border-border cursor-pointer"
+            >
+              + Portföy
+            </button>
+            {portfolios.length > 1 && activePortfolio && (
+              <button
+                onClick={() => handleDeletePortfolio(activePortfolio.id)}
+                className="px-2.5 py-1 rounded text-xs font-bold text-rose-400/80 hover:text-rose-300 cursor-pointer"
+                title={`"${activePortfolio.name}" portföyünü sil`}
+              >
+                Sil
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button
@@ -768,37 +895,54 @@ export default function PortfolioPage() {
               </DialogHeader>
               <form onSubmit={handleAddAlert} className="space-y-4 py-4">
                 <div className="grid grid-cols-3 items-center gap-4">
-                  <label className="text-sm font-semibold text-muted-foreground text-right">Hisse Kodu</label>
-                  <Input 
-                    value={alertTicker}
-                    onChange={(e) => setAlertTicker(e.target.value)}
-                    placeholder="THYAO" 
-                    className="col-span-2 bg-secondary/50" 
-                    required 
-                  />
-                </div>
-                <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Kriter</label>
-                  <select 
+                  <select
                     value={alertType}
                     onChange={(e) => setAlertType(e.target.value)}
                     className="col-span-2 h-9 rounded-md border border-input bg-secondary px-3 text-sm focus-visible:outline-none"
                   >
-                    <option value="price">Fiyat</option>
-                    <option value="rsi">RSI (14)</option>
-                    <option value="macd">MACD Kesişimi</option>
+                    <optgroup label="Hisse bazlı">
+                      <option value="price">Fiyat</option>
+                      <option value="rsi">RSI (14)</option>
+                      <option value="macd">MACD Kesişimi</option>
+                    </optgroup>
+                    <optgroup label="Portföyün tamamı">
+                      <option value="portfolio_change">Portföy değişimi (%)</option>
+                      <option value="position_loss">Bir pozisyonun zararı (%)</option>
+                    </optgroup>
                   </select>
                 </div>
+                {/* Portföy alarmlarının hissesi yoktur - alan gizleniyor,
+                    yoksa kullanıcı zorunlu sanıp anlamsız bir kod yazıyor. */}
+                {!isPortfolioAlert && (
+                  <div className="grid grid-cols-3 items-center gap-4">
+                    <label className="text-sm font-semibold text-muted-foreground text-right">Hisse Kodu</label>
+                    <Input
+                      value={alertTicker}
+                      onChange={(e) => setAlertTicker(e.target.value)}
+                      placeholder="THYAO"
+                      className="col-span-2 bg-secondary/50"
+                      required
+                    />
+                  </div>
+                )}
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Koşul</label>
-                  <Input 
+                  <Input
                     value={alertCondition}
                     onChange={(e) => setAlertCondition(e.target.value)}
-                    placeholder="Ör: > 310.50 veya < 120" 
-                    className="col-span-2 bg-secondary/50" 
+                    placeholder={isPortfolioAlert ? "Ör: < -5 (yüzde)" : "Ör: > 310.50 veya < 120"}
+                    className="col-span-2 bg-secondary/50"
                     required
                   />
                 </div>
+                {isPortfolioAlert && (
+                  <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+                    {alertType === "portfolio_change"
+                      ? "Portföyünüzün toplam değeri, son kaydedilen günlük değere göre bu yüzdeyi aştığında bildirim alırsınız."
+                      : "Herhangi bir pozisyonunuzun maliyetine göre zararı bu yüzdeyi aştığında bildirim alırsınız."}
+                  </p>
+                )}
                 <DialogFooter className="pt-4 border-t border-border/50">
                   <Button type="submit" className="w-full cursor-pointer">Alarmı Kaydet</Button>
                 </DialogFooter>
@@ -1028,6 +1172,34 @@ export default function PortfolioPage() {
                 </p>
                 <DialogFooter className="pt-4 border-t border-border/50">
                   <Button type="submit" className="w-full cursor-pointer">Temettüyü Kaydet</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Yeni portföy */}
+          <Dialog open={isOpenPortfolioModal} onOpenChange={setIsOpenPortfolioModal}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Yeni Portföy</DialogTitle>
+                <DialogDescription>
+                  Varlıklarınızı ayrı ayrı takip etmek için birden fazla portföy
+                  oluşturabilirsiniz (örn. emeklilik, kısa vadeli).
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreatePortfolio} className="space-y-4 py-4">
+                <div className="grid grid-cols-3 items-center gap-4">
+                  <label className="text-sm font-semibold text-muted-foreground text-right">Portföy Adı</label>
+                  <Input
+                    value={newPortfolioName}
+                    onChange={(e) => setNewPortfolioName(e.target.value)}
+                    placeholder="Örn: Emeklilik"
+                    className="col-span-2 bg-secondary/50"
+                    required
+                  />
+                </div>
+                <DialogFooter className="pt-4 border-t border-border/50">
+                  <Button type="submit" className="w-full cursor-pointer">Oluştur</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -1516,6 +1688,15 @@ export default function PortfolioPage() {
                         {" · "}
                         XU100 {benchmarkVerdict.indexPct >= 0 ? "+" : ""}{benchmarkVerdict.indexPct.toFixed(2)}%
                       </span>
+                      {benchmarkVerdict.hasFlows && benchmarkVerdict.simplePct != null && (
+                        <span className="w-full text-[10px] text-muted-foreground leading-relaxed">
+                          Portföy getirisi, para giriş/çıkışı ayıklanarak hesaplandı
+                          (net {benchmarkVerdict.netFlow >= 0 ? "+" : ""}₺
+                          {Math.abs(benchmarkVerdict.netFlow).toLocaleString("tr-TR", { maximumFractionDigits: 0 })}).
+                          Hesabınızın ham değer değişimi %{benchmarkVerdict.simplePct.toFixed(2)} - aradaki fark
+                          kazanç değil, koyduğunuz/çektiğiniz paradır.
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className="h-56">

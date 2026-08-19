@@ -15,6 +15,7 @@ from app.models.portfolio_transaction import PortfolioTransaction
 from app.models.trade import (
     TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot, TradePendingOrder,
 )
+from app.models.watchlist import WatchlistItem
 from app.models.alert import Alert
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.models.note import Note
@@ -40,6 +41,7 @@ __all__ = [
     "TradeOrder",
     "TradeDailySnapshot",
     "TradePendingOrder",
+    "WatchlistItem",
     "Alert",
     "FundEstimateSnapshot",
     "Note",

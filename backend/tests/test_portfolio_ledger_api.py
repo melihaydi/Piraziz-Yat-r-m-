@@ -211,3 +211,75 @@ def test_annual_summary_includes_dividends(client, auth_headers, portfolio_id):
     body = client.get("/api/v1/portfolio/annual-summary", headers=auth_headers).json()
     assert body["dividend_income"] == pytest.approx(150.0)
     assert body["dividend_count"] == 1
+
+
+# --- coklu portfoy yonetimi ------------------------------------------------
+
+def test_rename_portfolio(client, auth_headers, portfolio_id):
+    res = client.put(
+        f"/api/v1/portfolio/{portfolio_id}",
+        json={"name": "Emeklilik"},
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["name"] == "Emeklilik"
+
+
+def test_rename_rejects_blank_name(client, auth_headers, portfolio_id):
+    res = client.put(
+        f"/api/v1/portfolio/{portfolio_id}",
+        json={"name": "   "},
+        headers=auth_headers,
+    )
+    assert res.status_code == 400
+
+
+def test_cannot_delete_last_remaining_portfolio(client, auth_headers, portfolio_id):
+    """Uygulamanin her yeri en az bir portfoyun varligini varsayiyor."""
+    res = client.delete(f"/api/v1/portfolio/{portfolio_id}", headers=auth_headers)
+    assert res.status_code == 400
+
+
+def test_can_delete_a_non_last_portfolio(client, auth_headers, portfolio_id):
+    second = client.post(
+        "/api/v1/portfolio/", json={"name": "Ikinci"}, headers=auth_headers
+    ).json()
+
+    res = client.delete(f"/api/v1/portfolio/{second['id']}", headers=auth_headers)
+    assert res.status_code == 204
+    assert len(client.get("/api/v1/portfolio/", headers=auth_headers).json()) == 1
+
+
+def test_cannot_rename_another_users_portfolio(client, auth_headers, portfolio_id):
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "intruder@example.com", "password": "mypassword", "terms_accepted": True},
+    )
+    token = client.post(
+        "/api/v1/auth/login",
+        data={"username": "intruder@example.com", "password": "mypassword"},
+    ).json()["access_token"]
+
+    res = client.put(
+        f"/api/v1/portfolio/{portfolio_id}",
+        json={"name": "Ele gecirildi"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 404
+
+
+def test_deleting_portfolio_removes_its_transaction_history(client, auth_headers, portfolio_id, db):
+    from app.models.portfolio_transaction import PortfolioTransaction
+
+    second = client.post(
+        "/api/v1/portfolio/", json={"name": "Ikinci"}, headers=auth_headers
+    ).json()
+    _add(client, auth_headers, second["id"])
+    assert db.query(PortfolioTransaction).filter(
+        PortfolioTransaction.portfolio_id == second["id"]
+    ).count() == 1
+
+    client.delete(f"/api/v1/portfolio/{second['id']}", headers=auth_headers)
+    assert db.query(PortfolioTransaction).filter(
+        PortfolioTransaction.portfolio_id == second["id"]
+    ).count() == 0

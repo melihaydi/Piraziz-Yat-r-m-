@@ -489,24 +489,32 @@ class MarketDataService:
                 Alert.is_triggered == False
             ).all()
             
+            # Bildirim gönderimi alert_notifier'a devredildi. Buradaki kod
+            # eskiden alarmı tetiklenmiş işaretleyip pasife çekiyor ama
+            # HİÇBİR bildirim göndermiyordu - sadece log yazıyordu. Bu akış
+            # sürekli çalıştığı için alarmı, kullanıcı uygulamayı açıp
+            # /alert/check'i yoklayamadan tüketiyordu; sonuçta kurulan fiyat
+            # alarmları hiçbir zaman e-posta/push üretmiyordu (bkz.
+            # alert_notifier modül açıklaması).
+            from app.services.alert_notifier import mark_triggered_and_notify
+
             for alert in alerts:
                 condition = alert.trigger_condition
                 if not isinstance(condition, dict):
                     continue
-                    
+
                 triggered = False
                 if alert.alert_type.lower() == "fiyat" or alert.alert_type.lower() == "price":
                     triggered = self._evaluate_condition(price, condition)
                 # Future: Support RSI or MACD threshold alert triggers if study is attached
-                
+
                 if triggered:
-                    alert.is_triggered = True
-                    alert.is_active = False  # Auto-deactivate once triggered
-                    alert.triggered_at = datetime.now(timezone.utc)
-                    db.add(alert)
-                    logger.info(f"[ALERT TRIGGERED] User {alert.user_id} - Ticker {symbol} price {price} matches condition {condition}")
-            
-            db.commit()
+                    body = f"{symbol} fiyatı {price} seviyesine ulaştı."
+                    if mark_triggered_and_notify(db, alert, body=body):
+                        logger.info(
+                            f"[ALERT TRIGGERED] User {alert.user_id} - Ticker {symbol} "
+                            f"price {price} matches condition {condition}"
+                        )
         except Exception as e:
             logger.error(f"Error executing real-time alert trigger checks for {symbol}: {e}")
         finally:

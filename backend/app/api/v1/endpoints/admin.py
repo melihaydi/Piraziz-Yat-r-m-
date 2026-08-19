@@ -468,6 +468,12 @@ def adjust_managed_cash(
                    f"₺{-payload.amount:.2f} çıkarılamaz.",
         )
     portfolio.cash_balance = new_balance
+    # Getiri hesabının bu parayı "kazanç" sanmaması için deftere dış nakit
+    # hareketi olarak yazılıyor (bkz. portfolio_ledger.record_cash_flow).
+    portfolio_ledger.record_cash_flow(
+        db, portfolio_id=portfolio.id, amount_try=payload.amount,
+        note=f"Nakit {'girişi' if payload.amount > 0 else 'çıkışı'} (admin: {admin.email})",
+    )
     db.commit()
     db.refresh(portfolio)
 
@@ -515,6 +521,10 @@ def adjust_managed_viop_margin(
                    f"₺{-payload.amount:.2f} çıkarılamaz.",
         )
     portfolio.viop_margin = new_balance
+    portfolio_ledger.record_cash_flow(
+        db, portfolio_id=portfolio.id, amount_try=payload.amount,
+        note=f"VİOP teminatı {'girişi' if payload.amount > 0 else 'çıkışı'} (admin: {admin.email})",
+    )
     db.commit()
     db.refresh(portfolio)
 
@@ -562,6 +572,12 @@ def adjust_managed_usd_cash(
                    f"${-payload.amount:.2f} çıkarılamaz.",
         )
     portfolio.usd_cash_balance = new_balance
+    # İşlem anındaki kurdan TL'ye çevrilip saklanıyor: sonradan kur değişse
+    # de o gün gerçekte ne kadar para girdiği değişmemeli.
+    portfolio_ledger.record_cash_flow(
+        db, portfolio_id=portfolio.id, amount_try=payload.amount * _usd_try_rate(),
+        note=f"Döviz nakit {'girişi' if payload.amount > 0 else 'çıkışı'} (${abs(payload.amount):.2f}, admin: {admin.email})",
+    )
     db.commit()
     db.refresh(portfolio)
 

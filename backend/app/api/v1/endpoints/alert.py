@@ -11,6 +11,102 @@ from app.schemas.alert import AlertCreate, AlertResponse
 
 router = APIRouter()
 
+# Portföyün bütününe bakan alarm tipleri - bunların ticker'ı yoktur.
+#   portfolio_change: portföyün son kayıtlı günlük değerine göre % değişimi
+#   position_loss:    herhangi bir pozisyonun maliyetine göre % zararı
+_PORTFOLIO_ALERT_TYPES = {"portfolio_change", "position_loss"}
+
+
+def _evaluate_portfolio_alerts(db: Session, user: User, alerts: list) -> list:
+    """Portföy seviyesi alarmları değerlendirir; tetiklenenler için
+    (alert, açıklama) çiftleri döner.
+
+    Canlı fiyatlar tek seferde ve eşzamanlı çekiliyor: alarm sayısı kaç
+    olursa olsun her hisse için tek fiyat sorgusu yapılıyor (aynı ticker'a
+    kurulmuş üç alarm üç ayrı ağ turu ödememeli).
+    """
+    from app.api.v1.endpoints.portfolio import _fetch_live_price
+    from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
+
+    assets = (
+        db.query(PortfolioAsset).join(Portfolio)
+        .filter(Portfolio.user_id == user.id).all()
+    )
+    if not assets:
+        return []
+
+    tickers = sorted({a.ticker.upper() for a in assets})
+    with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
+        price_by_ticker = dict(zip(tickers, pool.map(_fetch_live_price, tickers)))
+
+    total_value = 0.0
+    worst = None  # (ticker, zarar_yüzdesi)
+    for asset in assets:
+        price = price_by_ticker.get(asset.ticker.upper()) or asset.average_cost
+        total_value += asset.shares * price
+        if asset.average_cost > 0:
+            change_pct = (price - asset.average_cost) / asset.average_cost * 100
+            if worst is None or change_pct < worst[1]:
+                worst = (asset.ticker, change_pct)
+
+    # Portföyün karşılaştırma tabanı: en son kaydedilmiş günlük değer.
+    # Anlık fiyatlarla değil kayıtlı snapshot ile karşılaştırıyoruz, çünkü
+    # "bugün ne kadar düştüm" sorusunun tabanı dünkü kapanıştır.
+    last_snapshot = (
+        db.query(PortfolioSnapshot)
+        .filter(PortfolioSnapshot.user_id == user.id)
+        .order_by(PortfolioSnapshot.snapshot_date.desc())
+        .first()
+    )
+
+    triggered = []
+    for alert in alerts:
+        condition = alert.trigger_condition or {}
+        op = condition.get("operator", "<")
+        try:
+            threshold = float(condition.get("value", 0.0))
+        except (TypeError, ValueError):
+            continue
+
+        if alert.alert_type == "portfolio_change":
+            # Snapshot yoksa karşılaştıracak taban da yok. Sıfır kabul edip
+            # alarmı tetiklemek yanlış olurdu - sessizce atlanıyor.
+            if not last_snapshot or not last_snapshot.total_value:
+                continue
+            change_pct = (total_value - last_snapshot.total_value) / last_snapshot.total_value * 100
+            if _compare(change_pct, op, threshold):
+                triggered.append((
+                    alert,
+                    f"Portföy değişimi %{change_pct:.2f} "
+                    f"(₺{total_value:,.2f}, önceki kayıt ₺{last_snapshot.total_value:,.2f})",
+                ))
+
+        elif alert.alert_type == "position_loss":
+            if worst is None:
+                continue
+            ticker, change_pct = worst
+            if _compare(change_pct, op, threshold):
+                triggered.append((
+                    alert,
+                    f"{ticker} pozisyonu %{change_pct:.2f} seviyesinde",
+                ))
+
+    return triggered
+
+
+def _compare(value: float, op: str, threshold: float) -> bool:
+    if op == ">":
+        return value > threshold
+    if op == ">=":
+        return value >= threshold
+    if op == "<":
+        return value < threshold
+    if op == "<=":
+        return value <= threshold
+    if op == "==":
+        return value == threshold
+    return False
+
 @router.get("/", response_model=List[AlertResponse])
 @limiter.limit("60/minute")
 def get_user_alerts(
@@ -90,6 +186,7 @@ def check_and_trigger_alerts(
     from app.services.market_data import market_data_service
     from app.services.technical_analysis import TechnicalAnalysisService
     from app.services.scoring import ScoringService
+    from app.services.alert_notifier import mark_triggered_and_notify
 
     active_alerts = db.query(Alert).filter(
         Alert.user_id == current_user.id,
@@ -124,6 +221,19 @@ def check_and_trigger_alerts(
                 data_by_ticker[ticker] = (quote, candles)
 
     triggered_alerts = []
+    pending_triggers = []
+
+    # Portföyün BÜTÜNÜNE bakan alarmlar (tek hisseye değil) - insanın asıl
+    # takip ettiği şey çoğu zaman budur: "portföyüm bugün %5 düştü mü",
+    # "herhangi bir pozisyonum %20 zarara geçti mi". Bunların ticker'ı yok,
+    # bu yüzden aşağıdaki hisse bazlı döngüden ÖNCE ve ayrı ele alınıyorlar
+    # (o döngü ticker'sız alarmları atlıyor).
+    portfolio_alerts = [a for a in active_alerts if a.alert_type in _PORTFOLIO_ALERT_TYPES]
+    if portfolio_alerts:
+        for alert, desc in _evaluate_portfolio_alerts(db, current_user, portfolio_alerts):
+            alert.trigger_condition = {**alert.trigger_condition, "current_val_desc": desc}
+            db.add(alert)
+            pending_triggers.append((alert, desc))
 
     for alert in active_alerts:
         ticker = alert.ticker
@@ -255,33 +365,24 @@ def check_and_trigger_alerts(
                 current_val_desc = f"Frantic Strateji: {signal.direction} ({signal.confidence})"
 
         if is_triggered:
-            alert.is_triggered = True
-            alert.triggered_at = datetime.now()
-            # Store details in the condition
+            # Açıklamayı önce yazıyoruz: mark_triggered_and_notify commit
+            # ettiği için bu alandaki değişikliğin ondan ÖNCE yapılması
+            # gerekiyor, yoksa aynı transaction'a girmez.
             alert.trigger_condition = {
                 **alert.trigger_condition,
                 "current_val_desc": current_val_desc
             }
-            triggered_alerts.append(alert)
+            db.add(alert)
+            pending_triggers.append((alert, current_val_desc))
 
-    if triggered_alerts:
-        db.commit()
-        for alert in triggered_alerts:
+    # Bildirim gönderimi artık alert_notifier'da: websocket tarafındaki
+    # gerçek zamanlı tetikleyici de aynı fonksiyondan geçiyor ve geçiş
+    # atomik olduğu için, iki yol aynı alarmı aynı anda yakalasa bile
+    # kullanıcı tek bildirim alıyor (bkz. alert_notifier açıklaması).
+    for alert, desc in pending_triggers:
+        if mark_triggered_and_notify(db, alert, body=desc or None):
             db.refresh(alert)
-
-        from app.core.email import send_email
-        from app.core.push import send_push
-
-        for alert in triggered_alerts:
-            desc = alert.trigger_condition.get("current_val_desc", "")
-            title = f"{alert.ticker} Alarmı Tetiklendi"
-            body = desc or "Belirlediğiniz koşul gerçekleşti."
-            send_email(
-                current_user.email,
-                title,
-                f"<p><strong>{alert.ticker}</strong> için ayarladığınız alarm tetiklendi.</p><p>{body}</p>",
-            )
-            send_push(db, current_user.id, title, body, url=f"/stock/{alert.ticker}" if alert.ticker else "/")
+            triggered_alerts.append(alert)
 
     return triggered_alerts
 

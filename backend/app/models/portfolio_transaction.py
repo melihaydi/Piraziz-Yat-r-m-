@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 from sqlalchemy.sql import func
 from app.db.base_class import Base
 
@@ -10,7 +10,12 @@ from app.db.base_class import Base
 # things users actually ask for - "işlem geçmişim", "bu yıl ne kazandım",
 # "toplam getirim ne" - are all just different filters/aggregations over
 # the same chronological stream of events.
-TRANSACTION_TYPES = ("BUY", "SELL", "DIVIDEND", "BONUS")
+# CASH: portföye dışarıdan giren/çıkan nakit (işaretli tutar). Getiri
+# hesabı için şart: kullanıcı para eklediğinde portföyün değeri yükselir
+# ama bu "kazanç" değildir - zaman-ağırlıklı getiri bu hareketleri
+# ayıklayabilmek için nerede olduklarını bilmek zorunda
+# (bkz. portfolio_ledger.compute_time_weighted_return).
+TRANSACTION_TYPES = ("BUY", "SELL", "DIVIDEND", "BONUS", "CASH")
 
 
 class PortfolioTransaction(Base):
@@ -60,4 +65,13 @@ class PortfolioTransaction(Base):
     note = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    portfolio = relationship("Portfolio", backref="transactions")
+    # cascade şart: kolonda ondelete="CASCADE" olmasına rağmen SQLAlchemy'nin
+    # ORM varsayılanı, portföy silinirken çocukların portfolio_id'sini NULL'a
+    # çekmeye çalışır - kolon NOT NULL olduğu için bu, portföy silmeyi
+    # IntegrityError ile düşürüyordu (veritabanının kendi CASCADE'i devreye
+    # girmeye fırsat bulamadan). Portfolio.assets ilişkisi de aynı nedenle
+    # cascade taşıyor.
+    portfolio = relationship(
+        "Portfolio",
+        backref=backref("transactions", cascade="all, delete-orphan"),
+    )

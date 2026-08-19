@@ -371,3 +371,80 @@ def test_kap_detection_respects_the_day_window(db):
 
     assert corporate_actions.detect_candidates_from_kap(db, days=30) == []
     assert len(corporate_actions.detect_candidates_from_kap(db, days=120)) == 1
+
+
+# --- zaman-agirlikli getiri (TWR) -----------------------------------------
+
+class _Tx:
+    """compute_time_weighted_return sadece bu alanlari okuyor."""
+    def __init__(self, ttype, amount, day):
+        self.transaction_type = ttype
+        self.amount = amount
+        self.executed_at = datetime(2026, 1, day, tzinfo=timezone.utc)
+
+
+def test_twr_ignores_deposits(db):
+    """Portfoy 100'den 200'e ciktiysa ama arada 100 TL yatirildiysa,
+    gercek getiri SIFIRDIR - ham degisim ise %100 gorunur."""
+    history = [
+        {"date": "2026-01-01", "total_value": 100.0},
+        {"date": "2026-01-02", "total_value": 200.0},
+    ]
+    txs = [_Tx("CASH", 100.0, 2)]
+
+    result = portfolio_ledger.compute_time_weighted_return(history, txs)
+    assert result["twr_pct"] == pytest.approx(0.0)
+    # Ham degisim yaniltici olan rakam - ikisinin farki tam da duzeltmenin
+    # sagladigi sey.
+    assert result["simple_change_pct"] == pytest.approx(100.0)
+    assert result["has_flows"] is True
+
+
+def test_twr_equals_simple_change_when_there_are_no_flows(db):
+    history = [
+        {"date": "2026-01-01", "total_value": 100.0},
+        {"date": "2026-01-02", "total_value": 110.0},
+    ]
+    result = portfolio_ledger.compute_time_weighted_return(history, [])
+    assert result["twr_pct"] == pytest.approx(10.0)
+    assert result["simple_change_pct"] == pytest.approx(10.0)
+    assert result["has_flows"] is False
+
+
+def test_twr_chains_daily_returns_across_a_flow(db):
+    """1. gun +%10, 2. gun para girisi + %10 daha: TWR %21 olmali."""
+    history = [
+        {"date": "2026-01-01", "total_value": 100.0},
+        {"date": "2026-01-02", "total_value": 110.0},
+        # 110 -> %10 artis = 121, uzerine 50 TL giris = 171
+        {"date": "2026-01-03", "total_value": 171.0},
+    ]
+    txs = [_Tx("CASH", 50.0, 3)]
+
+    result = portfolio_ledger.compute_time_weighted_return(history, txs)
+    assert result["twr_pct"] == pytest.approx(21.0)
+
+
+def test_twr_treats_buy_as_contribution_but_dividend_as_return(db):
+    """Bu uygulamada varlik eklemek nakitten dusmuyor, yani dis katkidir.
+    Temettu ise portfoyun kendi urettigi getiridir - ayiklanmamali."""
+    history = [
+        {"date": "2026-01-01", "total_value": 1000.0},
+        {"date": "2026-01-02", "total_value": 1500.0},
+    ]
+    # 500'luk alis eklendi -> performans sifir olmali
+    assert portfolio_ledger.compute_time_weighted_return(
+        history, [_Tx("BUY", 500.0, 2)]
+    )["twr_pct"] == pytest.approx(0.0)
+
+    # Ayni deger artisi temettuden gelseydi performans sayilirdi
+    assert portfolio_ledger.compute_time_weighted_return(
+        history, [_Tx("DIVIDEND", 500.0, 2)]
+    )["twr_pct"] == pytest.approx(50.0)
+
+
+def test_twr_returns_none_without_enough_history(db):
+    assert portfolio_ledger.compute_time_weighted_return([], []) is None
+    assert portfolio_ledger.compute_time_weighted_return(
+        [{"date": "2026-01-01", "total_value": 100.0}], []
+    ) is None

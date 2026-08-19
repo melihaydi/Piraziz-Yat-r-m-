@@ -185,12 +185,26 @@ def compare_funds(codes: str):
     if len(fund_codes) < 2:
         raise HTTPException(status_code=400, detail="Karşılaştırma için en az 2 fon kodu gerekli.")
 
+    # Bu endpoint fon başına 252 günlük seriyi çekip üstüne volatilite/
+    # dönemsel getiri hesaplıyor - 5 fon için hatırı sayılır bir iş, ve
+    # yanındaki popular/live-estimate zaten cache'lerken burası her istekte
+    # sıfırdan yapıyordu. Altta yatan veri TEFAS'ın GÜNLÜK yayınladığı NAV
+    # serisi; dakikalar içinde değişmiyor, dolayısıyla uzun TTL güvenli.
+    # Anahtar sıralı kodlardan üretiliyor ki "A,B" ile "B,A" aynı cache'i
+    # paylaşsın.
+    cache_key = f"funds:compare:{','.join(sorted(fund_codes))}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     results = []
+    any_simulated = False
     for code in fund_codes:
         fund = tefas_service.get_fund(code)
         if not fund:
             continue
         candles, is_simulated = tefas_service.get_fund_candles(code, count=252)
+        any_simulated = any_simulated or is_simulated
         results.append({
             "code": code,
             "name": fund.get("name"),
@@ -205,7 +219,12 @@ def compare_funds(codes: str):
     if len(results) < 2:
         raise HTTPException(status_code=404, detail="Girilen fon kodlarından en az ikisi bulunamadı.")
 
-    return {"funds": results}
+    payload = {"funds": results}
+    # Simüle (gerçek TEFAS geçmişi henüz yüklenmemiş) seri içeren sonuç
+    # kısa TTL alıyor: bu veri birazdan gerçeğiyle değişecek, uzun süre
+    # önbellekte tutmak uydurma rakamı gereksiz yere yaşatırdı.
+    cache_service.set_json(cache_key, payload, expire_seconds=120 if any_simulated else 1800)
+    return payload
 
 
 @router.get("/{code}")

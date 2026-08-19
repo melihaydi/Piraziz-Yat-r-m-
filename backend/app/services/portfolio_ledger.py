@@ -148,6 +148,89 @@ def record_dividend(
     )
 
 
+def record_cash_flow(
+    db: Session, portfolio_id: int, amount_try: float, note: Optional[str] = None,
+    executed_at: Optional[datetime] = None,
+) -> PortfolioTransaction:
+    """Portföye dışarıdan giren (+) / çıkan (-) nakit, TL cinsinden.
+
+    Pozisyonlara dokunmaz. Tek amacı getiri hesabının bu hareketi
+    "kazanç" sanmaması: para yatırınca portföy değeri yükselir ama bu
+    performans değildir (bkz. compute_time_weighted_return).
+    """
+    return _record(
+        db, portfolio_id, "NAKIT", "CASH", shares=0.0, price=0.0,
+        amount=amount_try, executed_at=executed_at, note=note,
+    )
+
+
+def compute_time_weighted_return(history: list, transactions: list) -> Optional[dict]:
+    """Zaman-ağırlıklı getiri (TWR): portföye para giriş/çıkışının etkisini
+    ayıklayarak SADECE yatırım performansını ölçer.
+
+    Neden gerekli: portföy eğrisi ham değeri gösterir. Kullanıcı ₺10.000
+    yatırdığında eğri yükselir ve "kazandım" gibi görünür - oysa hiçbir şey
+    kazanılmamıştır, sadece daha çok para konmuştur. Endeksle karşılaştırma
+    da bu yüzden yanıltıcı olur: endeks para girişi almaz.
+
+    Yöntem: her gün için o günkü dış akış (F) değerden düşülüp getiri
+    hesaplanır, sonra günlük getiriler zincirlenir:
+        r_t = (V_t - F_t) / V_{t-1} - 1
+        TWR = Π(1 + r_t) - 1
+
+    `history`: [{"date", "total_value"}] kronolojik.
+    `transactions`: portföyün tüm hareketleri.
+
+    Dış akış sayılanlar: BUY (+, elde zaten olan bir varlığın deftere
+    girilmesi bu uygulamada nakitten düşülmediği için dış katkıdır),
+    SELL (-) ve CASH (işaretli). DIVIDEND akış DEĞİLDİR - portföyün kendi
+    ürettiği getiridir ve performansa dahil olmalıdır.
+    """
+    if len(history) < 2:
+        return None
+
+    flows_by_date: dict = {}
+    for tx in transactions:
+        if not tx.executed_at:
+            continue
+        day = tx.executed_at.replace(tzinfo=None).date().isoformat()
+        if tx.transaction_type == "BUY":
+            flows_by_date[day] = flows_by_date.get(day, 0.0) + tx.amount
+        elif tx.transaction_type == "SELL":
+            flows_by_date[day] = flows_by_date.get(day, 0.0) - tx.amount
+        elif tx.transaction_type == "CASH":
+            flows_by_date[day] = flows_by_date.get(day, 0.0) + tx.amount
+
+    cumulative = 1.0
+    counted = 0
+    for prev, curr in zip(history, history[1:]):
+        v_prev = prev["total_value"]
+        v_curr = curr["total_value"]
+        if not v_prev:
+            # Sıfır değerden başlayan bir günün yüzde getirisi tanımsız -
+            # uydurmak yerine o alt dönem atlanıyor.
+            continue
+        flow = flows_by_date.get(curr["date"], 0.0)
+        cumulative *= (v_curr - flow) / v_prev
+        counted += 1
+
+    if counted == 0:
+        return None
+
+    twr_pct = (cumulative - 1) * 100
+    simple_pct = (history[-1]["total_value"] / history[0]["total_value"] - 1) * 100 if history[0]["total_value"] else None
+
+    return {
+        "twr_pct": round(twr_pct, 2),
+        # Ham (para akışını yok sayan) değişim - ikisi arasındaki fark,
+        # kullanıcının koyduğu/çektiği paranın eğriye etkisidir.
+        "simple_change_pct": round(simple_pct, 2) if simple_pct is not None else None,
+        "net_flow": round(sum(flows_by_date.values()), 2),
+        "has_flows": any(abs(v) > 1e-9 for v in flows_by_date.values()),
+        "days_counted": counted,
+    }
+
+
 def compute_fifo_realized(transactions: list) -> dict:
     """Hareket defterinden FIFO (ilk giren ilk çıkar) gerçekleşen kâr/zarar.
 
