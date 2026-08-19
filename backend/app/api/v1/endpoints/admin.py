@@ -857,6 +857,22 @@ def list_corporate_actions(
     return {"actions": out}
 
 
+@router.get("/corporate-actions/kap-candidates")
+def list_kap_corporate_action_candidates(
+    days: int = 30,
+    db: Session = Depends(deps.get_db),
+    _admin: User = Depends(deps.get_current_active_superuser),
+):
+    """Son KAP bildirimlerinde geçen olası bedelsiz/bölünme duyuruları.
+
+    Bunlar SADECE aday: oran serbest metinden tahmin edildiği için yanlış
+    olabilir, o yüzden hiçbiri otomatik uygulanmaz. Amaç, yeni bir bedelsizi
+    kimse fark etmediği için kullanıcıların portföyünün sessizce yanlış
+    kalmasını önlemek - listede bir şey görünüyorsa doğrulanıp
+    corporate_actions.py'ye eklenmesi gerekiyor."""
+    return {"candidates": corporate_actions.detect_candidates_from_kap(db, days=days)}
+
+
 @router.get("/corporate-actions/{ticker}/preview")
 def preview_corporate_action(
     ticker: str,

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -255,12 +255,84 @@ def get_portfolio_history(
         .order_by(PortfolioSnapshot.snapshot_date.asc())
         .all()
     )
-    return {
-        "history": [
-            {"date": s.snapshot_date.isoformat(), "total_value": s.total_value}
-            for s in snapshots
-        ]
-    }
+    history = [
+        {"date": s.snapshot_date.isoformat(), "total_value": s.total_value}
+        for s in snapshots
+    ]
+    return {"history": history, "benchmark": _benchmark_series(history)}
+
+
+# Portföy eğrisinin yanına konulacak endeks serisi. "Kazandım mı" sorusunun
+# tek başına anlamlı bir cevabı yok - asıl soru "endeksi yendim mi": %5
+# kazanç, XU100 %12 yükseldiyse aslında geride kalmaktır. Snapshot verisi
+# zaten günlük olduğu için karşılaştırma için gereken tek şey aynı günlerin
+# endeks kapanışları.
+_BENCHMARK_SYMBOL = "XU100"
+_BENCHMARK_CACHE_TTL_SECONDS = 3600
+
+
+def _benchmark_series(history: List[dict]) -> List[dict]:
+    """history'deki her gün için XU100'ün o günkü kapanışını, portföyle aynı
+    başlangıç noktasına normalize edilmiş şekilde döner.
+
+    Normalizasyon şart: XU100 ~10.000 seviyesinde, kullanıcının portföyü
+    belki ₺6.000 - ham değerleri aynı eksene koymak ikisini de okunmaz
+    yapardı. İkisi de ilk günün değerine göre yüzde olarak veriliyor, yani
+    grafikte gerçekten karşılaştırılabilir iki eğri oluyor.
+
+    Endeks kapanışı bulunamayan gün atlanır (eksik veriyi uydurmaktansa
+    boşluk bırakmak doğru) - bu yüzden dönen liste history'den kısa olabilir.
+    """
+    if len(history) < 2:
+        # Tek nokta için "performans" diye bir şey yok, karşılaştırma da yok.
+        return []
+
+    cache_key = f"portfolio:benchmark:{_BENCHMARK_SYMBOL}:{history[0]['date']}:{history[-1]['date']}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        # Snapshot sayısından biraz fazlasını istiyoruz: takvim günleri ile
+        # işlem günleri birebir örtüşmez (hafta sonu/tatil), aradaki farkı
+        # kapatmak için pay bırakılıyor.
+        candles = market_data_service.get_candles(
+            _BENCHMARK_SYMBOL, "1d", count=len(history) + 40, wait=False, subscribe=False
+        )
+    except Exception as e:
+        logger.warning(f"Benchmark serisi alınamadı: {e}")
+        return []
+
+    if not candles:
+        return []
+
+    close_by_date = {}
+    for c in candles:
+        ts = c.get("time")
+        close = c.get("close")
+        if ts is None or close is None:
+            continue
+        close_by_date[datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()] = float(close)
+
+    aligned = [(h["date"], close_by_date[h["date"]]) for h in history if h["date"] in close_by_date]
+    if len(aligned) < 2:
+        return []
+
+    base_index = aligned[0][1]
+    base_portfolio = history[0]["total_value"]
+    if not base_index or not base_portfolio:
+        return []
+
+    series = [
+        {
+            "date": d,
+            "index_close": close,
+            "index_change_pct": round((close / base_index - 1) * 100, 2),
+        }
+        for d, close in aligned
+    ]
+    cache_service.set_json(cache_key, series, expire_seconds=_BENCHMARK_CACHE_TTL_SECONDS)
+    return series
 
 # Redis-backed cache for /analytics, keyed by (user_id, holdings composition) -
 # not by live-priced total_value, since that changes on every quote tick and
@@ -742,6 +814,110 @@ def get_realized_performance(
         "sell_count": sum(1 for r in rows if r.transaction_type == "SELL"),
         "dividend_count": sum(1 for r in rows if r.transaction_type == "DIVIDEND"),
         "by_ticker": by_ticker,
+    }
+
+
+@router.get("/annual-summary")
+def get_annual_summary(
+    year: Optional[int] = None,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Yıllık kazanç özeti: bir takvim yılında kapatılan işlemlerden doğan
+    kâr/zarar ve alınan temettü, hem ORTALAMA MALİYET hem FIFO yöntemiyle.
+
+    İki yöntemi birden veriyor çünkü ikisi de meşru ve farklı sonuç
+    veriyor: uygulamanın pozisyon ekranı ortalama maliyet kullanıyor
+    (tutarlılık için), vergi hesabında ise genellikle lot sırası
+    (FIFO) esas alınır. Hangisinin sizin durumunuza uygun olduğunu
+    söylemek bu uygulamanın işi değil - ikisi de gösterilip fark açıkça
+    belirtiliyor.
+
+    FIFO, defterin TAMAMI üzerinden yürütülür (yıl filtresi sadece hangi
+    satışların sayılacağını belirler) - çünkü bu yıl satılan bir lotun
+    maliyeti geçen yılki bir alıştan gelir.
+    """
+    year = year or datetime.now().year
+    portfolio_ids = _user_portfolio_ids(db, current_user.id)
+
+    empty = {
+        "year": year, "average_cost": {"realized_pnl": 0.0}, "fifo": {"realized_pnl": 0.0},
+        "dividend_income": 0.0, "sell_count": 0, "dividend_count": 0,
+        "by_ticker": [], "has_incomplete_basis": False, "available_years": [],
+    }
+    if not portfolio_ids:
+        return empty
+
+    all_tx = (
+        db.query(PortfolioTransaction)
+        .filter(PortfolioTransaction.portfolio_id.in_(portfolio_ids))
+        .order_by(PortfolioTransaction.executed_at.asc(), PortfolioTransaction.id.asc())
+        .all()
+    )
+    if not all_tx:
+        return empty
+
+    start = datetime(year, 1, 1)
+    end = datetime(year + 1, 1, 1)
+
+    def _in_year(tx) -> bool:
+        executed = tx.executed_at
+        if executed is None:
+            return False
+        # Karşılaştırmadan önce tz bilgisini düşürüyoruz: SQLite naive,
+        # Postgres aware datetime döner ve ikisini doğrudan karşılaştırmak
+        # TypeError verir.
+        naive = executed.replace(tzinfo=None)
+        return start <= naive < end
+
+    year_tx = [t for t in all_tx if _in_year(t)]
+
+    avg_realized = sum(t.realized_pnl or 0.0 for t in year_tx if t.transaction_type == "SELL")
+    dividend_income = sum(t.amount for t in year_tx if t.transaction_type == "DIVIDEND")
+
+    # FIFO tüm defterden hesaplanır, sonra sadece bu yılın satışları alınır.
+    fifo_all = portfolio_ledger.compute_fifo_realized(all_tx)
+    year_dates = {
+        t.executed_at.isoformat() if t.executed_at else None
+        for t in year_tx if t.transaction_type == "SELL"
+    }
+    fifo_sales = [s for s in fifo_all["sales"] if s["date"] in year_dates]
+    fifo_realized = round(sum(s["realized_pnl"] for s in fifo_sales), 2)
+
+    per_ticker: dict = {}
+    for t in year_tx:
+        if t.transaction_type not in ("SELL", "DIVIDEND"):
+            continue
+        e = per_ticker.setdefault(t.ticker, {"ticker": t.ticker, "realized_pnl": 0.0, "dividend_income": 0.0})
+        if t.transaction_type == "SELL":
+            e["realized_pnl"] += t.realized_pnl or 0.0
+        else:
+            e["dividend_income"] += t.amount
+
+    available_years = sorted({
+        t.executed_at.replace(tzinfo=None).year for t in all_tx if t.executed_at
+    }, reverse=True)
+
+    return {
+        "year": year,
+        "average_cost": {"realized_pnl": round(avg_realized, 2)},
+        "fifo": {"realized_pnl": fifo_realized, "sales": fifo_sales},
+        "dividend_income": round(dividend_income, 2),
+        "total_average_cost": round(avg_realized + dividend_income, 2),
+        "total_fifo": round(fifo_realized + dividend_income, 2),
+        "sell_count": sum(1 for t in year_tx if t.transaction_type == "SELL"),
+        "dividend_count": sum(1 for t in year_tx if t.transaction_type == "DIVIDEND"),
+        "by_ticker": sorted(
+            ({**v, "realized_pnl": round(v["realized_pnl"], 2),
+              "dividend_income": round(v["dividend_income"], 2),
+              "total": round(v["realized_pnl"] + v["dividend_income"], 2)}
+             for v in per_ticker.values()),
+            key=lambda x: x["total"], reverse=True,
+        ),
+        # Defterden önce açılmış bir pozisyonun satışı varsa maliyet tabanı
+        # eksiktir; rakamı olduğu gibi "vergi beyanı" diye sunmak yanlış olur.
+        "has_incomplete_basis": any(s["incomplete"] for s in fifo_sales),
+        "available_years": available_years,
     }
 
 

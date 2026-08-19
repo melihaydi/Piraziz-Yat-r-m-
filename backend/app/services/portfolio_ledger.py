@@ -148,6 +148,90 @@ def record_dividend(
     )
 
 
+def compute_fifo_realized(transactions: list) -> dict:
+    """Hareket defterinden FIFO (ilk giren ilk çıkar) gerçekleşen kâr/zarar.
+
+    Saklanan realized_pnl ORTALAMA MALİYETE göredir - ekranda gösterilen
+    pozisyonun maliyetiyle tutarlı olması için doğru olan budur. Ama vergi
+    hesabında lotların hangi sırayla alındığı önemlidir ve iki yöntem farklı
+    sonuç verir. İkisini de sunabilmek için FIFO burada defterden SONRADAN
+    hesaplanıyor; satış anında ayrıca saklanmıyor, çünkü geçmişe dönük bir
+    işlem eklendiğinde (kullanıcı eski bir alışı sonradan girebiliyor) daha
+    önce hesaplanmış FIFO değerleri yanlış kalırdı - defterden türetmek her
+    zaman güncel sonucu verir.
+
+    `transactions` KRONOLOJİK sırada olmalı (eskiden yeniye). Elde kalan
+    lotlar bilinçli olarak yok sayılır: FIFO yalnızca kapatılmış kısmı
+    ölçer.
+    """
+    # ticker -> [[kalan_lot, birim_maliyet], ...] alış sırasına göre kuyruk
+    open_lots: dict = {}
+    total = 0.0
+    per_ticker: dict = {}
+    matched = []
+
+    for tx in transactions:
+        ticker = tx.ticker
+        lots = open_lots.setdefault(ticker, [])
+
+        if tx.transaction_type == "BUY":
+            lots.append([tx.shares, tx.price])
+
+        elif tx.transaction_type == "BONUS":
+            # Bedelsiz yeni bir maliyet doğurmaz; mevcut lotları oranla
+            # ölçekler (lot artar, birim maliyet düşer). tx.shares eklenen
+            # lot adedi olduğu için oran = (mevcut + eklenen) / mevcut.
+            current = sum(l[0] for l in lots)
+            if current > 0 and tx.shares > 0:
+                ratio = (current + tx.shares) / current
+                for lot in lots:
+                    lot[0] *= ratio
+                    lot[1] /= ratio
+
+        elif tx.transaction_type == "SELL":
+            remaining = tx.shares
+            cost = 0.0
+            while remaining > 1e-9 and lots:
+                lot_shares, lot_cost = lots[0]
+                take = min(lot_shares, remaining)
+                cost += take * lot_cost
+                remaining -= take
+                lot_shares -= take
+                if lot_shares <= 1e-9:
+                    lots.pop(0)
+                else:
+                    lots[0][0] = lot_shares
+
+            # remaining > 0: defterde karşılığı olmayan satış. Bu, ledger'dan
+            # ÖNCE var olan (geçmişi bilinmeyen) bir pozisyonun satılması
+            # demek - uydurma bir maliyet atamak yerine o kısım atlanıyor ve
+            # sonuç "kısmi" olarak işaretleniyor.
+            sold_with_basis = tx.shares - remaining
+            if sold_with_basis > 1e-9:
+                pnl = (tx.price * sold_with_basis) - cost - tx.commission
+                total += pnl
+                per_ticker[ticker] = round(per_ticker.get(ticker, 0.0) + pnl, 2)
+                matched.append({
+                    "ticker": ticker,
+                    "date": tx.executed_at.isoformat() if tx.executed_at else None,
+                    "shares": round(sold_with_basis, 4),
+                    "sell_price": tx.price,
+                    "cost_basis": round(cost / sold_with_basis, 4),
+                    "realized_pnl": round(pnl, 2),
+                    "incomplete": remaining > 1e-9,
+                })
+
+    return {
+        "method": "FIFO",
+        "realized_pnl": round(total, 2),
+        "by_ticker": per_ticker,
+        "sales": matched,
+        # Herhangi bir satışın maliyeti defterden tam karşılanamadıysa
+        # toplam eksik demektir - bunu sessizce geçmek yanlış olur.
+        "has_incomplete_basis": any(m["incomplete"] for m in matched),
+    }
+
+
 def apply_bonus_issue(
     db: Session, asset: PortfolioAsset, ratio: float,
     executed_at: Optional[datetime] = None, note: Optional[str] = None,

@@ -242,3 +242,132 @@ def test_quote_correction_reads_the_same_ratio_source(db):
     from app.services.market_data import _corporate_action_ratio
     assert _corporate_action_ratio("KTLEV") == corporate_actions.get_action("KTLEV").ratio
     assert _corporate_action_ratio("THYAO") is None
+
+
+# --- FIFO -----------------------------------------------------------------
+
+def test_fifo_differs_from_average_cost_and_uses_oldest_lot_first(db, portfolio):
+    """FIFO'nun ayrı bir yöntem olmasının sebebi tam olarak bu: aynı
+    satış, iki yöntemde farklı kâr verir."""
+    portfolio_ledger.record_buy(db, portfolio.id, "THYAO", shares=10, price=100.0)
+    asset = portfolio_ledger.record_buy(db, portfolio.id, "THYAO", shares=10, price=200.0)
+    db.commit()
+    # Ortalama maliyet artık 150.
+    assert asset.average_cost == pytest.approx(150.0)
+
+    _, avg_realized = portfolio_ledger.record_sell(db, asset, shares=10, price=250.0)
+    db.commit()
+    # Ortalama maliyetle: (250-150)*10 = 1000
+    assert avg_realized == pytest.approx(1000.0)
+
+    txs = db.query(PortfolioTransaction).order_by(PortfolioTransaction.id).all()
+    fifo = portfolio_ledger.compute_fifo_realized(txs)
+    # FIFO ile ilk lot (100'den alınan) satılır: (250-100)*10 = 1500
+    assert fifo["realized_pnl"] == pytest.approx(1500.0)
+    assert fifo["by_ticker"]["THYAO"] == pytest.approx(1500.0)
+
+
+def test_fifo_spans_multiple_lots_for_one_sale(db, portfolio):
+    portfolio_ledger.record_buy(db, portfolio.id, "THYAO", shares=5, price=100.0)
+    asset = portfolio_ledger.record_buy(db, portfolio.id, "THYAO", shares=5, price=200.0)
+    db.commit()
+    portfolio_ledger.record_sell(db, asset, shares=8, price=300.0)
+    db.commit()
+
+    txs = db.query(PortfolioTransaction).order_by(PortfolioTransaction.id).all()
+    fifo = portfolio_ledger.compute_fifo_realized(txs)
+    # 5 lot @100 + 3 lot @200 = 1100 maliyet; hasılat 8*300 = 2400
+    assert fifo["realized_pnl"] == pytest.approx(1300.0)
+
+
+def test_fifo_flags_sale_with_no_recorded_purchase(db, portfolio):
+    """Defterden önce açılmış bir pozisyonun satışı - maliyet tabanı
+    bilinmiyor, uydurulmamalı, işaretlenmeli."""
+    asset = PortfolioAsset(portfolio_id=portfolio.id, ticker="THYAO", shares=10, average_cost=100.0)
+    db.add(asset)
+    db.commit()
+
+    portfolio_ledger.record_sell(db, asset, shares=10, price=150.0)
+    db.commit()
+
+    txs = db.query(PortfolioTransaction).order_by(PortfolioTransaction.id).all()
+    fifo = portfolio_ledger.compute_fifo_realized(txs)
+    # Karşılığı olmayan satış hiç sayılmaz (uydurma maliyet yerine boş).
+    assert fifo["realized_pnl"] == pytest.approx(0.0)
+    assert fifo["sales"] == []
+
+
+def test_fifo_accounts_for_bonus_issue(db, portfolio):
+    """Bedelsiz sonrası FIFO maliyeti de ölçeklenmiş olmalı, yoksa
+    satışta olmayan bir kâr çıkar."""
+    asset = portfolio_ledger.record_buy(db, portfolio.id, "KTLEV", shares=100, price=30.0)
+    db.commit()
+    portfolio_ledger.apply_bonus_issue(db, asset, ratio=3.0)
+    db.commit()
+    # 300 lot, birim maliyet 10.
+    portfolio_ledger.record_sell(db, asset, shares=300, price=10.0)
+    db.commit()
+
+    txs = db.query(PortfolioTransaction).order_by(PortfolioTransaction.id).all()
+    fifo = portfolio_ledger.compute_fifo_realized(txs)
+    # Aynı fiyattan satıldı: kâr sıfır olmalı. Bedelsiz göz ardı edilseydi
+    # maliyet 30 kalır ve sahte bir zarar çıkardı.
+    assert fifo["realized_pnl"] == pytest.approx(0.0)
+
+
+# --- KAP'tan bedelsiz adayı tespiti ---------------------------------------
+
+def _kap_row(db, notif_id, ticker, title, days_ago=1):
+    from app.models.kap import KapNotification
+    from datetime import timedelta
+    db.add(KapNotification(
+        id=notif_id, ticker=ticker, title=title, summary=title,
+        publish_date=datetime.now(timezone.utc) - timedelta(days=days_ago),
+    ))
+    db.commit()
+
+
+def test_kap_detection_finds_bonus_issue_and_parses_ratio(db):
+    _kap_row(db, "1001", "KTLEV", "KTLEV [Katılımevim] %238,16 oranında bedelsiz sermaye artırımı")
+
+    found = corporate_actions.detect_candidates_from_kap(db)
+    assert len(found) == 1
+    assert found[0]["ticker"] == "KTLEV"
+    # %238,16 -> 3.3816x
+    assert found[0]["suggested_ratio"] == pytest.approx(3.3816)
+    # Bu hisse zaten CORPORATE_ACTIONS'ta tanımlı.
+    assert found[0]["already_registered"] is True
+
+
+def test_kap_detection_ignores_unrelated_disclosures(db):
+    _kap_row(db, "1002", "THYAO", "THYAO [Türk Hava Yolları] Yolcu istatistikleri açıklandı")
+    _kap_row(db, "1003", "EREGL", "EREGL [Ereğli] Olağan genel kurul toplantısı")
+
+    assert corporate_actions.detect_candidates_from_kap(db) == []
+
+
+def test_kap_detection_marks_unknown_ticker_as_unregistered(db):
+    _kap_row(db, "1004", "ASELS", "ASELS [Aselsan] %50 oranında bedelsiz sermaye artırımı kararı")
+
+    found = corporate_actions.detect_candidates_from_kap(db)
+    assert len(found) == 1
+    assert found[0]["ticker"] == "ASELS"
+    assert found[0]["suggested_ratio"] == pytest.approx(1.5)
+    # Henüz tanımlı değil - admin'in ilgilenmesi gereken durum tam olarak bu.
+    assert found[0]["already_registered"] is False
+
+
+def test_kap_detection_returns_no_ratio_when_text_has_none(db):
+    """Oran çıkarılamıyorsa uydurulmamalı - None dönmeli ki admin elle baksın."""
+    _kap_row(db, "1005", "GARAN", "GARAN [Garanti] Bedelsiz sermaye artırımı başvurusu yapıldı")
+
+    found = corporate_actions.detect_candidates_from_kap(db)
+    assert len(found) == 1
+    assert found[0]["suggested_ratio"] is None
+
+
+def test_kap_detection_respects_the_day_window(db):
+    _kap_row(db, "1006", "ASELS", "ASELS %50 bedelsiz sermaye artırımı", days_ago=90)
+
+    assert corporate_actions.detect_candidates_from_kap(db, days=30) == []
+    assert len(corporate_actions.detect_candidates_from_kap(db, days=120)) == 1

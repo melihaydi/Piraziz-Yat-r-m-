@@ -31,7 +31,9 @@ import {
   DollarSign,
   Minus,
   History,
-  Coins
+  Coins,
+  FileText,
+  AlertTriangle
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -105,6 +107,7 @@ export default function PortfolioPage() {
   const [analytics, setAnalytics] = useState<any>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
   const [equityHistory, setEquityHistory] = useState<{ date: string; total_value: number }[]>([])
+  const [benchmark, setBenchmark] = useState<{ date: string; index_change_pct: number }[]>([])
   const [equityHistoryLoading, setEquityHistoryLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [liveEstimate, setLiveEstimate] = useState<any>(null)
@@ -144,6 +147,9 @@ export default function PortfolioPage() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [realized, setRealized] = useState<any>(null)
   const [isOpenHistoryModal, setIsOpenHistoryModal] = useState(false)
+  const [isOpenAnnualModal, setIsOpenAnnualModal] = useState(false)
+  const [annual, setAnnual] = useState<any>(null)
+  const [annualYear, setAnnualYear] = useState<number | null>(null)
   const [isOpenDividendModal, setIsOpenDividendModal] = useState(false)
   const [dividendTicker, setDividendTicker] = useState("")
   const [dividendPerShare, setDividendPerShare] = useState("")
@@ -266,6 +272,7 @@ export default function PortfolioPage() {
       if (historyRes.ok) {
         const data = await historyRes.json()
         setEquityHistory(data.history || [])
+        setBenchmark(data.benchmark || [])
       }
     } catch (err) {
       console.error("Failed to load portfolio equity history:", err)
@@ -287,6 +294,23 @@ export default function PortfolioPage() {
       if (realizedRes.ok) setRealized(await realizedRes.json())
     } catch (err) {
       console.error("Failed to load portfolio ledger:", err)
+    }
+  }
+
+  // Yıllık kazanç özeti - sadece rapor açıldığında (ve yıl değiştikçe)
+  // çekiliyor, sayfa yüklenirken değil: FIFO hesabı tüm defteri yürüdüğü
+  // için her sayfa açılışında bedelini ödemeye değmez.
+  const loadAnnual = async (year?: number | null) => {
+    try {
+      const qs = year ? `?year=${year}` : ""
+      const res = await authFetch(`/portfolio/annual-summary${qs}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAnnual(data)
+        setAnnualYear(data.year)
+      }
+    } catch (err) {
+      console.error("Failed to load annual summary:", err)
     }
   }
 
@@ -334,6 +358,39 @@ export default function PortfolioPage() {
     // while the tab is hidden (see usePolling.ts).
     return pollWhileVisibleAndOpen(() => { loadCore(); fetchLiveEstimate(false) }, 15000)
   }, [])
+
+  // Portföy eğrisi ile endeksi aynı grafikte karşılaştırılabilir kılmak
+  // için ikisini de ilk günden itibaren YÜZDE değişime çeviriyoruz. Ham
+  // değerler aynı eksene konamaz: XU100 ~10.000 seviyesinde, kullanıcının
+  // portföyü belki ₺6.000 - yan yana çizilince portföy düz bir çizgi gibi
+  // görünürdü. Asıl soru "kaç lira" değil, "endeksi yendim mi".
+  const comparisonData = React.useMemo(() => {
+    if (equityHistory.length < 2) return []
+    const base = equityHistory[0].total_value
+    if (!base) return []
+    const indexByDate = new Map(benchmark.map(b => [b.date, b.index_change_pct]))
+    return equityHistory.map(h => ({
+      date: h.date,
+      total_value: h.total_value,
+      portfolio_pct: Number(((h.total_value / base - 1) * 100).toFixed(2)),
+      // Endeks kapanışı olmayan gün (tatil/eksik veri) null kalır -
+      // Recharts bu noktada çizgiyi kesintiye uğratır, ki uydurulmuş bir
+      // ara değer çizmekten dürüst olanı budur.
+      index_pct: indexByDate.has(h.date) ? indexByDate.get(h.date)! : null,
+    }))
+  }, [equityHistory, benchmark])
+
+  // "Endeksi yendim mi" - son güne ait iki yüzdenin farkı.
+  const benchmarkVerdict = React.useMemo(() => {
+    const withIndex = comparisonData.filter(d => d.index_pct != null)
+    if (withIndex.length < 2) return null
+    const last = withIndex[withIndex.length - 1]
+    return {
+      portfolioPct: last.portfolio_pct,
+      indexPct: last.index_pct as number,
+      diff: Number((last.portfolio_pct - (last.index_pct as number)).toFixed(2)),
+    }
+  }, [comparisonData])
 
   // Derive active portfolio (default to first one)
   const activePortfolio = portfolios[0] || null
@@ -686,6 +743,14 @@ export default function PortfolioPage() {
             <Coins className="h-4 w-4 mr-2 text-amber-400" />
             Temettü Ekle
           </Button>
+          <Button
+            variant="outline"
+            className="cursor-pointer flex items-center"
+            onClick={() => { setIsOpenAnnualModal(true); loadAnnual(annualYear) }}
+          >
+            <FileText className="h-4 w-4 mr-2 text-emerald-400" />
+            Yıllık Özet
+          </Button>
           {/* Create Alarm Dialog */}
           <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
             <DialogTrigger asChild>
@@ -965,6 +1030,131 @@ export default function PortfolioPage() {
                   <Button type="submit" className="w-full cursor-pointer">Temettüyü Kaydet</Button>
                 </DialogFooter>
               </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Yıllık kazanç özeti */}
+          <Dialog open={isOpenAnnualModal} onOpenChange={setIsOpenAnnualModal}>
+            <DialogContent className="sm:max-w-[640px]">
+              <DialogHeader>
+                <DialogTitle>Yıllık Kazanç Özeti{annual?.year ? ` — ${annual.year}` : ""}</DialogTitle>
+                <DialogDescription>
+                  Bir takvim yılında kapatılan işlemlerden doğan kâr/zarar ve alınan temettü.
+                </DialogDescription>
+              </DialogHeader>
+
+              {!annual ? (
+                <div className="py-10 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-4 py-2">
+                  {annual.available_years?.length > 1 && (
+                    <div className="flex flex-wrap gap-2">
+                      {annual.available_years.map((y: number) => (
+                        <button
+                          key={y}
+                          onClick={() => loadAnnual(y)}
+                          className={`px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition-colors ${
+                            y === annual.year
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                              : "bg-secondary/40 text-muted-foreground border border-border/40 hover:bg-secondary/70"
+                          }`}
+                        >
+                          {y}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* İki maliyet yöntemi yan yana - hangisinin kullanılacağı
+                      kullanıcının (ve mali müşavirinin) kararı, bizim değil. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-border/50 bg-secondary/20 p-3">
+                      <p className="text-[11px] font-bold uppercase text-muted-foreground">Ortalama Maliyet</p>
+                      <p className={`text-xl font-extrabold font-mono mt-1 ${
+                        annual.average_cost.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"
+                      }`}>
+                        {annual.average_cost.realized_pnl >= 0 ? "+" : ""}₺
+                        {annual.average_cost.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Uygulamanın pozisyon ekranıyla aynı yöntem
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border/50 bg-secondary/20 p-3">
+                      <p className="text-[11px] font-bold uppercase text-muted-foreground">FIFO (İlk Giren İlk Çıkar)</p>
+                      <p className={`text-xl font-extrabold font-mono mt-1 ${
+                        annual.fifo.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"
+                      }`}>
+                        {annual.fifo.realized_pnl >= 0 ? "+" : ""}₺
+                        {annual.fifo.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Vergi hesabında sıkça kullanılan yöntem
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5 text-xs">
+                    <span>
+                      <span className="text-muted-foreground">Temettü geliri: </span>
+                      <span className="font-mono font-extrabold text-amber-400">
+                        ₺{annual.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </span>
+                    <span className="text-muted-foreground">{annual.sell_count} satış · {annual.dividend_count} temettü</span>
+                  </div>
+
+                  {annual.has_incomplete_basis && (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-[11px] leading-relaxed text-amber-200/90">
+                        Bazı satışların alış kaydı defterde yok (işlem geçmişi
+                        tutulmaya başlamadan önce alınmış pozisyonlar). FIFO rakamı
+                        bu satışları hariç tutuyor, yani eksik.
+                      </p>
+                    </div>
+                  )}
+
+                  {annual.by_ticker?.length > 0 && (
+                    <div className="max-h-[35vh] overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="text-muted-foreground border-b border-border/50">
+                          <tr>
+                            <th className="text-left py-2 font-semibold">Hisse</th>
+                            <th className="text-right py-2 font-semibold">Satış K/Z</th>
+                            <th className="text-right py-2 font-semibold">Temettü</th>
+                            <th className="text-right py-2 font-semibold">Toplam</th>
+                          </tr>
+                        </thead>
+                        <tbody className="font-mono">
+                          {annual.by_ticker.map((r: any) => (
+                            <tr key={r.ticker} className="border-b border-border/20">
+                              <td className="py-2 font-bold font-sans">{r.ticker}</td>
+                              <td className={`py-2 text-right ${r.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                {r.realized_pnl >= 0 ? "+" : ""}₺{r.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2 text-right text-amber-400">
+                                ₺{r.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className={`py-2 text-right font-bold ${r.total >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                {r.total >= 0 ? "+" : ""}₺{r.total.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] leading-relaxed text-muted-foreground border-t border-border/40 pt-3">
+                    Bu özet yalnızca sizin girdiğiniz işlemlere dayanan bir hesaplama
+                    aracıdır; resmî bir vergi beyanı veya mali müşavirlik hizmeti değildir.
+                    Beyan yükümlülüğünüz için mali müşavirinize danışın.
+                  </p>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
 
@@ -1297,7 +1487,11 @@ export default function PortfolioPage() {
           <Card glass={true}>
             <CardHeader>
               <CardTitle className="text-lg">Portföy Değeri (Zaman İçinde)</CardTitle>
-              <CardDescription>Her gün bir kez kaydedilen gerçek toplam portföy değeriniz</CardDescription>
+              <CardDescription>
+                {benchmarkVerdict
+                  ? "Portföyünüzün günlük değeri, XU100 endeksiyle karşılaştırmalı"
+                  : "Her gün bir kez kaydedilen gerçek toplam portföy değeriniz"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {equityHistoryLoading ? (
@@ -1306,31 +1500,87 @@ export default function PortfolioPage() {
                 </div>
               ) : (
                 <>
+                  {benchmarkVerdict && (
+                    <div className={`mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 ${
+                      benchmarkVerdict.diff >= 0
+                        ? "border-emerald-500/30 bg-emerald-500/10"
+                        : "border-rose-500/30 bg-rose-500/10"
+                    }`}>
+                      <span className={`text-sm font-extrabold ${benchmarkVerdict.diff >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {benchmarkVerdict.diff >= 0 ? "Endeksin önündesiniz" : "Endeksin gerisindesiniz"}
+                        {": "}
+                        {benchmarkVerdict.diff >= 0 ? "+" : ""}{benchmarkVerdict.diff.toFixed(2)} puan
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        Portföy {benchmarkVerdict.portfolioPct >= 0 ? "+" : ""}{benchmarkVerdict.portfolioPct.toFixed(2)}%
+                        {" · "}
+                        XU100 {benchmarkVerdict.indexPct >= 0 ? "+" : ""}{benchmarkVerdict.indexPct.toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
                   <div className="h-56">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={equityHistory}>
-                        <defs>
-                          <linearGradient id="portfolioEquityGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
-                            <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                        <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
-                        <YAxis stroke="#64748b" fontSize={10} domain={["auto", "auto"]} />
-                        <Tooltip
-                          contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
-                          labelStyle={{ color: "#94a3b8" }}
-                          formatter={(value: any) => [`₺${Number(value).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`, "Portföy Değeri"]}
-                        />
-                        <Area type="monotone" dataKey="total_value" stroke="#a855f7" fill="url(#portfolioEquityGradient)" strokeWidth={2} />
-                      </AreaChart>
+                      {benchmarkVerdict ? (
+                        <AreaChart data={comparisonData}>
+                          <defs>
+                            <linearGradient id="portfolioEquityGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                          <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
+                          <YAxis stroke="#64748b" fontSize={10} domain={["auto", "auto"]} unit="%" />
+                          <Tooltip
+                            contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
+                            labelStyle={{ color: "#94a3b8" }}
+                            formatter={(value: any, name: any) => [
+                              value == null ? "—" : `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}%`,
+                              name === "portfolio_pct" ? "Portföyünüz" : "XU100",
+                            ]}
+                          />
+                          <Area
+                            type="monotone" dataKey="portfolio_pct" name="portfolio_pct"
+                            stroke="#a855f7" fill="url(#portfolioEquityGradient)" strokeWidth={2}
+                          />
+                          <Area
+                            type="monotone" dataKey="index_pct" name="index_pct"
+                            stroke="#64748b" fill="none" strokeWidth={1.5}
+                            strokeDasharray="4 3" connectNulls={false}
+                          />
+                        </AreaChart>
+                      ) : (
+                        <AreaChart data={equityHistory}>
+                          <defs>
+                            <linearGradient id="portfolioEquityGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                          <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
+                          <YAxis stroke="#64748b" fontSize={10} domain={["auto", "auto"]} />
+                          <Tooltip
+                            contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
+                            labelStyle={{ color: "#94a3b8" }}
+                            formatter={(value: any) => [`₺${Number(value).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`, "Portföy Değeri"]}
+                          />
+                          <Area type="monotone" dataKey="total_value" stroke="#a855f7" fill="url(#portfolioEquityGradient)" strokeWidth={2} />
+                        </AreaChart>
+                      )}
                     </ResponsiveContainer>
                   </div>
                   {equityHistory.length <= 1 && (
                     <p className="text-xs text-muted-foreground mt-2">
                       Bu grafik, portföyünüzün gerçek günlük değeriyle gün geçtikçe dolacak - geçmişe dönük veri
                       tutulmadığı için geriye doğru doldurulamaz, bugünden itibaren birikmeye başlar.
+                    </p>
+                  )}
+                  {benchmarkVerdict && (
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      Her iki eğri de ilk kayıt gününe göre yüzde değişimi gösterir - farklı
+                      ölçekteki iki seriyi karşılaştırılabilir kılmanın tek yolu budur.
+                      Portföyünüze bu dönemde para giriş/çıkışı olduysa eğri bundan da etkilenir.
                     </p>
                   )}
                 </>

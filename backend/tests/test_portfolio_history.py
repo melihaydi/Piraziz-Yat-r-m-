@@ -22,7 +22,11 @@ def auth_headers(client):
 def test_history_empty_when_no_snapshots_yet(client, auth_headers):
     response = client.get("/api/v1/portfolio/history", headers=auth_headers)
     assert response.status_code == 200
-    assert response.json() == {"history": []}
+    body = response.json()
+    assert body["history"] == []
+    # Karşılaştırılacak portföy eğrisi yokken endeks serisi de boş olmalı -
+    # tek başına bir endeks çizgisi çizmenin anlamı yok (bkz. _benchmark_series).
+    assert body["benchmark"] == []
 
 
 def test_history_returns_snapshots_sorted_by_date(client, db, auth_headers):

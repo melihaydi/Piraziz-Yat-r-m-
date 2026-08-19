@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp } from "lucide-react"
+import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import {
@@ -27,6 +27,7 @@ export default function FundDetailPage() {
 
   const [fund, setFund] = useState<any>(null)
   const [candles, setCandles] = useState<any[]>([])
+  const [chartIsSimulated, setChartIsSimulated] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -51,6 +52,14 @@ export default function FundDetailPage() {
           const chartData = await chartRes.json()
           if (active && Array.isArray(chartData)) {
             setCandles(chartData)
+            // Bu bayrak daha önce SADECE yeniden deneme zamanlayıcısını
+            // tetiklemek için okunuyordu; kullanıcıya hiç söylenmiyordu.
+            // Yani gerçek TEFAS geçmişi henüz hazır değilken, uydurulmuş
+            // (XU100'e beta ile bağlanmış) bir fiyat serisi gerçek bir fon
+            // grafiğinden ayırt edilemeden gösteriliyordu. Finansal bir
+            // üründe bu kabul edilemez - artık grafiğin üstünde açıkça
+            // yazıyor.
+            setChartIsSimulated(isSimulated)
           }
 
           // The backend builds the real historical NAV series from TEFAS in the
@@ -221,6 +230,18 @@ export default function FundDetailPage() {
               <CardDescription>Son 40 işlem gününün birikimli fiyat grafiği</CardDescription>
             </CardHeader>
             <CardContent>
+              {chartIsSimulated && chartData.length > 0 && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed text-amber-200/90">
+                    <strong className="font-bold">Bu grafik gerçek fiyat verisi değildir.</strong>{" "}
+                    Fonun gerçek TEFAS fiyat geçmişi henüz yüklenmedi; aşağıdaki
+                    eğri, endeks hareketinden türetilmiş geçici bir temsildir.
+                    Yatırım kararı için kullanmayın - gerçek veri hazır olduğunda
+                    otomatik olarak yerini alacaktır.
+                  </p>
+                </div>
+              )}
               <div className="h-72 w-full">
                 {chartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">

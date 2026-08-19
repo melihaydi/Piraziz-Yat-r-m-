@@ -825,7 +825,10 @@ export default function FundsPage() {
                     Detaylı Analiz & Varlık Kırılımı (Premium)
                   </Button>
                   <div className="text-[11px] text-muted-foreground text-center">
-                    * Veriler TEFAS üzerinden anlık endeks değişim çarpanlarına göre simüle edilmiştir.
+                    * Fon fiyatları ve getirileri TEFAS'ın günlük yayınladığı
+                    gerçek verilerdir. "GERÇEK DEĞİL" etiketli satırlarda ise
+                    fonun TEFAS geçmişi henüz yüklenmemiştir ve rakamlar
+                    geçici olarak endeksten türetilmiştir.
                   </div>
                 </div>
               </CardContent>
@@ -923,7 +926,17 @@ export default function FundsPage() {
                             {f.code}
                           </span>
                           {f.is_simulated && (
-                            <span className="ml-1.5 text-[11px] text-amber-400 font-semibold">simüle</span>
+                            // "simüle" tek başına fazla silikti - bu satırın
+                            // getiri/volatilite rakamları gerçek TEFAS
+                            // verisinden değil, endeksten türetilmiş geçici
+                            // bir seriden hesaplanıyor. Karşılaştırma
+                            // tablosunda bu ayrımın gözden kaçmaması gerek.
+                            <span
+                              title="Bu fonun gerçek TEFAS fiyat geçmişi henüz yüklenmedi. Bu satırdaki getiri ve volatilite rakamları geçici, türetilmiş veriye dayanıyor - gerçek performans değildir."
+                              className="ml-1.5 rounded border border-amber-500/40 bg-amber-500/15 px-1 py-0.5 text-[10px] font-bold text-amber-300 cursor-help"
+                            >
+                              GERÇEK DEĞİL
+                            </span>
                           )}
                         </td>
                         <td className="px-3 text-right font-mono font-semibold">₺{Number(f.price).toFixed(4)}</td>

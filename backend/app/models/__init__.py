@@ -6,6 +6,15 @@ from app.models.financial import FinancialStatement
 from app.models.kap import KapNotification
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.models.portfolio_transaction import PortfolioTransaction
+# Trade models were missing from this list for a long time. Since alembic's
+# env.py builds target_metadata from `app.models`, autogenerate simply never
+# saw these tables - which is why no migration ever created them, and why
+# `alembic upgrade head` on an EMPTY database died at the migration that
+# ALTERs trade_account ("no such table: trade_account"). Production only
+# worked because the tables had been created out-of-band by create_all.
+from app.models.trade import (
+    TradeAccount, TradePosition, TradeOrder, TradeDailySnapshot, TradePendingOrder,
+)
 from app.models.alert import Alert
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.models.note import Note
@@ -26,6 +35,11 @@ __all__ = [
     "PortfolioAsset",
     "PortfolioSnapshot",
     "PortfolioTransaction",
+    "TradeAccount",
+    "TradePosition",
+    "TradeOrder",
+    "TradeDailySnapshot",
+    "TradePendingOrder",
     "Alert",
     "FundEstimateSnapshot",
     "Note",

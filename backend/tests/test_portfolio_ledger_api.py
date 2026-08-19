@@ -161,3 +161,53 @@ def test_transactions_are_scoped_to_the_owner(client, auth_headers, portfolio_id
         headers={"Authorization": f"Bearer {other}"},
     ).json()
     assert rows == []
+
+
+def test_annual_summary_reports_both_cost_methods(client, auth_headers, portfolio_id):
+    """İki lot farklı fiyattan alınıp biri satılınca ortalama maliyet ve
+    FIFO farklı kâr verir - rapor ikisini de göstermeli."""
+    _add(client, auth_headers, portfolio_id, shares=10, cost=100.0)
+    asset = _add(client, auth_headers, portfolio_id, shares=10, cost=200.0).json()
+
+    client.post(
+        f"/api/v1/portfolio/assets/{asset['id']}/sell",
+        json={"shares": 10, "price": 250.0},
+        headers=auth_headers,
+    )
+
+    res = client.get("/api/v1/portfolio/annual-summary", headers=auth_headers)
+    assert res.status_code == 200
+    body = res.json()
+    # Ortalama maliyet 150 -> (250-150)*10
+    assert body["average_cost"]["realized_pnl"] == pytest.approx(1000.0)
+    # FIFO ilk lotu (100) tüketir -> (250-100)*10
+    assert body["fifo"]["realized_pnl"] == pytest.approx(1500.0)
+    assert body["sell_count"] == 1
+
+
+def test_annual_summary_filters_by_year(client, auth_headers, portfolio_id):
+    asset = _add(client, auth_headers, portfolio_id, shares=10, cost=100.0).json()
+    client.post(
+        f"/api/v1/portfolio/assets/{asset['id']}/sell",
+        json={"shares": 5, "price": 150.0},
+        headers=auth_headers,
+    )
+
+    current = client.get("/api/v1/portfolio/annual-summary", headers=auth_headers).json()
+    assert current["sell_count"] == 1
+
+    old = client.get("/api/v1/portfolio/annual-summary?year=2020", headers=auth_headers).json()
+    assert old["sell_count"] == 0
+    assert old["average_cost"]["realized_pnl"] == 0.0
+
+
+def test_annual_summary_includes_dividends(client, auth_headers, portfolio_id):
+    _add(client, auth_headers, portfolio_id, shares=100, cost=10.0)
+    client.post(
+        f"/api/v1/portfolio/{portfolio_id}/dividends",
+        json={"ticker": "THYAO", "per_share": 1.5},
+        headers=auth_headers,
+    )
+    body = client.get("/api/v1/portfolio/annual-summary", headers=auth_headers).json()
+    assert body["dividend_income"] == pytest.approx(150.0)
+    assert body["dividend_count"] == 1
