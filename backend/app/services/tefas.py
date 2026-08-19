@@ -577,12 +577,22 @@ class TefasService:
     def _persist_cache(self):
         try:
             with self._lock:
+                # Shallow-copy each dict here, under the lock - price_loop/
+                # history_loop/drift_loop each call _persist_cache() from
+                # their own independent daemon thread (gated by three
+                # separate flags that don't exclude each other), so without
+                # copying, json.dumps below (which runs AFTER the lock is
+                # released) could iterate one of these dicts while another
+                # thread concurrently inserts/updates a key in it, raising
+                # "dictionary changed size during iteration" - silently
+                # swallowed by the except below, quietly breaking the
+                # Redis-persisted cache this is meant to maintain.
                 data = {
-                    "cached_funds": self._cached_funds,
-                    "history_cache": self._history_cache,
+                    "cached_funds": dict(self._cached_funds),
+                    "history_cache": dict(self._history_cache),
                     "last_refresh": self._last_refresh.isoformat(),
                     "history_last_built": self._history_last_built.isoformat(),
-                    "drift_factors": self._drift_factors,
+                    "drift_factors": dict(self._drift_factors),
                     "drift_factors_built_at": self._drift_factors_built_at.isoformat(),
                 }
             # Long TTL, not "forever" - if this data ever stops being
@@ -1077,32 +1087,40 @@ class TefasService:
         threading.Thread(target=history_loop, daemon=True).start()
         threading.Thread(target=drift_loop, daemon=True).start()
 
-    def get_funds(self, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
-        """Get all funds. Refreshes cache asynchronously if expired."""
+    def _maybe_refresh_prices(self) -> None:
         time_since_refresh = datetime.datetime.now() - self._last_refresh
         if time_since_refresh > self._refresh_interval and not self._is_fetching:
             self._bg_fetch_prices()
-            
+
+    def get_funds(self) -> List[Dict[str, Any]]:
+        """Get all funds. Refreshes cache asynchronously if expired."""
+        self._maybe_refresh_prices()
+
         with self._lock:
             return list(self._cached_funds.values())
 
-    def get_fund(self, code: str, index_change_pct: float = 0.64) -> Optional[Dict[str, Any]]:
-        """Get a single fund by code with detailed properties (Request 7!)."""
+    def get_fund(self, code: str) -> Optional[Dict[str, Any]]:
+        """Get a single fund by code with detailed properties (Request 7!).
+        self._cached_funds is already a dict keyed by code, so this looks it
+        up directly (O(1)) instead of going through get_funds()'s full list
+        and scanning it - this is a hot path, called once per fund ticker
+        in every portfolio valuation plus every funds list/detail/compare/
+        popular-estimate request."""
         code = code.upper()
-        funds = self.get_funds(index_change_pct)
-        
-        details_map = FUND_DETAILS_MAP
+        self._maybe_refresh_prices()
 
-        for f in funds:
-            if f["code"] == code:
-                details = details_map.get(code, {
-                    "fund_size": "₺250,000,000",
-                    "risk_level": 3,
-                    "manager": "Pusula Portföy Yönetimi",
-                    "assets_distribution": [{"name": "Nakit ve Benzeri", "value": 100}]
-                })
-                return {**f, **details}
-        return None
+        with self._lock:
+            f = self._cached_funds.get(code)
+        if f is None:
+            return None
+
+        details = FUND_DETAILS_MAP.get(code, {
+            "fund_size": "₺250,000,000",
+            "risk_level": 3,
+            "manager": "Pusula Portföy Yönetimi",
+            "assets_distribution": [{"name": "Nakit ve Benzeri", "value": 100}]
+        })
+        return {**f, **details}
 
     def get_live_estimated_return(
         self, code: str, _visited: Optional[set] = None, delay_minutes: int = 0
@@ -1293,7 +1311,7 @@ class TefasService:
             return None
         return round((target_close - prev_close) / prev_close * 100, 2)
 
-    def get_fund_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> tuple[List[Dict[str, Any]], bool]:
+    def get_fund_candles(self, code: str, count: int = 30) -> tuple[List[Dict[str, Any]], bool]:
         """
         Return (candles, is_simulated) historical NAV data for a mutual fund's chart.
 
@@ -1318,13 +1336,13 @@ class TefasService:
         if cached_history:
             return (cached_history[-count:] if count else cached_history), False
 
-        return self._generate_synthetic_candles(code, count, index_change_pct), True
+        return self._generate_synthetic_candles(code, count), True
 
-    def _generate_synthetic_candles(self, code: str, count: int = 30, index_change_pct: float = 0.64) -> List[Dict[str, Any]]:
+    def _generate_synthetic_candles(self, code: str, count: int = 30) -> List[Dict[str, Any]]:
         """Temporary placeholder chart (correlated with XU100) shown only until the
         real historical NAV series has finished its first background build."""
         code = code.upper()
-        fund = self.get_fund(code, index_change_pct)
+        fund = self.get_fund(code)
         if not fund:
             return []
 

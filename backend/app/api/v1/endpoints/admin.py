@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
 from app.api.v1.endpoints.auth import PASSWORD_RESET_TOKEN_MINUTES
@@ -242,7 +242,11 @@ def list_support_tickets(
 ):
     """All support tickets across all users, newest first - superuser only.
     Optionally filtered to status=open|closed."""
-    query = db.query(SupportTicket).order_by(SupportTicket.created_at.desc())
+    # joinedload avoids an N+1: without it, accessing t.user.email below for
+    # every ticket lazily issues its own query (300 tickets -> 300 extra
+    # queries) since SupportTicket.user has no eager-load option set on the
+    # relationship itself.
+    query = db.query(SupportTicket).options(joinedload(SupportTicket.user)).order_by(SupportTicket.created_at.desc())
     if status_filter:
         query = query.filter(SupportTicket.status == status_filter)
     tickets = query.all()

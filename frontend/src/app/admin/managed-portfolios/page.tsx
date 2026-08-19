@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { authFetch } from "@/lib/auth"
+import { parseTLAmount } from "@/lib/utils"
 
 // Quick-pick shortlist so picking a frequently-managed user doesn't mean
 // scanning a full email dropdown every time - persisted per-browser (this
@@ -60,15 +61,6 @@ interface ManagedPortfolio {
 }
 
 const tl = (n: number) => `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-
-// A native <input type="number"> forces a period as the decimal separator
-// regardless of the OS/browser's Turkish locale, so typing "1.500,50" (the
-// same tr-TR format tl() above displays everywhere else in this app) either
-// gets silently rejected or misread. This plain-text parser accepts the
-// Turkish convention instead - "." as a thousands separator (stripped),
-// "," as the decimal point - matching trade/DepositModal.tsx's amount
-// field, which already works this way.
-const parseTLAmount = (raw: string): number => parseFloat(raw.trim().replace(/\./g, "").replace(",", "."))
 
 export default function ManagedPortfoliosPage() {
   const [checkingAccess, setCheckingAccess] = useState(true)

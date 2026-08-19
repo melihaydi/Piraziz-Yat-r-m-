@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { ArrowUpCircle, ArrowDownCircle, Loader2, Info, Receipt } from "lucide-react"
 import { useTrade, type OrderType } from "@/contexts/TradeContext"
+import { parseTLAmount } from "@/lib/utils"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 // Kept in sync with backend/app/services/trade_service.py's COMMISSION_RATE -
@@ -45,8 +46,11 @@ export default function OrderPanel() {
 
   const lotNum = parseFloat(lot.replace(",", ".")) || 0
   const lastPrice = instrument?.price || 0
-  const limitPriceNum = parseFloat(limitPrice.replace(",", ".")) || 0
-  const stopPriceNum = parseFloat(stopPrice.replace(",", ".")) || 0
+  // Prices (unlike lot counts) can be 4+ digits, e.g. a Turkish-formatted
+  // "1.245,50" - parseTLAmount handles the thousands separator correctly,
+  // where a bare comma-to-dot swap would misparse it as 1.245.
+  const limitPriceNum = parseTLAmount(limitPrice) || 0
+  const stopPriceNum = parseTLAmount(stopPrice) || 0
   // Best available estimate before the order actually fills, matching the
   // backend's own cash-reservation logic (see trade_service._create_pending_order):
   // the limit price constrains LIMIT/STOP_LIMIT exactly, a plain STOP fills

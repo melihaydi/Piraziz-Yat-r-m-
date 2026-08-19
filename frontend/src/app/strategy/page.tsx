@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import { authFetch } from "@/lib/auth"
 import { pollWhileVisible } from "@/lib/usePolling"
+import { parseTLAmount } from "@/lib/utils"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 type Direction = "LONG" | "SHORT" | "NONE"
@@ -135,7 +136,7 @@ function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; sto
     return <p className="text-[11px] text-muted-foreground">Giriş/stop seviyesi olmadığı için hesaplanamıyor.</p>
   }
 
-  const acc = parseFloat(accountSize.trim().replace(/\./g, "").replace(",", ".")) || 0
+  const acc = parseTLAmount(accountSize) || 0
   const risk = parseFloat(riskPct.replace(",", ".")) || 0
   const riskAmount = acc * (risk / 100)
   const perShareRisk = Math.abs(entry - stopLoss)

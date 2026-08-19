@@ -77,8 +77,17 @@ def test_rename_account_rejects_blank_name(db, account):
 
 
 def test_delete_account_removes_it(db, account):
-    trade_service.delete_account(db, account)
-    assert trade_service.get_accounts(db, user_id=1) == []
+    second = trade_service.create_account(db, user_id=1, broker="info_yatirim", starting_balance=50000.0)
+    trade_service.delete_account(db, second)
+    remaining = trade_service.get_accounts(db, user_id=1)
+    assert len(remaining) == 1
+    assert remaining[0].id == account.id
+
+
+def test_delete_account_rejects_the_last_remaining_account(db, account):
+    with pytest.raises(TradeError):
+        trade_service.delete_account(db, account)
+    assert trade_service.get_accounts(db, user_id=1) == [account]
 
 
 def test_create_account_uses_default_balance_when_nonpositive(db):

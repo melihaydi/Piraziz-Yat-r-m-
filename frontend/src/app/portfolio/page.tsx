@@ -45,16 +45,10 @@ import {
 } from "@/components/ui/Dialog"
 import { authFetch } from "@/lib/auth"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
+import { parseTLAmount } from "@/lib/utils"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
-
-// A native <input type="number"> forces a period as the decimal separator
-// regardless of the OS/browser's Turkish locale - this plain-text parser
-// accepts the Turkish convention instead ("." thousands separator stripped,
-// "," decimal point), same as admin/managed-portfolios/page.tsx's
-// parseTLAmount and trade/DepositModal.tsx's amount field.
-const parseTLAmount = (raw: string): number => parseFloat(raw.trim().replace(/\./g, "").replace(",", "."))
 
 function PortfolioStressTest({ beta, currentValue }: { beta: number | null; currentValue: number }) {
   const [scenario, setScenario] = useState(-10)

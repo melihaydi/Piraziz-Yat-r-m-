@@ -185,9 +185,22 @@ def rename_account(db: Session, account: TradeAccount, name: str) -> TradeAccoun
 def delete_account(db: Session, account: TradeAccount) -> None:
     """Permanently removes an account and everything under it (positions,
     orders, pending orders, snapshots - all cascade via the FK). A user must
-    always keep at least one account; the API layer enforces that before
-    calling this, since that check needs to know how many accounts the user
-    has in total, not just this one."""
+    always keep at least one account.
+
+    Locks every TradeAccount row for this user before counting - without
+    it, two concurrent deletes of two different accounts belonging to the
+    same user could each count the pre-delete total (e.g. both see 2) and
+    both pass the "keep at least one" check before either commit lands,
+    leaving the user with zero accounts. Locking first serializes the two
+    requests, so the second one re-checks against the post-delete count."""
+    siblings = (
+        db.query(TradeAccount)
+        .filter(TradeAccount.user_id == account.user_id)
+        .with_for_update()
+        .all()
+    )
+    if len(siblings) <= 1:
+        raise TradeError("Son kalan portföyünüzü silemezsiniz.")
     db.delete(account)
     db.commit()
 
@@ -469,7 +482,13 @@ def _execute_trade(
                     "kapatın, ardından yeni bir long pozisyon için ayrı bir emir girin."
                 )
             total_cost = notional + commission
-            if total_cost > account.cash_balance:
+            # Check against cash_balance MINUS locked_cash, not raw cash_balance -
+            # locked_cash is other resting orders' cash reservation (see
+            # _create_pending_order) and must not be spendable by this trade.
+            # _fill_pending_order already released THIS order's own reservation
+            # from locked_cash before calling in here, so this correctly checks
+            # what's left after every other resting order's reservation.
+            if total_cost > account.cash_balance - account.locked_cash:
                 raise TradeError("Yetersiz bakiye.")
             account.cash_balance -= total_cost
             realized_pnl = round((position.avg_cost - price) * lot - commission, 2)
@@ -480,7 +499,9 @@ def _execute_trade(
         else:
             # Normal long buy (opening or adding to a long position).
             total_cost = notional + commission
-            if total_cost > account.cash_balance:
+            # Same available-cash check as the short-covering branch above -
+            # locked_cash is other resting orders' reservation, not spendable here.
+            if total_cost > account.cash_balance - account.locked_cash:
                 raise TradeError("Yetersiz bakiye.")
             account.cash_balance -= total_cost
             if position:
@@ -620,19 +641,28 @@ def _check_pending_orders(db: Session, account: TradeAccount, delay_minutes: int
       into a resting LIMIT order at limit_price instead of filling
       immediately - checked again (as a LIMIT) on the next poll.
     """
+    # Cheap unlocked existence check first - most accounts have no resting
+    # orders most of the time, so locking unconditionally here would
+    # serialize the hot read path for no reason.
+    if not db.query(TradePendingOrder.id).filter(
+        TradePendingOrder.account_id == account.id,
+        TradePendingOrder.status == "PENDING",
+    ).first():
+        return
+
+    # Same race as place_order's lock, taken BEFORE the real read below (not
+    # after) - cancel_pending_order also takes this same lock now, so once
+    # we hold it, no concurrent request can have changed a pending order's
+    # status out from under the re-query just below. Locking first and then
+    # re-reading is what closes the gap: locking after an already-loaded
+    # `pending` list (the previous approach) left those in-memory objects
+    # stale if a concurrent cancel committed between the load and the lock.
+    db.query(TradeAccount).filter(TradeAccount.id == account.id).with_for_update().first()
+
     pending = db.query(TradePendingOrder).filter(
         TradePendingOrder.account_id == account.id,
         TradePendingOrder.status == "PENDING",
     ).all()
-    if not pending:
-        return
-
-    # Same race as place_order's lock, but only taken when there's actually a
-    # fill to check - this runs on every account poll (every few seconds per
-    # open tab), and most accounts have no resting orders most of the time,
-    # so locking unconditionally here would serialize the hot read path for
-    # no reason.
-    db.query(TradeAccount).filter(TradeAccount.id == account.id).with_for_update().first()
 
     for order in pending:
         price = get_live_price(order.instrument_type, order.symbol, delay_minutes)
@@ -688,6 +718,13 @@ def get_pending_orders(
 
 
 def cancel_pending_order(db: Session, account: TradeAccount, order_id: int, delay_minutes: int = 0) -> Dict[str, Any]:
+    # Same account-row lock as place_order/_check_pending_orders - without
+    # it, two concurrent cancels (or a cancel racing a fill) can both read
+    # the same pre-mutation locked_cash and one commit clobbers the other's
+    # decrement, or a cancel can "succeed" on an order _check_pending_orders
+    # already filled in another session.
+    db.query(TradeAccount).filter(TradeAccount.id == account.id).with_for_update().first()
+
     order = db.query(TradePendingOrder).filter(
         TradePendingOrder.id == order_id,
         TradePendingOrder.account_id == account.id,

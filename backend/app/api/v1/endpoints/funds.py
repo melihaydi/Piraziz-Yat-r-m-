@@ -6,21 +6,14 @@ from app.core.limiter import limiter
 from app.core.redis import cache_service
 from app.models.user import User
 from app.services.tefas import tefas_service
-from app.services.market_data import market_data_service
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 
 router = APIRouter()
 
-def _get_live_index_change() -> float:
-    """Helper to get current XU100 daily change for dynamic fund price scaling."""
-    quote = market_data_service.get_quote("XU100")
-    return quote.get("change_percent") if (quote and quote.get("change_percent") is not None) else 0.64
-
 @router.get("/")
 def list_funds():
     """Get all TEFAS mutual funds with daily return scaling."""
-    chg = _get_live_index_change()
-    return tefas_service.get_funds(chg)
+    return tefas_service.get_funds()
 
 
 def _period_return_pct(closes: List[float], bars: int) -> Optional[float]:
@@ -101,10 +94,9 @@ def get_popular_funds_live_estimate(
     if cached is not None:
         return cached
 
-    chg = _get_live_index_change()
     results = []
     for code in POPULAR_LIVE_FUNDS:
-        fund = tefas_service.get_fund(code, chg)
+        fund = tefas_service.get_fund(code)
         estimate = tefas_service.get_live_estimated_return(code, delay_minutes=delay)
         if not fund or not estimate:
             continue
@@ -193,13 +185,12 @@ def compare_funds(codes: str):
     if len(fund_codes) < 2:
         raise HTTPException(status_code=400, detail="Karşılaştırma için en az 2 fon kodu gerekli.")
 
-    chg = _get_live_index_change()
     results = []
     for code in fund_codes:
-        fund = tefas_service.get_fund(code, chg)
+        fund = tefas_service.get_fund(code)
         if not fund:
             continue
-        candles, is_simulated = tefas_service.get_fund_candles(code, count=252, index_change_pct=chg)
+        candles, is_simulated = tefas_service.get_fund_candles(code, count=252)
         results.append({
             "code": code,
             "name": fund.get("name"),
@@ -220,8 +211,7 @@ def compare_funds(codes: str):
 @router.get("/{code}")
 def get_fund_detail(code: str):
     """Get details of a single TEFAS mutual fund."""
-    chg = _get_live_index_change()
-    fund = tefas_service.get_fund(code, chg)
+    fund = tefas_service.get_fund(code)
     if not fund:
         raise HTTPException(status_code=404, detail="Fund not found")
     return fund
@@ -229,8 +219,7 @@ def get_fund_detail(code: str):
 @router.get("/chart/{code}")
 def get_fund_candles(code: str, response: Response, count: int = 30):
     """Get historical price candle array for a mutual fund (real TEFAS NAV history when available)."""
-    chg = _get_live_index_change()
-    candles, is_simulated = tefas_service.get_fund_candles(code, count, chg)
+    candles, is_simulated = tefas_service.get_fund_candles(code, count)
     if not candles:
         raise HTTPException(status_code=404, detail="Fund candles not found")
     response.headers["X-Chart-Simulated"] = "true" if is_simulated else "false"

@@ -3,6 +3,7 @@
 import React, { useState } from "react"
 import { X, Loader2, Check, Pencil, Trash2, Plus } from "lucide-react"
 import { useTrade, Broker } from "@/contexts/TradeContext"
+import { parseTLAmount } from "@/lib/utils"
 
 const BROKERS: { id: Broker; name: string }[] = [
   { id: "info_yatirim", name: "İnfo Yatırım" },
@@ -21,7 +22,7 @@ function PortfoliosPanel() {
   const [message, setMessage] = useState("")
 
   const handleCreate = async () => {
-    const parsed = parseFloat(newBalance.replace(/\./g, "").replace(",", ".")) || 0
+    const parsed = parseTLAmount(newBalance) || 0
     setBusy(true)
     const res = await createAdditionalAccount(newBroker, parsed, newName.trim() || `Portföy ${accounts.length + 1}`)
     setBusy(false)
@@ -187,7 +188,7 @@ export default function AccountSettingsModal({ onClose }: { onClose: () => void 
   }
 
   const handleReset = async () => {
-    const parsed = parseFloat(resetBalance.replace(/\./g, "").replace(",", "."))
+    const parsed = parseTLAmount(resetBalance)
     if (!parsed || parsed <= 0) {
       setMessage("Geçerli bir bakiye girin.")
       return

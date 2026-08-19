@@ -115,14 +115,14 @@ def remove_account(
     """Permanently deletes an account and everything under it. Blocked if
     it's the user's only remaining account - there must always be one to
     fall back to (the default-account lookup, the exe's bootstrap flow,
-    etc. all assume at least one exists)."""
+    etc. all assume at least one exists). The "keep at least one" check
+    itself is done inside delete_account, under a row lock, so it can't
+    race a concurrent delete of a different account for the same user."""
     account = _require_account(db, current_user, account_id)
-    if len(trade_service.get_accounts(db, current_user.id)) <= 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Son kalan portföyünüzü silemezsiniz."
-        )
-    trade_service.delete_account(db, account)
+    try:
+        trade_service.delete_account(db, account)
+    except TradeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return None
 
 

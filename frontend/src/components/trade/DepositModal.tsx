@@ -3,6 +3,7 @@
 import React, { useState } from "react"
 import { X, Loader2, Wallet, PlusCircle } from "lucide-react"
 import { useTrade } from "@/contexts/TradeContext"
+import { parseTLAmount } from "@/lib/utils"
 
 const QUICK_AMOUNTS = [10000, 50000, 100000, 250000]
 
@@ -13,7 +14,7 @@ export default function DepositModal({ onClose }: { onClose: () => void }) {
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null)
 
   const handleDeposit = async () => {
-    const parsed = parseFloat(amount.replace(/\./g, "").replace(",", "."))
+    const parsed = parseTLAmount(amount)
     if (!parsed || parsed <= 0) {
       setMessage({ type: "error", text: "Geçerli bir tutar girin." })
       return
