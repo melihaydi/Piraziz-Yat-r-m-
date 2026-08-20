@@ -332,52 +332,61 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         # fund_size/manager are unconfirmed placeholders (same "₺250,000,000"
         # default get_fund() already falls back to for any fund with no
         # known details) - manager is tentatively "Tera Portföy" purely
-        # because THF's holdings heavily overlap TLY/TMV's (TEHOL, OZATD,
-        # TERA, TRHOL, ANELE, PEKGY, SVGYO, EUPWR, MANAS, plus the same
-        # SABIT/VIOP structure as TMV), not from a confirmed source - update
-        # once TEFAS's own crawl or the user confirms the real manager.
+        # because THF's holdings heavily overlap TLY/TMV/DOH's (TEHOL, TERA,
+        # TRHOL, ANELE, OZATD, PEKGY, SVGYO, plus the same VİOP structure),
+        # not from a confirmed source - update once TEFAS's own crawl or the
+        # user confirms the real manager.
         "fund_size": "₺250,000,000",
         "risk_level": 6,
         "manager": "Tera Portföy (tahmini - doğrulanmadı)",
-        # User-provided composition (2026-08-17), replacing DFI in the
-        # "Popüler Fonlar - Anlık Getiri" section (see POPULAR_LIVE_FUNDS in
-        # funds.py). The disclosed "Sabit Getiriler" (%31.2) leg is
-        # deliberately excluded per the user - only the equity + VİOP legs
-        # are tracked here. "VİOP" -> VIOP, plain ASCII per TMV's own
-        # precedent (a market segment, not a tradable ticker - left
-        # unresolved rather than guessing a quote for it).
-        "as_of": "2026-08-17",
+        # Kullanıcının verdiği güncel dağılım (2026-08-20), 2026-08-17
+        # tarihli önceki dağılımın yerine. Toplam 99.8 - TEFAS dağılımları
+        # zaten çoğu zaman tam 100 etmez, kalan sayılmayan nakit/tahvil/diğer
+        # olarak kabul edilir (get_live_estimated_return'ün kendi
+        # dokümantasyonuna bakınız).
+        #
+        # Önceki dağılımdan hiçbir kalem düşmedi; iki yeni isim girdi:
+        # CITAS (18 Ağustos 2026 halka arzı) ve TATEN. Ağırlıklardaki asıl
+        # kayma KARCL'nin %6.0'dan %12.2'ye çıkması ve buna karşılık
+        # VİOP'un %31.2'den %22.1'e inmesi.
+        #
+        # "VİOP" -> VIOP, plain ASCII per TMV's own precedent (a market
+        # segment, not a tradable ticker - left unresolved rather than
+        # guessing a quote for it).
+        "as_of": "2026-08-20",
         "assets_distribution": [
-            {"name": "TEHOL", "value": 6.8},
-            {"name": "OZATD", "value": 6.2},
-            {"name": "KARCL", "value": 6.0},
-            {"name": "ASELS", "value": 5.3},
-            {"name": "TERA", "value": 4.7},
-            {"name": "TRHOL", "value": 4.0},
+            {"name": "KARCL", "value": 12.2},
+            {"name": "TEHOL", "value": 7.8},
+            {"name": "ASELS", "value": 6.3},
+            {"name": "TRHOL", "value": 5.9},
+            {"name": "TERA", "value": 5.7},
+            {"name": "EGEGY", "value": 3.5},
+            {"name": "CITAS", "value": 3.2},
+            {"name": "ATATR", "value": 3.0},
             {"name": "ANELE", "value": 2.9},
             {"name": "THYAO", "value": 2.9},
             {"name": "YKBNK", "value": 2.8},
             {"name": "PEKGY", "value": 2.7},
-            {"name": "EUPWR", "value": 2.1},
             {"name": "SVGYO", "value": 2.1},
             {"name": "TUPRS", "value": 2.1},
+            {"name": "BRSAN", "value": 1.9},
             {"name": "HALKB", "value": 1.9},
-            {"name": "BSOKE", "value": 1.9},
-            {"name": "TABGD", "value": 1.7},
-            {"name": "BRSAN", "value": 1.6},
-            {"name": "KGYO", "value": 1.6},
-            {"name": "ATATR", "value": 1.6},
-            {"name": "EGEGY", "value": 1.5},
             {"name": "GLRMK", "value": 1.4},
             {"name": "MANAS", "value": 1.4},
-            {"name": "BARMA", "value": 1.2},
+            {"name": "EUPWR", "value": 1.1},
+            {"name": "BSOKE", "value": 1.0},
+            {"name": "TABGD", "value": 1.0},
+            {"name": "TATEN", "value": 1.0},
+            {"name": "OZATD", "value": 1.0},
             {"name": "RUZYE", "value": 0.9},
             {"name": "MCARD", "value": 0.9},
+            {"name": "KGYO", "value": 0.3},
             {"name": "NETCD", "value": 0.3},
+            {"name": "BARMA", "value": 0.2},
             {"name": "ORZAX", "value": 0.1},
             {"name": "MOBTL", "value": 0.1},
             {"name": "RNPOL", "value": 0.1},
-            {"name": "VIOP", "value": 31.2}
+            {"name": "VIOP", "value": 22.1}
         ]
     },
     "DOH": {
