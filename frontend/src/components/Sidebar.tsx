@@ -51,6 +51,23 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   }, [])
   const isCollapsedNow = collapsed && isDesktop
 
+  // Sürgü açıldıktan sonraki ilk ~260ms tıklamalara kapalı.
+  //
+  // Sebep: açılan sürgünün kendi marka satırındaki logo bağlantısı (h-16,
+  // px-6) ekranın tam sol üst köşesine, yani az önce basılan hamburger
+  // tuşunun ÜSTÜNE oturuyor - 375px'te tuş x=4..40 / y=10..54, logo linki
+  // x=24'ten başlıyor. Mobil tarayıcı ve WebView'lerin tek dokunuşun
+  // ardından gönderdiği ikinci "hayalet" click, ya da açılışı göremeyen
+  // kullanıcının sabırsız ikinci dokunuşu, o bağlantıya düşüp "/" rotasına
+  // gidiyordu; AppChrome da rota değişince menüyü kapattığı için sonuç
+  // "tuşa bastım hiçbir şey olmadı" oluyordu. Açılış animasyonu boyunca
+  // kapalı tutmak zinciri baştan kesiyor.
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setArmed(open), open ? 260 : 0)
+    return () => clearTimeout(t)
+  }, [open])
+
   // Only superusers see the admin panel link - the backend enforces this
   // for real (every /admin/* endpoint requires is_superuser), this is just
   // UX so a regular user never sees a link to a page they'd get a 403 from.
@@ -182,20 +199,28 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       {open && (
         <div
           className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
-          onClick={onClose}
+          onClick={() => { if (armed) onClose?.() }}
         />
       )}
 
       <aside
         style={{ width: isCollapsedNow ? 76 : 256 }}
         className={cn(
-          "border-r border-border bg-card flex flex-col h-screen z-40 transition-[transform,width] duration-250 ease-out",
+          // Tailwind v4'te `-translate-x-full` / `translate-x-0` artık
+          // `transform` değil `translate` özelliğini yazıyor - üretilen CSS
+          // `--tw-translate-x:-100%; translate:var(--tw-translate-x) ...`
+          // şeklinde. Önceki `transition-[transform,width]` bu yüzden hiçbir
+          // şeyi yakalamıyordu: sürgü kayarak değil, tek karede yerine
+          // zıplayarak açılıyordu. Hareket görünmediği için menünün açıldığı
+          // da fark edilmiyordu.
+          "border-r border-border bg-card flex flex-col h-screen z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
           // Same safe-area reasoning as Header.tsx - this drawer is `fixed
           // inset-y-0`, so on a notched phone/PWA its own top row (logo,
           // close button) would otherwise sit behind the status bar too.
           "pt-[env(safe-area-inset-top)] lg:pt-0",
-          open ? "translate-x-0" : "-translate-x-full"
+          open ? "translate-x-0" : "-translate-x-full",
+          open && !armed && "pointer-events-none"
         )}
       >
         {/* Brand Header */}

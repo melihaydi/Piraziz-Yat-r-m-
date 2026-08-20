@@ -401,10 +401,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
         plain desktop-width browser tab, but literally unreachable/invisible
         on a real notched phone or the installed PWA. */}
     <div className="h-16 flex items-center justify-between px-3 md:px-8 gap-2">
-      {/* Mobile/tablet menu toggle - opens the off-canvas Sidebar drawer */}
+      {/* Mobile/tablet menu toggle - opens the off-canvas Sidebar drawer.
+          `touch-manipulation`: iOS Safari, erişilebilirlik gerekçesiyle
+          layout.tsx'teki `maximumScale: 1`'i (ve `user-scalable=no`'yu)
+          yok sayar, yani çift dokunuşla yakınlaştırma açık kalır. Bu da
+          `click` olayının ~350ms geciktirilmesi ve ilk dokunuştan sonra
+          ikinci bir "hayalet" click üretilmesi demek. O gecikmeli/ikinci
+          click, menü açıldıktan sonra tam bu tuşun üstüne gelen sürgü
+          logosuna düşüp menüyü anında geri kapatıyordu. `touch-action:
+          manipulation` çift dokunuş yakınlaştırmasını sadece bu tuş için
+          kapatarak gecikmeyi de hayalet click'i de ortadan kaldırır. */}
       <button
         onClick={onMenuClick}
-        className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2 -ml-2"
+        className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2 -ml-2 touch-manipulation"
         aria-label="Menüyü aç"
       >
         <Menu className="h-5 w-5" />
