@@ -225,10 +225,7 @@ class MarketDataService:
             "KARCL", "HALKB", "BSOKE", "TABGD", "KGYO", "ATATR", "EGEGY", "GLRMK",
             "BARMA", "RUZYE", "MCARD", "NETCD", "ORZAX", "MOBTL", "RNPOL",
             # Added for DOH's disclosed composition (tefas.py) - the only
-            # holding of DOH's not already tracked above. No confirmed
-            # official company name, so it falls through to the
-            # f"{t} Ticaret A.Ş." placeholder in company_names below rather
-            # than risk stating a wrong one.
+            # holding of DOH's not already tracked above.
             "CITAS"
         ]
         
@@ -278,6 +275,13 @@ class MarketDataService:
             "TABGD": "Tab Gıda Sanayi ve Ticaret A.Ş.",
             "KGYO": "Körfez Gayrimenkul Yatırım Ortaklığı A.Ş.",
             "ORZAX": "Orzax Sağlık Ürünleri Sanayi ve Ticaret A.Ş.",
+            # DOH's composition. Çok yeni bir halka arz (arz tarihi
+            # 18 Ağustos 2026) - BIST:CITAS olarak işlem görüyor, unvan
+            # TradingView'ın kendi sembol sayfasından doğrulandı. Geçmiş
+            # verisi henüz birkaç günlük olduğu için grafik ve AI skoru
+            # bir süre sığ kalacak; bu sembole özgü bir sorun değil, yeni
+            # arz olan her hissede aynı.
+            "CITAS": "Çıtlekçi Mağazacılık Gıda A.Ş.",
         }
         
         for t in allowed_list:
