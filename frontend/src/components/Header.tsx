@@ -400,20 +400,39 @@ export default function Header({ onMenuClick }: HeaderProps) {
         search, badge) sat physically behind the status bar: visible on a
         plain desktop-width browser tab, but literally unreachable/invisible
         on a real notched phone or the installed PWA. */}
-    <div className="h-16 flex items-center justify-between px-3 md:px-8 gap-2">
+    {/* pl-4 (px-3 değil): aşağıdaki hamburger tuşunun dokunma alanını iOS'un
+        sol kenar sistem hareketi bölgesinden çıkarmak için - gerekçe tuşun
+        kendi yorumunda. */}
+    <div className="h-16 flex items-center justify-between pl-4 pr-3 md:px-8 gap-2">
       {/* Mobile/tablet menu toggle - opens the off-canvas Sidebar drawer.
-          `touch-manipulation`: iOS Safari, erişilebilirlik gerekçesiyle
-          layout.tsx'teki `maximumScale: 1`'i (ve `user-scalable=no`'yu)
-          yok sayar, yani çift dokunuşla yakınlaştırma açık kalır. Bu da
-          `click` olayının ~350ms geciktirilmesi ve ilk dokunuştan sonra
-          ikinci bir "hayalet" click üretilmesi demek. O gecikmeli/ikinci
-          click, menü açıldıktan sonra tam bu tuşun üstüne gelen sürgü
-          logosuna düşüp menüyü anında geri kapatıyordu. `touch-action:
-          manipulation` çift dokunuş yakınlaştırmasını sadece bu tuş için
-          kapatarak gecikmeyi de hayalet click'i de ortadan kaldırır. */}
+
+          Buradaki üç ayrıntı da aynı şikayetin ("basıyorum ya hiç açılmıyor
+          ya da 4-5 kere basmam gerekiyor", iOS ana ekran uygulaması)
+          parçaları:
+
+          1) Negatif sol marj (-ml-2) KALDIRILDI ve satırın sol dolgusu
+             pl-4'e çıkarıldı. Eskiden tuşun dokunma alanı ekranın 4.
+             pikselinden başlıyordu, yani neredeyse tamamı iOS'un sol kenar
+             sistem hareketi (geri kaydırma) bölgesinin içindeydi. iOS o
+             bölgedeki dokunuşu, kaydırmaya dönüşecek mi diye beklettiği
+             için olayı ya geç teslim ediyor ya da hareket sanıp tamamen
+             yutuyor. Tuş artık 16. pikselden başlıyor, ikonu 24'ten.
+          2) `touch-manipulation`: iOS Safari, erişilebilirlik gerekçesiyle
+             layout.tsx'teki `maximumScale: 1`'i yok sayar; çift dokunuşla
+             yakınlaştırma açık kaldığı için click ~350ms geciktirilir ve
+             ikinci bir sentetik click üretilir.
+          3) pointerdown + click birlikte - hemen aşağıdaki yorumda. */}
       <button
+        // Hem pointerdown hem click, bilerek: pointerdown dokunuşun ilk
+        // anında gelir, click ise iOS'ta en iyi ihtimalle bir kare, kötü
+        // ihtimalle yüzlerce ms sonra - "tuşa bastım, menü çok geç açılıyor"
+        // şikayetinin doğrudan sebebi buydu. onMenuClick idempotent
+        // (setMobileMenuOpen(true)), yani ikisinin de tetiklenmesi zararsız;
+        // click'i bırakmak da şart, çünkü klavyeyle (Enter/Space) etkinleştirme
+        // pointerdown ÜRETMEZ, sadece click üretir.
+        onPointerDown={onMenuClick}
         onClick={onMenuClick}
-        className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2 -ml-2 touch-manipulation"
+        className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground cursor-pointer p-2 touch-manipulation"
         aria-label="Menüyü aç"
       >
         <Menu className="h-5 w-5" />

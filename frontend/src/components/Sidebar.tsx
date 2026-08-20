@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
@@ -51,20 +51,31 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   }, [])
   const isCollapsedNow = collapsed && isDesktop
 
-  // Sürgü açıldıktan sonraki ilk ~260ms tıklamalara kapalı.
+  // Sürgü açıldıktan sonra gelen İLK click yutulur ("armed" olana kadar).
   //
   // Sebep: açılan sürgünün kendi marka satırındaki logo bağlantısı (h-16,
-  // px-6) ekranın tam sol üst köşesine, yani az önce basılan hamburger
-  // tuşunun ÜSTÜNE oturuyor - 375px'te tuş x=4..40 / y=10..54, logo linki
-  // x=24'ten başlıyor. Mobil tarayıcı ve WebView'lerin tek dokunuşun
-  // ardından gönderdiği ikinci "hayalet" click, ya da açılışı göremeyen
-  // kullanıcının sabırsız ikinci dokunuşu, o bağlantıya düşüp "/" rotasına
-  // gidiyordu; AppChrome da rota değişince menüyü kapattığı için sonuç
-  // "tuşa bastım hiçbir şey olmadı" oluyordu. Açılış animasyonu boyunca
-  // kapalı tutmak zinciri baştan kesiyor.
-  const [armed, setArmed] = useState(false)
+  // px-6) ekranın sol üst köşesine, yani az önce basılan hamburger tuşunun
+  // ÜSTÜNE oturuyor. Menüyü açan dokunuşun ardından gelen click - iOS'ta
+  // hem gecikmeli hem de bazen ikinci bir sentetik olay olarak - o
+  // bağlantıya düşüyor, Link'in kendi onClick'i onClose çağırdığı için menü
+  // açıldığı anda geri kapanıyordu. Dışarıdan görüntü: "bastım, açılmadı".
+  //
+  // Zamanlayıcı yerine pointerdown'a bağlı, çünkü GERÇEK bir ikinci dokunuş
+  // her zaman kendi pointerdown'ıyla başlar; sürgü açıldıktan sonra sarkan
+  // click'in ise sürgü üstünde bir pointerdown'ı yoktur. Böylece kullanıcı
+  // menü belirir belirmez bir öğeye dokunabiliyor (sabit bir bekleme süresi
+  // dayatmıyoruz), sarkan click ise geçmiyor. 500ms'lik zamanlayıcı sadece
+  // emniyet supabı: klavyeyle (Tab+Enter) gezinmede pointerdown hiç
+  // olmadığı için sürgü sonsuza kadar kilitli kalmasın.
+  // useState değil useRef, bilerek: pointerdown ile onu izleyen click aynı
+  // dokunuşun iki ayrı olayı. State kullanılsa "armed" değerinin click'e
+  // yetişmesi React'in arada bir render yapmasına bağlı kalırdı; ref
+  // senkron okunur, yarış yok. Zaten hiçbir şey render etmiyor.
+  const armedRef = useRef(false)
   useEffect(() => {
-    const t = setTimeout(() => setArmed(open), open ? 260 : 0)
+    armedRef.current = false
+    if (!open) return
+    const t = setTimeout(() => { armedRef.current = true }, 500)
     return () => clearTimeout(t)
   }, [open])
 
@@ -199,7 +210,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       {open && (
         <div
           className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
-          onClick={() => { if (armed) onClose?.() }}
+          onPointerDown={() => { armedRef.current = true }}
+          onClick={() => { if (armedRef.current) onClose?.() }}
         />
       )}
 
@@ -219,9 +231,15 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           // inset-y-0`, so on a notched phone/PWA its own top row (logo,
           // close button) would otherwise sit behind the status bar too.
           "pt-[env(safe-area-inset-top)] lg:pt-0",
-          open ? "translate-x-0" : "-translate-x-full",
-          open && !armed && "pointer-events-none"
+          open ? "translate-x-0" : "-translate-x-full"
         )}
+        onPointerDownCapture={() => { armedRef.current = true }}
+        onClickCapture={(e) => {
+          if (open && !armedRef.current) {
+            e.preventDefault()
+            e.stopPropagation()
+          }
+        }}
       >
         {/* Brand Header */}
         <div className={cn("h-16 flex items-center border-b border-border shrink-0", isCollapsedNow ? "justify-center px-0" : "px-6 justify-between")}>

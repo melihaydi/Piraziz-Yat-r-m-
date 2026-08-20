@@ -223,7 +223,13 @@ class MarketDataService:
             # Added for THF's real disclosed composition (tefas.py) - same
             # rationale as the OZATD/TEHOL/etc. block above.
             "KARCL", "HALKB", "BSOKE", "TABGD", "KGYO", "ATATR", "EGEGY", "GLRMK",
-            "BARMA", "RUZYE", "MCARD", "NETCD", "ORZAX", "MOBTL", "RNPOL"
+            "BARMA", "RUZYE", "MCARD", "NETCD", "ORZAX", "MOBTL", "RNPOL",
+            # Added for DOH's disclosed composition (tefas.py) - the only
+            # holding of DOH's not already tracked above. No confirmed
+            # official company name, so it falls through to the
+            # f"{t} Ticaret A.Ş." placeholder in company_names below rather
+            # than risk stating a wrong one.
+            "CITAS"
         ]
         
         self.tickers = []

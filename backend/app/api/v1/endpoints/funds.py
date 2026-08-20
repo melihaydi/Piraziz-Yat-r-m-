@@ -49,10 +49,11 @@ def _fund_comparison_stats(candles: List[dict]) -> dict:
 # a fixed short list (not every tracked fund) since building this estimate
 # is itself a real cost (recursing through several live quote lookups per
 # fund) and this section only ever asked for these four. DFI swapped for
-# THF on 2026-08-17 per the user - DFI is still a fully trackable/holdable
-# fund (see BASE_FUNDS/FUND_DETAILS_MAP), just no longer spotlighted here.
+# THF on 2026-08-17, then PBR swapped for DOH on 2026-08-20, both per the
+# user - DFI and PBR are still fully trackable/holdable funds (see
+# BASE_FUNDS/FUND_DETAILS_MAP), just no longer spotlighted here.
 # Keep this in sync with TRACKED_FUND_CODES in fund_estimate_snapshot.py.
-POPULAR_LIVE_FUNDS = ["TMV", "PBR", "TLY", "THF"]
+POPULAR_LIVE_FUNDS = ["TMV", "DOH", "TLY", "THF"]
 
 
 def _with_impact_pct(holdings: List[dict]) -> List[dict]:

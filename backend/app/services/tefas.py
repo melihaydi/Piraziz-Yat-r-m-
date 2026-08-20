@@ -74,6 +74,12 @@ BASE_FUNDS = {
     # _fetch_prices_sync() overwrites both from TEFAS's own real per-fund
     # data the moment the first real crawl succeeds.
     "THF": {"name": "THF Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    # DOH - added to POPULAR_LIVE_FUNDS in funds.py replacing PBR (2026-08-20).
+    # Same placeholder-overwritten-by-real-TEFAS-data pattern as THF above.
+    # PBR itself stays fully tracked/holdable (BASE_FUNDS, FALLBACKS,
+    # FUND_DETAILS_MAP all keep their PBR entries), it is just no longer
+    # spotlighted in the live-estimate section - same treatment DFI got.
+    "DOH": {"name": "DOH Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
     "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"},
     "PKZ": {"name": "Pusula Portföy İkinci Serbest (Hisse Senedi Yoğun) Fon", "category": "Serbest Yoğun", "price": 13.4416, "category_tr": "Serbest Fon"},
     "PCS": {"name": "Pusula Portföy Para Piyasası Fonu", "category": "Para Piyasası", "price": 8.2528, "category_tr": "Para Piyasası Fonu"},
@@ -126,6 +132,7 @@ FALLBACKS = {
     "TLY": {"price": 7457.4882, "daily": 0.05, "weekly": 0.38, "monthly": 1.52},
     "TMV": {"price": 7.7990, "daily": 0.66, "weekly": 3.12, "monthly": 9.45},
     "THF": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "DOH": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "PUK": {"price": 1.1661, "daily": -0.64, "weekly": 1.05, "monthly": 3.88},
     "PKZ": {"price": 13.4416, "daily": -4.6673, "weekly": -2.15, "monthly": 5.85},
     "PCS": {"price": 8.2528, "daily": -3.7028, "weekly": -1.82, "monthly": 3.12},
@@ -371,6 +378,50 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
             {"name": "MOBTL", "value": 0.1},
             {"name": "RNPOL", "value": 0.1},
             {"name": "VIOP", "value": 31.2}
+        ]
+    },
+    "DOH": {
+        # fund_size/manager unconfirmed (same "₺250,000,000" default get_fund()
+        # already falls back to) - no source for either yet, and the holdings
+        # overlap TLY/TMV/THF's so heavily (DSTKF, TERA, TEHOL, TRHOL, ANELE,
+        # OZATD, SVGYO, PEKGY, plus the same VİOP leg) that guessing a manager
+        # from that alone would be exactly the mistake THF's own note warns
+        # about. Left blank-ish until TEFAS's crawl or the user confirms.
+        "fund_size": "₺250,000,000",
+        "risk_level": 6,
+        "manager": "Bilinmiyor - doğrulanmadı",
+        # User-provided composition (2026-08-20), replacing PBR in the
+        # "Popüler Fonlar - Anlık Getiri" section (see POPULAR_LIVE_FUNDS in
+        # funds.py). Weights sum to exactly 100.0.
+        #
+        # Two legs are not plain BIST tickers:
+        #  - "VIOP" is a market segment, not a tradable ticker - left
+        #    unresolved rather than guessing a quote, same as TMV/THF above.
+        #  - "HMV" is itself a TEFAS fund (Hedef Portföy Mavi, already in
+        #    BASE_FUNDS because TLY holds it too), so get_live_estimated_return
+        #    recurses into it / falls back to its real daily_return, exactly
+        #    the way PBR's PKZ/PCS/PRY legs are handled.
+        "as_of": "2026-08-20",
+        "assets_distribution": [
+            {"name": "DSTKF", "value": 10.9},
+            {"name": "TERA", "value": 10.8},
+            {"name": "TEHOL", "value": 10.6},
+            {"name": "CITAS", "value": 9.0},
+            {"name": "KARCL", "value": 8.9},
+            {"name": "ASELS", "value": 8.7},
+            {"name": "TRHOL", "value": 7.7},
+            {"name": "ANELE", "value": 4.3},
+            {"name": "SVGYO", "value": 4.2},
+            {"name": "NETCD", "value": 3.0},
+            {"name": "KGYO", "value": 2.5},
+            {"name": "OZATD", "value": 2.1},
+            {"name": "ORZAX", "value": 1.7},
+            {"name": "YKBNK", "value": 1.6},
+            {"name": "BARMA", "value": 1.0},
+            {"name": "LIDER", "value": 0.9},
+            {"name": "PEKGY", "value": 0.4},
+            {"name": "VIOP", "value": 7.1},
+            {"name": "HMV", "value": 4.6}
         ]
     },
     "PUK": {

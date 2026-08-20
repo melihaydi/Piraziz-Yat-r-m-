@@ -120,7 +120,7 @@ def test_estimate_history_endpoint_returns_snapshots_with_computed_error(client,
     latest = _most_recent_weekday(date.today())
     earlier = _most_recent_weekday(latest - timedelta(days=1))
     db.add(FundEstimateSnapshot(
-        fund_code="PBR", snapshot_date=latest,
+        fund_code="DOH", snapshot_date=latest,
         estimated_change_pct=1.0, resolved_weight_pct=100.0, actual_change_pct=0.6,
     ))
     db.add(FundEstimateSnapshot(
@@ -133,10 +133,14 @@ def test_estimate_history_endpoint_returns_snapshots_with_computed_error(client,
     assert response.status_code == 200
     snapshots = response.json()["snapshots"]
 
-    pbr_row = next(s for s in snapshots if s["fund_code"] == "PBR")
-    assert pbr_row["estimated_change_pct"] == 1.0
-    assert pbr_row["actual_change_pct"] == 0.6
-    assert pbr_row["error_pct"] == pytest.approx(0.4)
+    # Must be a code that is currently in POPULAR_LIVE_FUNDS - the endpoint
+    # filters on exactly that list, so a snapshot for a fund that has since
+    # been rotated out of the spotlight (PBR, DFI) is deliberately not
+    # returned here and would make this test vacuous.
+    doh_row = next(s for s in snapshots if s["fund_code"] == "DOH")
+    assert doh_row["estimated_change_pct"] == 1.0
+    assert doh_row["actual_change_pct"] == 0.6
+    assert doh_row["error_pct"] == pytest.approx(0.4)
 
     tmv_row = next(s for s in snapshots if s["fund_code"] == "TMV")
     assert tmv_row["actual_change_pct"] is None
