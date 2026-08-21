@@ -5,6 +5,8 @@ import { ShieldCheck, Loader2, ShieldAlert, LifeBuoy, Search, KeyRound, UserX } 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { Badge } from "@/components/ui/Badge"
+import { EmptyState } from "@/components/ui/EmptyState"
 import { authFetch } from "@/lib/auth"
 
 interface AdminUser {
@@ -324,18 +326,14 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {filteredUsers.length === 0 && (
-                  <tr><td colSpan={7} className="text-center text-muted-foreground py-8 text-xs">Aramayla eşleşen kullanıcı yok.</td></tr>
+                  <tr><td colSpan={7}><EmptyState icon={Search} title="Aramayla eşleşen kullanıcı yok." /></td></tr>
                 )}
                 {filteredUsers.map(u => (
                   <tr key={u.id} className="border-b border-border/40 hover:bg-secondary/20 transition-colors h-14">
                     <td className="px-3 md:px-6 font-bold text-foreground">
                       <div className="flex items-center gap-2">
                         {u.email}
-                        {u.is_superuser && (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 uppercase">
-                            Admin
-                          </span>
-                        )}
+                        {u.is_superuser && <Badge variant="danger">Admin</Badge>}
                       </div>
                     </td>
                     <td className="px-3 md:px-6 text-muted-foreground">{u.full_name || "—"}</td>
@@ -428,7 +426,7 @@ export default function AdminPage() {
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : tickets.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">Henüz destek talebi yok.</p>
+            <EmptyState icon={LifeBuoy} title="Henüz destek talebi yok." className="py-6" />
           ) : (
             <div className="space-y-3">
               {tickets.map(t => (
@@ -438,11 +436,9 @@ export default function AdminPage() {
                       <span className="text-sm font-bold text-foreground">{t.subject}</span>
                       <span className="text-xs text-muted-foreground ml-2">({t.user_email})</span>
                     </div>
-                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${
-                      t.status === "open" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    }`}>
+                    <Badge variant={t.status === "open" ? "warning" : "success"}>
                       {t.status === "open" ? "Açık" : "Kapalı"}
-                    </span>
+                    </Badge>
                   </div>
                   <p className="text-xs text-foreground/90">{t.message}</p>
                   {t.admin_reply && (
