@@ -40,7 +40,7 @@ export default function Error({
           dönebilirsiniz. Sorun devam ederse Ayarlar &gt; Yardım &amp; Destek üzerinden bize bildirin.
         </p>
         {error.digest && (
-          <p className="text-[10px] font-mono text-muted-foreground/60 pt-1">Hata kodu: {error.digest}</p>
+          <p className="text-[10px] font-mono-code text-muted-foreground/60 pt-1">Hata kodu: {error.digest}</p>
         )}
       </div>
 

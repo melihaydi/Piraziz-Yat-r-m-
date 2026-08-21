@@ -182,7 +182,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                   placeholder={useRecoveryCode ? "ABCDE-FGHIJ" : "000000"}
                   inputMode={useRecoveryCode ? "text" : "numeric"}
                   autoFocus
-                  className={`text-center font-mono bg-zinc-900/60 border-zinc-800 ${
+                  className={`text-center font-mono-code bg-zinc-900/60 border-zinc-800 ${
                     useRecoveryCode ? "text-lg tracking-[0.15em]" : "text-2xl tracking-[0.5em]"
                   }`}
                 />

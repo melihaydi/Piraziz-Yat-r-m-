@@ -162,6 +162,38 @@ h1, h2, h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- .font-mono yeniden tanımlandı: artık monospace değil ----------------
+   Ölçüm: uygulamada 106 yerde .font-mono kullanılıyordu (her fiyat, her K/Z,
+   her yüzde) ama projeye hiçbir monospace yazı tipi yüklenmiş değildi -
+   Tailwind'in font-mono utility'si sessizce tarayıcının sistem yığınına
+   düşüyordu: macOS'ta SF Mono, Windows'ta Consolas, Android'de Roboto Mono,
+   kötü ihtimalle Courier New. Uygulamanın en önemli içeriği her cihazda
+   başka bir yüzle görünüyordu.
+
+   Ayrıca monospace zaten yanlış sinyal: bir kod/terminal hissi verir, finans
+   hissi değil - Revolut, Robinhood, Stripe hiçbiri fiyatı monospace ile
+   dizmiyor, arayüz yazı tipini TABULAR FİGÜRLERLE kullanıyorlar. Inter'in
+   tabular figürleri (yukarıdaki font-variant-numeric) hizalama için zaten
+   yeterli; ayrı bir yazı tipine hiç gerek yok.
+
+   font-family: inherit; body'nin (layout.tsx) uyguladığı Inter'i devralır -
+   bu yüzden yeni bir yazı tipi token'ı tanımlamaya gerek kalmadı, 106
+   çağrı yerine tek satır dokunmadan uygulandı.
+
+   Gerçekten KOD olan tek tük yer (2FA/kurtarma kodu, hata kodu) için ayrı ve
+   BİLİNÇLİ bir sınıf var: .font-mono-code, aşağıda. */
+.font-mono {
+  font-family: inherit;
+}
+
+/* Genuinely code-like content only (2FA/recovery codes, error digest) -
+   these WANT a real monospace face, since distinguishing 0/O and 1/l/I
+   actually matters when someone is transcribing them by hand. */
+.font-mono-code {
+  font-family: var(--font-mono-code), ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- Small-text readability floor ---------------------------------------
    This UI leans heavily on 8-11px arbitrary sizes (~300 usages). They were
    too small to read comfortably, so each step is bumped ~1-1.5px here in

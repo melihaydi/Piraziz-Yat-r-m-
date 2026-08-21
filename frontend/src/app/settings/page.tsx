@@ -198,7 +198,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
             </div>
             <div className="grid grid-cols-2 gap-2 p-3 bg-secondary/20 rounded-lg border border-border/30">
               {recoveryCodes.map((c) => (
-                <code key={c} className="text-xs font-mono text-foreground text-center py-1">{c}</code>
+                <code key={c} className="text-xs font-mono-code text-foreground text-center py-1">{c}</code>
               ))}
             </div>
             <div className="flex gap-2">
@@ -228,7 +228,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
               inputMode="numeric"
-              className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono"
+              className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono-code"
             />
             <div className="flex gap-2">
               <Button type="submit" disabled={loading || code.length < 6} className="flex-1 cursor-pointer font-bold text-xs h-10">
@@ -253,7 +253,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
               <p className="text-[10px] text-muted-foreground text-center">
                 Authenticator uygulamanızla QR kodu okutun. Okutamıyorsanız bu anahtarı elle girin:
               </p>
-              <code className="text-[11px] font-mono bg-secondary/40 px-2 py-1 rounded break-all text-center">{secret}</code>
+              <code className="text-[11px] font-mono-code bg-secondary/40 px-2 py-1 rounded break-all text-center">{secret}</code>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground font-semibold">Uygulamadaki 6 haneli kodu girin</label>
@@ -262,7 +262,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 placeholder="000000"
                 inputMode="numeric"
-                className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono"
+                className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono-code"
               />
             </div>
             <div className="flex gap-2">
@@ -291,7 +291,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
               inputMode="numeric"
-              className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono"
+              className="bg-secondary/30 text-center text-lg tracking-[0.4em] font-mono-code"
             />
             <div className="flex gap-2">
               <Button type="submit" variant="destructive" disabled={loading || code.length < 6} className="flex-1 cursor-pointer font-bold text-xs h-10">
@@ -1079,7 +1079,7 @@ export default function SettingsPage() {
                     <Mail className="h-4.5 w-4.5" />
                   </div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">E-posta Desteği</p>
-                  <p className="text-foreground font-mono text-sm mt-1 break-all">melihaydi@gmail.com</p>
+                  <p className="text-foreground font-mono-code text-sm mt-1 break-all">melihaydi@gmail.com</p>
                   <span className="text-[10px] text-primary font-semibold mt-2 flex items-center">
                     E-posta gönder <MessageCircle className="h-3 w-3 ml-1" />
                   </span>
@@ -1093,7 +1093,7 @@ export default function SettingsPage() {
                     <Phone className="h-4.5 w-4.5" />
                   </div>
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Telefon Desteği</p>
-                  <p className="text-foreground font-mono text-sm mt-1">0555 000 11 22</p>
+                  <p className="text-foreground font-mono-code text-sm mt-1">0555 000 11 22</p>
                   <span className="text-[10px] text-primary font-semibold mt-2 flex items-center">
                     Hemen ara <MessageCircle className="h-3 w-3 ml-1" />
                   </span>

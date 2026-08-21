@@ -1,10 +1,21 @@
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
+import { Inter, IBM_Plex_Mono } from "next/font/google"
 import "./globals.css"
 import AuthGate from "@/components/AuthGate"
 import AppChrome from "@/components/AppChrome"
 
 const inter = Inter({ subsets: ["latin"] })
+
+// Yalnızca gerçekten kod olan içerik için (.font-mono-code, globals.css) -
+// 2FA/kurtarma kodları, hata kodu gibi. Fiyat/tutar/yüzde artık bu yüzü
+// KULLANMIYOR; onlar Inter + tabular rakamla diziliyor (bkz. globals.css'teki
+// .font-mono override'ının yanındaki not). CSS değişkeni yöntemi: variable
+// className <html>'e ekleniyor, gerçek font-family ataması globals.css'te.
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono-code",
+})
 
 export const metadata: Metadata = {
   title: "BIST Intelligence Platform (BIP)",
@@ -43,7 +54,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="tr" className="h-full dark">
+    <html lang="tr" className={`h-full dark ${plexMono.variable}`}>
       <body className={`${inter.className} bg-background text-foreground h-full overflow-hidden flex`}>
         <AuthGate>
           <AppChrome>{children}</AppChrome>
