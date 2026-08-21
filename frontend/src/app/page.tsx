@@ -2,15 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
-} from "recharts"
+import dynamic from "next/dynamic"
 import {
   TrendingUp,
   TrendingDown,
@@ -39,6 +31,17 @@ import { fetchWatchlist } from "@/lib/watchlist"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
 // Fallback index chart points in case of connection limits
+
+// Endeks grafiği tembel yükleniyor - gerekçe IndexAreaChart'ın kendi
+// başlığında. ssr:false, çünkü recharts ölçüm için DOM'a ihtiyaç duyuyor.
+const IndexAreaChart = dynamic(() => import("@/components/charts/IndexAreaChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
 
 export default function Home() {
   const router = useRouter()
@@ -147,20 +150,41 @@ export default function Home() {
     }
 
     // 4. Fetch details for favorites (Request 12 & 16!)
-    const loadFavorites = async () => {
+    //
+    // Favori LİSTESİ (hangi kodlar) ile o kodların FİYATLARI ayrı hızlarda
+    // değişiyor: liste yalnızca kullanıcı /screener veya /funds sayfasında
+    // yıldıza bastığında değişir - yani bu sayfa açıkken hiç değişmez -
+    // fiyatlar ise sürekli. Eskiden ikisi birlikte 10 saniyede bir
+    // yenileniyordu, dolayısıyla her turda gereksiz bir /watchlist isteği
+    // gidiyordu; favorisi olmayan kullanıcıda ise tur tamamen boşa
+    // dönüyordu. Liste artık mount'ta bir kez okunuyor.
+    let favStockTickers: string[] = []
+    let favFundCodes: string[] = []
+
+    const loadFavoriteKeys = async () => {
       // Hisse favorileri sunucuda (bkz. lib/watchlist.ts) - localStorage'daki
       // "favorites_stocks" anahtarini /screener goc sonrasi siliyor, yani
       // burada onu okumak bir kez taramaya ugramis kullanicida kartI bosaltiyordu.
-      const favStockTickers = await fetchWatchlist()
+      favStockTickers = await fetchWatchlist()
       // Fon favorileri hala localStorage'da ve bu tutarli: fonlarin sunucu
       // tarafinda bir izleme listesi ucu yok.
       const favFundsStr = localStorage.getItem("favorites_funds")
-      let favFundCodes: string[] = []
       try {
         const parsed = favFundsStr ? JSON.parse(favFundsStr) : []
         if (Array.isArray(parsed)) favFundCodes = parsed
       } catch {
         // Bozuk yerel veri favori kartini cokertmesin.
+      }
+    }
+
+    const loadFavorites = async () => {
+      // Hiç favori yoksa tek bir istek bile atma - eski hâli bu durumda da
+      // her 10 saniyede sunucuya gidiyordu.
+      if (favStockTickers.length === 0 && favFundCodes.length === 0) {
+        setFavoriteStocks([])
+        setFavoriteFunds([])
+        setLoadingFavorites(false)
+        return
       }
 
       if (favStockTickers.length > 0) {
@@ -198,7 +222,9 @@ export default function Home() {
     // Initial fetch
     fetchMarketSummary()
     fetchNewsFeed()
-    loadFavorites()
+    // Önce favori kodları bir kez oku, sonra fiyatlarını çek - sıralama
+    // önemli, aksi halde ilk tur listeyi boş görüp hiçbir şey göstermez.
+    loadFavoriteKeys().then(loadFavorites)
 
     // Market summary and favorites (which re-reads the full stock/fund
     // lists) are both live BIST price data - pollWhileVisibleAndOpen adds a
@@ -329,25 +355,7 @@ export default function Home() {
                     <p className="text-xs text-muted-foreground">Endeks grafiği yükleniyor...</p>
                   </div>
                 ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={indexChartData}>
-                    <defs>
-                      <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                    <XAxis dataKey="time" stroke="#71717a" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#71717a" fontSize={11} tickLine={false} domain={['dataMin - 100', 'dataMax + 100']} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", borderRadius: "8px" }}
-                      labelStyle={{ color: "#a1a1aa" }}
-                      itemStyle={{ color: "#fff" }}
-                    />
-                    <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorValue)" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <IndexAreaChart data={indexChartData} />
                 )}
               </div>
             </CardContent>

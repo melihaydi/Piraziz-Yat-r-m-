@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
-import { useRouter } from "next/navigation"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
+import React, { Suspense, useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import dynamic from "next/dynamic"
 import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -14,7 +14,19 @@ import { authFetch } from "@/lib/auth"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
-const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
+import { COMPARE_COLORS } from "@/lib/chartColors"
+
+// Karşılaştırma grafiği tembel yükleniyor - gerekçe bileşenin kendi
+// başlığında. Grafik yalnızca kullanıcı fon karşılaştırması açtığında
+// çiziliyor.
+const ComparisonLineChart = dynamic(() => import("@/components/charts/ComparisonLineChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
 
 function formatDateWithWeekday(isoDate: string): string {
   const d = new Date(isoDate)
@@ -48,7 +60,7 @@ function buildComparisonChartData(funds: any[]) {
   return rows
 }
 
-export default function FundsPage() {
+function FundsPageInner() {
   const router = useRouter()
   const [funds, setFunds] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,17 +73,38 @@ export default function FundsPage() {
   const [favorites, setFavorites] = useState<string[]>([])
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(false)
 
-  // Split-view selected fund - defaults to a "?code=" URL param if the header
-  // search sent us here (see the matching /screener?ticker= fix - this page
-  // was already reachable via /funds?code=CODE but never actually read the
-  // param, so it silently ignored it and showed whatever fund was default).
-  const [selectedCode, setSelectedCode] = useState(() => {
-    if (typeof window !== "undefined") {
-      const param = new URLSearchParams(window.location.search).get("code")
-      if (param) return param.toUpperCase()
-    }
-    return "PHE"
-  })
+  // Split-view selected fund - "?code=" URL param wins when present (header
+  // search, ana sayfadaki favori kartı, popüler fon kartı hep buraya böyle
+  // link veriyor).
+  //
+  // Bu param useSearchParams ile okunuyor, window.location.search ile DEĞİL:
+  // rota prerender ediliyor ve render sırasında window.location'a bakmak
+  // client-side geçişte güvenilmiyor - Next.js yeni rotayı URL commit
+  // edilmeden önce render edebiliyor, o an window.location hâlâ ESKİ sayfayı
+  // gösteriyor. Sonuç: favorilerden TMV'ye basınca param görülmüyor ve
+  // aşağıdaki "PHE" yedeği devreye giriyordu. useSearchParams bu geçişlerde
+  // doğru değeri veren desteklenen API (aynı desen verify-email ve
+  // reset-password sayfalarında da kullanılıyor).
+  const searchParams = useSearchParams()
+  const codeParam = searchParams.get("code")?.toUpperCase() || null
+
+  const [selectedCode, setSelectedCode] = useState(codeParam || "PHE")
+
+  // Param sonradan da değişebilir: /funds?code=A -> /funds?code=B geçişinde
+  // pathname aynı kaldığı için bileşen yeniden mount OLMAZ, dolayısıyla
+  // yukarıdaki useState başlatıcısı bir daha çalışmaz. Seçimi paramla burada
+  // eşitlemek her iki durumu da kapsıyor.
+  useEffect(() => {
+    if (codeParam) setSelectedCode(codeParam)
+  }, [codeParam])
+
+  // Aşağıdaki tek seferlik veri yükleme efekti (boş bağımlılık dizisi) için
+  // paramın varlığını ref'te tutuyoruz - o efekt ilk render'daki değeri
+  // yakalar ve bir daha çalışmaz.
+  const hadExplicitCodeRef = useRef(!!codeParam)
+  useEffect(() => {
+    if (codeParam) hadExplicitCodeRef.current = true
+  }, [codeParam])
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(false)
 
@@ -86,11 +119,12 @@ export default function FundsPage() {
   // decided to do.
   const popularFundsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (typeof window === "undefined") return
-    const hadCode = !!new URLSearchParams(window.location.search).get("code")
-    if (hadCode) {
+    if (codeParam) {
       popularFundsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
     }
+    // Yalnızca ilk açılışta kaydır - param sonradan değişince kullanıcıyı
+    // sayfada zıplatmanın anlamı yok.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // "Popüler Fonlar - Anlık Getiri": TEFAS only publishes one NAV per fund
@@ -116,19 +150,18 @@ export default function FundsPage() {
   const [estimateHistoryLoading, setEstimateHistoryLoading] = useState(false)
   const [showEstimateHistory, setShowEstimateHistory] = useState(false)
 
-  const handleToggleEstimateHistory = () => {
-    setShowEstimateHistory(prev => {
-      const next = !prev
-      if (next) {
-        setEstimateHistoryLoading(true)
-        fetch(`${API_BASE_URL}/api/v1/funds/popular/estimate-history?days=30`)
-          .then(res => res.json())
-          .then(data => setEstimateHistory(Array.isArray(data.snapshots) ? data.snapshots : []))
-          .catch(err => console.error("Failed to load fund estimate history:", err))
-          .finally(() => setEstimateHistoryLoading(false))
-      }
-      return next
-    })
+  // Modal ilk kez açıldığında bir kez yükler. Eski hâli her açılışta yeniden
+  // istek atıyordu; veri günde bir kez (akşam) değiştiği için oturum başına
+  // tek çekim yeterli.
+  const openEstimateHistory = () => {
+    setShowEstimateHistory(true)
+    if (estimateHistory.length > 0 || estimateHistoryLoading) return
+    setEstimateHistoryLoading(true)
+    fetch(`${API_BASE_URL}/api/v1/funds/popular/estimate-history?days=30`)
+      .then(res => res.json())
+      .then(data => setEstimateHistory(Array.isArray(data.snapshots) ? data.snapshots : []))
+      .catch(err => console.error("Failed to load fund estimate history:", err))
+      .finally(() => setEstimateHistoryLoading(false))
   }
 
   // A single headline number is much easier to read at a glance than a
@@ -228,11 +261,11 @@ export default function FundsPage() {
   // If we arrived here via a "?code=" URL param (header search, from a page
   // other than /funds), scroll the detail pane into view once on mount.
   useEffect(() => {
-    const param = new URLSearchParams(window.location.search).get("code")
-    if (param) {
+    if (codeParam) {
       const detailEl = document.getElementById("fund-detail-pane")
       if (detailEl) detailEl.scrollIntoView({ behavior: "smooth" })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Fetch live TEFAS fund data on mount + auto-refresh
@@ -249,9 +282,6 @@ export default function FundsPage() {
     // fires once, on the true first successful load (same fix already
     // applied to the analogous bug on the Hisseler/screener page).
     let hasSetInitialFund = false
-    // Respect an explicit "?code=" URL param - don't let the first load
-    // silently override it with the first fund in the list.
-    const urlHadCode = !!new URLSearchParams(window.location.search).get("code")
 
     const fetchFunds = () => {
       fetch(`${API_BASE_URL}/api/v1/funds/`)
@@ -261,7 +291,8 @@ export default function FundsPage() {
             setFunds(data)
             if (data.length > 0 && !hasSetInitialFund) {
               hasSetInitialFund = true
-              if (!urlHadCode) {
+              // Açık bir "?code=" varsa ilk yükleme onu ezmesin.
+              if (!hadExplicitCodeRef.current) {
                 setSelectedCode(data[0].code)
               }
             }
@@ -381,10 +412,24 @@ export default function FundsPage() {
       {/* Popüler Fonlar - Anlık Getiri */}
       <Card ref={popularFundsRef} glass={true} className="border-amber-500/20">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center">
-            <Zap className="h-4 w-4 mr-2 text-amber-400" />
-            Popüler Fonlar - Anlık Getiri
-          </CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle className="text-sm flex items-center">
+              <Zap className="h-4 w-4 mr-2 text-amber-400" />
+              Popüler Fonlar - Anlık Getiri
+            </CardTitle>
+            {/* Tahmin doğruluğu geçmişi buradan açılıyor: sayfanın altında
+                tam genişlikte bir kart olarak durduğunda hem yer kaplıyordu
+                hem de tahminin kendisinden kopuktu. Yeri burası - bu kartın
+                anlattığı tahminin ne kadar tuttuğunu gösteriyor. */}
+            <button
+              type="button"
+              onClick={openEstimateHistory}
+              className="shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/60 bg-secondary/30 text-[11px] font-bold text-muted-foreground hover:text-foreground hover:border-cyan-500/40 cursor-pointer transition-colors"
+            >
+              <History className="h-3.5 w-3.5 text-cyan-400" />
+              Tahmin Doğruluğu
+            </button>
+          </div>
           <CardDescription className="text-xs">
             TEFAS fonların NAV&apos;ını günde bir kez yayınlar - bu bölüm, her fonun son bilinen varlık dağılımını o
             varlıkların canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri
@@ -489,25 +534,21 @@ export default function FundsPage() {
         </CardContent>
       </Card>
 
-      {/* Tahmin Doğruluğu (Geçmiş) */}
-      <Card glass={true} className="border-border/40">
-        <CardHeader className="pb-3">
-          <button onClick={handleToggleEstimateHistory} className="w-full flex items-center justify-between cursor-pointer">
-            <CardTitle className="text-sm flex items-center">
+      {/* Tahmin Doğruluğu (Geçmiş) - yukarıdaki "Popüler Fonlar" başlığındaki
+          butondan açılır. */}
+      <Dialog open={showEstimateHistory} onOpenChange={setShowEstimateHistory}>
+        <DialogContent className="sm:max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-sm">
               <History className="h-4 w-4 mr-2 text-cyan-400" />
               Tahmin Doğruluğu (Geçmiş)
-            </CardTitle>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showEstimateHistory ? "rotate-180" : ""}`} />
-          </button>
-          {showEstimateHistory && (
-            <CardDescription className="text-xs">
+            </DialogTitle>
+            <DialogDescription className="text-xs">
               Her akşam kaydedilen o günün canlı tahmini, TEFAS&apos;ın ertesi sabah yayınladığı gerçek günlük getiriyle
               karşılaştırılır - tahminin ne kadar isabetli olduğunu görmek için.
-            </CardDescription>
-          )}
-        </CardHeader>
-        {showEstimateHistory && (
-          <CardContent>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[65vh] overflow-y-auto pr-1">
             {estimateHistoryLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 text-cyan-400 animate-spin" />
@@ -582,9 +623,9 @@ export default function FundsPage() {
                 </div>
               </>
             )}
-          </CardContent>
-        )}
-      </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -876,33 +917,7 @@ export default function FundsPage() {
               {/* Normalized overlay chart */}
               <div className="h-64 w-full">
                 {compareChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={compareChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-                      <XAxis
-                        dataKey="time"
-                        tickFormatter={(t) => new Date(t * 1000).toLocaleDateString("tr-TR", { month: "short", day: "numeric" })}
-                        tick={{ fontSize: 10 }}
-                        minTickGap={30}
-                      />
-                      <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} />
-                      <RechartsTooltip
-                        labelFormatter={(t) => new Date(Number(t) * 1000).toLocaleDateString("tr-TR")}
-                        formatter={(value: any, name: any) => [`${value}%`, name]}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      {compareResult.map((f, idx) => (
-                        <Line
-                          key={f.code}
-                          type="monotone"
-                          dataKey={f.code}
-                          stroke={COMPARE_COLORS[idx % COMPARE_COLORS.length]}
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <ComparisonLineChart data={compareChartData} seriesKeys={compareResult.map((f: any) => f.code)} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
                     Ortak tarih aralığında grafik verisi bulunamadı.
@@ -1027,5 +1042,24 @@ export default function FundsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// useSearchParams, prerender edilen bir rotada en yakın Suspense sınırına
+// kadar olan ağacı client-side render etmeye zorluyor (bkz. Next.js
+// use-search-params dokümanı, "Prerendering"). Sınır olmadan build
+// uyarı/hata veriyor; sayfanın tamamı zaten "use client" olduğu için
+// pratikte tek maliyeti ilk boyada gösterilen bu yedek.
+export default function FundsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-32">
+          <Loader2 className="h-6 w-6 text-emerald-400 animate-spin" />
+        </div>
+      }
+    >
+      <FundsPageInner />
+    </Suspense>
   )
 }

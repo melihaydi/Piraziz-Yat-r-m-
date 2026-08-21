@@ -1,26 +1,16 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid
-} from "recharts"
+import dynamic from "next/dynamic"
 import { 
   Plus,
   Bell,
   TrendingUp,
   TrendingDown,
   Briefcase,
-  Trash2, 
-  ToggleLeft, 
+  Trash2,
+  Pencil,
+  ToggleLeft,
   ToggleRight,
   PieChart as PieIcon,
   Activity,
@@ -55,6 +45,31 @@ import { TickerLogo } from "@/components/ui/TickerLogo"
 
 const COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#f97316"]
 
+// Grafikler tembel yükleniyor. Ölçüm: recharts derlenmiş hâlde 344 KB'lık
+// ayrı bir parça ve statik import edildiğinde /portfolio'nun ilk yüküne
+// dahil oluyordu - halbuki iki grafik de varsayılan sekmede DEĞİL, kullanıcı
+// "Performans" veya "Analiz" sekmesine geçmedikçe hiç çizilmiyor. Böylece
+// sayfayı açıp varlıklarına bakan (yani çoğu ziyaret) o parçayı hiç
+// indirmiyor. ssr:false, çünkü recharts ölçüm için DOM'a ihtiyaç duyuyor ve
+// sunucuda ön-render edilmesinin bir faydası yok.
+const PortfolioEquityChart = dynamic(() => import("@/components/charts/PortfolioEquityChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
+
+const PortfolioDistributionChart = dynamic(() => import("@/components/charts/PortfolioDistributionChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
+
 // Hareket defteri tipleri (backend TRANSACTION_TYPES ile aynı).
 const TX_LABELS: Record<string, string> = {
   BUY: "ALIŞ",
@@ -62,6 +77,23 @@ const TX_LABELS: Record<string, string> = {
   DIVIDEND: "TEMETTÜ",
   BONUS: "BEDELSİZ",
 }
+
+/** ₺1.234,56 - varlık listesinde aynı biçimlendirme onlarca yerde
+ *  tekrar ediyordu, tek yerden geçsin. */
+const tl = (n: number, digits = 2) =>
+  `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
+
+/** İşaretli tutar: kâr/zarar rakamlarında yön her zaman görünsün. */
+const tlSigned = (n: number, digits = 2) => `${n >= 0 ? "+" : "-"}${tl(Math.abs(n), digits)}`
+
+const pctSigned = (n: number, digits = 2) => `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`
+
+/** Bir pozisyonun günlük değişim rengi. Tahmini rakamlar TAMAMEN turuncu
+ *  veriliyor (hem tutar hem yüzde), yeşil/kırmızıdan ayrılsın diye - bir
+ *  tahmin hiçbir zaman kesinleşmiş bir rakamla karıştırılmasın. Yön yine
+ *  +/- işaretinden okunuyor. */
+const dailyToneClass = (value: number, isEstimate: boolean) =>
+  isEstimate ? "text-orange-400" : value >= 0 ? "text-cyan-400" : "text-rose-400"
 
 function PortfolioStressTest({ beta, currentValue }: { beta: number | null; currentValue: number }) {
   const [scenario, setScenario] = useState(-10)
@@ -177,6 +209,11 @@ export default function PortfolioPage() {
 
   const [usdCashAmount, setUsdCashAmount] = useState("")
   const [usdCashBusy, setUsdCashBusy] = useState(false)
+  // Döviz nakit girişi eskiden sayfa gövdesinde, tam genişlikte açık bir
+  // satırdı - nadiren kullanılan bir işlem için sürekli yer kaplıyordu.
+  // Artık üstteki eylem çubuğundan açılan bir modal, "Varlık Ekle" ile aynı
+  // desende.
+  const [isOpenUsdCashModal, setIsOpenUsdCashModal] = useState(false)
 
   // sign: +1 deposit, -1 withdraw - user always types a positive amount,
   // this decides direction, same convention as
@@ -194,6 +231,10 @@ export default function PortfolioPage() {
       })
       if (res.ok) {
         setUsdCashAmount("")
+        // Modal artık kendi kendine kapanıyor - başarılı işlemden sonra açık
+        // kalması, bakiyenin güncellenip güncellenmediğini görmek için
+        // kullanıcıyı kapatmaya zorluyordu.
+        setIsOpenUsdCashModal(false)
         await loadCore()
       } else {
         const body = await res.json().catch(() => null)
@@ -890,6 +931,77 @@ export default function PortfolioPage() {
             <FileText className="h-4 w-4 mr-2 text-emerald-400" />
             Yıllık Özet
           </Button>
+
+          {/* Döviz Nakit (USD) - self-service, unlike Nakit/VİOP Teminatı
+              (still admin-only via Yönetilen Portföyler). Stored in raw
+              dollars; the TL figure is the backend's LIVE conversion computed
+              on every load, not a fixed snapshot from deposit time - it moves
+              with USD/TRY on refresh. Gram altın is added the normal way
+              through "Varlık Ekle" (it has its own live price/P&L to track,
+              unlike plain parked cash). */}
+          <Dialog open={isOpenUsdCashModal} onOpenChange={setIsOpenUsdCashModal}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="cursor-pointer flex items-center">
+                <DollarSign className="h-4 w-4 mr-2 text-sky-400" />
+                Döviz Nakit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Döviz Nakit (USD)</DialogTitle>
+                <DialogDescription>
+                  Hesabınızda duran dolar nakdi. TL karşılığı her yüklemede güncel USD/TRY ile hesaplanır,
+                  yatırdığınız andaki kur sabitlenmez.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-4 space-y-4">
+                <div className="rounded-lg border border-border/50 bg-secondary/20 px-4 py-3">
+                  <span className="text-[11px] font-bold uppercase text-muted-foreground">Mevcut Bakiye</span>
+                  <p className="t-metric text-foreground mt-0.5">
+                    ${usdCashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs font-semibold text-muted-foreground font-mono">
+                    ≈ ₺{usdCashValueTry.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase text-muted-foreground">Tutar ($)</label>
+                  <Input
+                    value={usdCashAmount}
+                    onChange={e => setUsdCashAmount(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="örn. 220"
+                    className="bg-secondary/50"
+                  />
+                </div>
+
+                {/* Tek bir pozitif tutar yazılıp yön butonla seçiliyor - eksi
+                    işareti unutmak yatırmayı çekmeye çeviremesin diye. */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => adjustUsdCash(1)}
+                    disabled={usdCashBusy || !usdCashAmount}
+                    className="cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold"
+                  >
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Ekle
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => adjustUsdCash(-1)}
+                    disabled={usdCashBusy || !usdCashAmount}
+                    className="cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold"
+                  >
+                    <Minus className="h-4 w-4 mr-1.5" />
+                    Çıkar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           {/* Create Alarm Dialog */}
           <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
             <DialogTrigger asChild>
@@ -1575,46 +1687,6 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* Döviz Nakit (USD) - self-service, unlike Nakit/VİOP Teminatı above
-          (still admin-only via Yönetilen Portföyler for now). Stored in raw
-          dollars; the TL figure is the backend's LIVE conversion computed
-          on every load, not a fixed snapshot from deposit time - it moves
-          with USD/TRY on refresh. Gram altın is added the normal way
-          through "Varlık Ekle" below (it has its own live price/P&L to
-          track, unlike plain parked cash). */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
-        <DollarSign className="h-4 w-4 text-sky-400 shrink-0" />
-        <span className="text-xs font-bold uppercase text-muted-foreground shrink-0">Döviz Nakit (USD)</span>
-        <span className="text-sm font-extrabold font-mono text-foreground mr-1">
-          ${usdCashBalance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          <span className="text-xs font-semibold text-muted-foreground ml-1">(₺{usdCashValueTry.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
-        </span>
-        <Input
-          value={usdCashAmount}
-          onChange={e => setUsdCashAmount(e.target.value)}
-          placeholder="Tutar ($) örn. 220"
-          className="h-8 w-28 text-xs"
-        />
-        <Button
-          type="button"
-          onClick={() => adjustUsdCash(1)}
-          disabled={usdCashBusy || !usdCashAmount}
-          className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Ekle
-        </Button>
-        <Button
-          type="button"
-          onClick={() => adjustUsdCash(-1)}
-          disabled={usdCashBusy || !usdCashAmount}
-          className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
-        >
-          <Minus className="h-3.5 w-3.5 mr-1" />
-          Çıkar
-        </Button>
-      </div>
-
       {showLiveEstimate && (
         <Card glass={true} className="border-amber-500/20">
           <CardHeader>
@@ -1734,58 +1806,12 @@ export default function PortfolioPage() {
                     </div>
                   )}
                   <div className="h-56">
-                    <ResponsiveContainer width="100%" height="100%">
-                      {benchmarkVerdict ? (
-                        <AreaChart data={comparisonData}>
-                          <defs>
-                            <linearGradient id="portfolioEquityGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
-                              <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                          <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
-                          <YAxis stroke="#64748b" fontSize={10} domain={["auto", "auto"]} unit="%" />
-                          <Tooltip
-                            contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
-                            labelStyle={{ color: "#94a3b8" }}
-                            formatter={(value: any, name: any) => [
-                              value == null ? "—" : `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}%`,
-                              name === "portfolio_pct"
-                                ? (benchmarkVerdict?.hasFlows ? "Portföyünüz (para akışı arındırılmış)" : "Portföyünüz")
-                                : "XU100",
-                            ]}
-                          />
-                          <Area
-                            type="monotone" dataKey="portfolio_pct" name="portfolio_pct"
-                            stroke="#a855f7" fill="url(#portfolioEquityGradient)" strokeWidth={2}
-                          />
-                          <Area
-                            type="monotone" dataKey="index_pct" name="index_pct"
-                            stroke="#64748b" fill="none" strokeWidth={1.5}
-                            strokeDasharray="4 3" connectNulls={false}
-                          />
-                        </AreaChart>
-                      ) : (
-                        <AreaChart data={equityHistory}>
-                          <defs>
-                            <linearGradient id="portfolioEquityGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
-                              <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                          <XAxis dataKey="date" stroke="#64748b" fontSize={10} />
-                          <YAxis stroke="#64748b" fontSize={10} domain={["auto", "auto"]} />
-                          <Tooltip
-                            contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }}
-                            labelStyle={{ color: "#94a3b8" }}
-                            formatter={(value: any) => [`₺${Number(value).toLocaleString("tr-TR", { maximumFractionDigits: 2 })}`, "Portföy Değeri"]}
-                          />
-                          <Area type="monotone" dataKey="total_value" stroke="#a855f7" fill="url(#portfolioEquityGradient)" strokeWidth={2} />
-                        </AreaChart>
-                      )}
-                    </ResponsiveContainer>
+                    <PortfolioEquityChart
+                      comparisonData={comparisonData}
+                      equityHistory={equityHistory}
+                      hasBenchmark={!!benchmarkVerdict}
+                      hasFlows={!!benchmarkVerdict?.hasFlows}
+                    />
                   </div>
                   {equityHistory.length <= 1 && (
                     <p className="text-xs text-muted-foreground mt-2">
@@ -1806,204 +1832,260 @@ export default function PortfolioPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="varliklar" className="mt-6 space-y-8">
+        <TabsContent value="varliklar" className="mt-6 space-y-6">
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="t-section">Portföy Varlıkları</CardTitle>
-              <CardDescription>BIP üzerinde kayıtlı aktif hisse senedi varlıklarınız</CardDescription>
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <CardTitle className="t-section">Portföy Varlıkları</CardTitle>
+                  <CardDescription>Portföyünüzdeki açık hisse ve fon pozisyonları</CardDescription>
+                </div>
+                {assetsList.length > 0 && (
+                  <span className="t-label shrink-0">{assetsList.length} pozisyon</span>
+                )}
+              </div>
             </CardHeader>
+
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead>
-                    <tr className="border-b border-border/80 text-muted-foreground text-xs font-semibold bg-secondary/15 h-11">
-                      <th className="px-3 md:px-6">Hisse</th>
-                      <th className="px-3 md:px-6 text-right">Adet (Lot)</th>
-                      <th className="px-3 md:px-6 text-right">Ort. Maliyet</th>
-                      <th className="px-3 md:px-6 text-right">Güncel Fiyat</th>
-                      <th className="px-3 md:px-6 text-right">Toplam Değer</th>
-                      <th className="px-3 md:px-6 text-right">Getiri (Toplam / Günlük)</th>
-                      <th className="px-3 md:px-6 text-center">İşlem</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assetsList.length > 0 ? (
-                      assetsList.map((item: any) => {
-                        const costValue = item.shares * item.average_cost
-                        const value = item.total_value || 0.0
-                        const profit = item.total_profit || 0.0
-                        const profitPct = item.profit_percentage || 0.0
-                        return (
-                          <tr key={item.ticker} className="border-b border-border/40 hover:bg-secondary/20 transition-colors h-14">
-                            <td className="px-6 font-bold text-foreground">
-                              <div className="flex items-center gap-2">
-                                <TickerLogo ticker={item.ticker} size={18} />
-                                <span className="bg-secondary px-2 py-1 rounded">
-                                  {item.ticker}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 text-right font-mono font-medium">{item.shares}</td>
-                            <td className="px-6 text-right font-mono font-medium">₺{item.average_cost.toFixed(2)}</td>
-                            <td className="px-6 text-right font-mono font-medium">
-                              {/* Always the real, officially published price/NAV - the live fund
-                                  estimate is shown as a separate, clearly distinct line below, never
-                                  mixed into this figure. */}
-                              <div className="flex flex-col items-end">
-                                <span>₺{(item.current_price || item.average_cost).toFixed(2)}</span>
-                                {item.daily_change_pct != null && item.daily_change_is_estimate && (
-                                  <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-orange-400">
-                                    <Zap className="h-3 w-3 shrink-0" />
-                                    ~{item.daily_change_pct >= 0 ? "+" : ""}{item.daily_change_pct.toFixed(2)}% tahmini
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 text-right font-mono font-bold">
-                              ₺{value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-6 text-right font-mono font-bold">
-                              <div className="flex flex-col items-end gap-1">
-                                {/* Toplam (cumulative since purchase) */}
-                                <div className="flex flex-col items-end">
-                                  <span className={profit >= 0 ? "text-emerald-400" : "text-rose-500"}>
-                                    {profit >= 0 ? "+" : ""}₺{profit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
-                                  </span>
-                                  <span className={`text-xs ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                                    Toplam {profit >= 0 ? "+" : ""}{profitPct.toFixed(1)}%
-                                  </span>
+              {assetsList.length === 0 ? (
+                <p className="text-center py-14 t-caption">
+                  Portföyünüzde henüz varlık bulunmuyor.
+                </p>
+              ) : (
+                <>
+                  {/* MOBİL - kart listesi.
+                      Buradaki 7 sütunluk tablo telefonda yatay kaydırmaya
+                      mahkûmdu: kullanıcı fiyatı görmek için sağa, işlem
+                      butonlarına ulaşmak için daha da sağa kaydırıyordu.
+                      Kart düzeninde okunması gereken üç rakam (değer, toplam
+                      K/Z, günlük) alt alta ve kaydırmasız duruyor. */}
+                  <ul className="md:hidden divide-y divide-border/40 stagger-list">
+                    {assetsList.map((item: any) => {
+                      const value = item.total_value || 0.0
+                      const profit = item.total_profit || 0.0
+                      const profitPct = item.profit_percentage || 0.0
+                      const isEstimate = !!item.daily_change_is_estimate
+                      return (
+                        <li key={item.ticker} className="px-4 py-3.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <TickerLogo ticker={item.ticker} size={26} />
+                              <div className="min-w-0">
+                                <div className="font-bold text-foreground truncate">{item.ticker}</div>
+                                <div className="t-caption font-mono">
+                                  {item.shares} × {tl(item.average_cost)}
                                 </div>
-                                {/* Günlük (today only) - real for a stock, tahmini for a fund.
-                                    Estimated figures are rendered entirely in orange (both the
-                                    TL amount and the %) rather than the usual green/red gain
-                                    colors, so an estimate is never mistaken for a settled
-                                    figure at a glance. The +/- sign still carries direction. */}
-                                {item.daily_gain_value != null && (
-                                  <div className="flex flex-col items-end border-t border-border/30 pt-1">
-                                    <span className={`text-xs font-bold inline-flex items-center gap-0.5 ${
-                                      item.daily_change_is_estimate
-                                        ? "text-orange-400"
-                                        : item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"
-                                    }`}>
-                                      {item.daily_change_is_estimate && <Zap className="h-3 w-3 shrink-0" />}
-                                      {item.daily_gain_value >= 0 ? "+" : ""}₺{item.daily_gain_value.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
-                                    </span>
-                                    <span className={`text-[11px] font-semibold ${
-                                      item.daily_change_is_estimate
-                                        ? "text-orange-400"
-                                        : item.daily_gain_value >= 0 ? "text-cyan-400" : "text-rose-400"
-                                    }`}>
-                                      Günlük{item.daily_change_is_estimate ? " (tahmini)" : ""} {item.daily_change_pct >= 0 ? "+" : ""}{item.daily_change_pct.toFixed(2)}%
-                                    </span>
-                                  </div>
-                                )}
                               </div>
-                            </td>
-                            <td className="px-6 text-center flex items-center justify-center h-14">
-                              <button 
-                                onClick={() => {
-                                  setSelectedAsset(item)
-                                  setSellShares("")
-                                  setIsOpenSellModal(true)
-                                }}
-                                className="text-xs px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 rounded mr-2 transition-all cursor-pointer font-semibold"
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="t-metric-sm text-foreground">{tl(value)}</div>
+                              <div className={`text-xs font-bold font-mono ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                {tlSigned(profit)} · {pctSigned(profitPct, 1)}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-2.5 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 t-caption font-mono min-w-0">
+                              <span>{tl(item.current_price || item.average_cost)}</span>
+                              {item.daily_gain_value != null && (
+                                <span className={`inline-flex items-center gap-0.5 font-bold ${dailyToneClass(item.daily_gain_value, isEstimate)}`}>
+                                  {isEstimate && <Zap className="h-3 w-3 shrink-0" />}
+                                  {tlSigned(item.daily_gain_value)} ({pctSigned(item.daily_change_pct)})
+                                  {isEstimate && " tahmini"}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => { setSelectedAsset(item); setSellShares(""); setIsOpenSellModal(true) }}
+                                className="press h-8 px-2.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-pointer"
                               >
                                 Sat
                               </button>
-                              <button 
+                              <button
                                 onClick={() => {
                                   setSelectedAsset(item)
                                   setEditShares(item.shares.toString())
                                   setEditCost(item.average_cost.toString())
                                   setIsOpenEditModal(true)
                                 }}
-                                className="text-xs px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 rounded mr-2 transition-all cursor-pointer font-semibold"
+                                aria-label={`${item.ticker} pozisyonunu düzenle`}
+                                className="press inline-flex items-center justify-center h-8 w-8 rounded-md bg-secondary/40 text-muted-foreground border border-border/40 cursor-pointer"
                               >
-                                Düzenle
+                                <Pencil className="h-3.5 w-3.5" />
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleDeleteAsset(item.id)}
-                                className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
-                                title="Tamamen Sil"
+                                aria-label={`${item.ticker} pozisyonunu sil`}
+                                className="press inline-flex items-center justify-center h-8 w-8 rounded-md bg-secondary/40 text-muted-foreground border border-border/40 cursor-pointer"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </button>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="text-center py-8 text-xs text-muted-foreground">
-                          Portföyünüzde henüz hisse senedi bulunmamaktadır.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                            </div>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+
+                  {/* MASAÜSTÜ - tablo.
+                      Sütun sayısı 7'den 6'ya indi: "Adet" ve "Ort. Maliyet"
+                      tek hücrede birleşti (ikisi de aynı soruya, "ne kadara
+                      aldım", cevap veriyor) ve kod artık gri bir hapın içinde
+                      değil - logo zaten ayırt ediciyi taşıyor. */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full t-data text-left">
+                      <thead>
+                        <tr className="border-b border-border/60 text-muted-foreground bg-secondary/10 h-10">
+                          <th className="px-5 font-semibold">Varlık</th>
+                          <th className="px-5 font-semibold text-right">Pozisyon</th>
+                          <th className="px-5 font-semibold text-right">Güncel Fiyat</th>
+                          <th className="px-5 font-semibold text-right">Değer</th>
+                          <th className="px-5 font-semibold text-right">Toplam K/Z</th>
+                          <th className="px-5 font-semibold text-right">Bugün</th>
+                          <th className="px-5 font-semibold text-right w-px whitespace-nowrap">İşlem</th>
+                        </tr>
+                      </thead>
+                      <tbody className="stagger-list">
+                        {assetsList.map((item: any) => {
+                          const value = item.total_value || 0.0
+                          const profit = item.total_profit || 0.0
+                          const profitPct = item.profit_percentage || 0.0
+                          const isEstimate = !!item.daily_change_is_estimate
+                          return (
+                            <tr key={item.ticker} className="border-b border-border/25 hover:bg-secondary/15 transition-colors">
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <TickerLogo ticker={item.ticker} size={22} />
+                                  <span className="font-bold text-foreground">{item.ticker}</span>
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono">
+                                <div className="text-foreground">{item.shares}</div>
+                                <div className="t-caption">{tl(item.average_cost)} maliyet</div>
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono">
+                                {/* Her zaman resmî fiyat/NAV - canlı fon tahmini
+                                    asla bu rakamın içine karıştırılmıyor, ayrı
+                                    "Bugün" sütununda duruyor. */}
+                                {tl(item.current_price || item.average_cost)}
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono font-bold text-foreground">
+                                {tl(value)}
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono">
+                                <div className={`font-bold ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                  {tlSigned(profit)}
+                                </div>
+                                <div className={`t-caption ${profit >= 0 ? "text-emerald-400/80" : "text-rose-500/80"}`}>
+                                  {pctSigned(profitPct, 1)}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-right font-mono">
+                                {item.daily_gain_value == null ? (
+                                  <span className="text-muted-foreground/40">—</span>
+                                ) : (
+                                  <>
+                                    <div className={`font-bold inline-flex items-center gap-0.5 ${dailyToneClass(item.daily_gain_value, isEstimate)}`}>
+                                      {isEstimate && <Zap className="h-3 w-3 shrink-0" />}
+                                      {tlSigned(item.daily_gain_value)}
+                                    </div>
+                                    <div className={`t-caption ${dailyToneClass(item.daily_gain_value, isEstimate)}`}>
+                                      {pctSigned(item.daily_change_pct)}{isEstimate ? " tahmini" : ""}
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                              <td className="px-5 py-3">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => { setSelectedAsset(item); setSellShares(""); setIsOpenSellModal(true) }}
+                                    className="press h-7 px-2.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                                  >
+                                    Sat
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedAsset(item)
+                                      setEditShares(item.shares.toString())
+                                      setEditCost(item.average_cost.toString())
+                                      setIsOpenEditModal(true)
+                                    }}
+                                    title="Düzenle"
+                                    aria-label={`${item.ticker} pozisyonunu düzenle`}
+                                    className="press inline-flex items-center justify-center h-7 w-7 rounded-md bg-secondary/40 text-muted-foreground border border-border/40 hover:text-foreground transition-colors cursor-pointer"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAsset(item.id)}
+                                    title="Tamamen sil"
+                                    aria-label={`${item.ticker} pozisyonunu sil`}
+                                    className="press inline-flex items-center justify-center h-7 w-7 rounded-md bg-secondary/40 text-muted-foreground border border-border/40 hover:text-rose-400 hover:border-rose-500/30 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
-          {/* Winners & Losers Dashboard Card (Request 6!) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-            {/* Winners Card */}
-            <Card glass={true} className="border-emerald-500/15">
-              <CardHeader className="py-3 pb-2">
-                <CardTitle className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center">
-                  <TrendingUp className="h-4 w-4 mr-1.5 text-emerald-400" />
-                  En Çok Kazandıranlar
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {advancedMetrics.winners.length > 0 ? (
-                  advancedMetrics.winners.slice(0, 3).map((item: any) => (
-                    <div key={item.ticker} className="flex items-center justify-between text-xs py-1.5 border-b border-border/20 last:border-0">
-                      <span className="font-bold text-foreground bg-secondary/60 px-2 py-0.5 rounded">{item.ticker}</span>
-                      <div className="text-right">
-                        <span className="font-bold font-mono text-emerald-400 block">
-                          +₺{item.total_profit.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}
-                        </span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          +{item.profit_percentage.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground py-4 text-center">Henüz kârda varlık bulunmuyor.</p>
-                )}
-              </CardContent>
-            </Card>
 
-            {/* Losers Card */}
-            <Card glass={true} className="border-rose-500/15">
-              <CardHeader className="py-3 pb-2">
-                <CardTitle className="text-xs font-black uppercase text-rose-400 tracking-wider flex items-center">
-                  <Activity className="h-4 w-4 mr-1.5 text-rose-400" />
-                  En Çok Kaybettirenler
-                </CardTitle>
+          {/* Öne Çıkanlar - eskiden iki ayrı kart (her biri kendi kenarlığı,
+              kendi büyük-harf başlığı, kendi boşluğu) yan yana duruyordu;
+              toplam 6 satır veri için iki kutu fazlaydı ve telefonda alt
+              alta düşüp sayfayı uzatıyordu. Tek kart, içeride ince bir
+              ayraçla ikiye bölünmüş hâli aynı bilgiyi çok daha az çerçeveyle
+              veriyor. */}
+          {(advancedMetrics.winners.length > 0 || advancedMetrics.losers.length > 0) && (
+            <Card glass={true}>
+              <CardHeader>
+                <CardTitle className="t-section">Öne Çıkanlar</CardTitle>
+                <CardDescription>Toplam kâr/zarara en çok katkı veren pozisyonlar</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {advancedMetrics.losers.length > 0 ? (
-                  advancedMetrics.losers.slice(0, 3).map((item: any) => (
-                    <div key={item.ticker} className="flex items-center justify-between text-xs py-1.5 border-b border-border/20 last:border-0">
-                      <span className="font-bold text-foreground bg-secondary/60 px-2 py-0.5 rounded">{item.ticker}</span>
-                      <div className="text-right">
-                        <span className="font-bold font-mono text-rose-500 block">
-                          ₺{item.total_profit.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}
-                        </span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {item.profit_percentage.toFixed(1)}%
-                        </span>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x divide-border/40 gap-y-6">
+                  {[
+                    { key: "winners", label: "Kazandıranlar", rows: advancedMetrics.winners, tone: "text-emerald-400", Icon: TrendingUp, empty: "Kârda pozisyon yok." },
+                    { key: "losers", label: "Kaybettirenler", rows: advancedMetrics.losers, tone: "text-rose-500", Icon: TrendingDown, empty: "Zararda pozisyon yok." },
+                  ].map(({ key, label, rows, tone, Icon, empty }, i) => (
+                    <div key={key} className={i === 1 ? "md:pl-6" : "md:pr-6"}>
+                      <div className={`flex items-center gap-1.5 mb-2.5 ${tone}`}>
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="t-label" style={{ color: "inherit" }}>{label}</span>
                       </div>
+                      {rows.length === 0 ? (
+                        <p className="t-caption py-3">{empty}</p>
+                      ) : (
+                        <ul className="divide-y divide-border/25">
+                          {rows.slice(0, 3).map((item: any) => (
+                            <li key={item.ticker} className="flex items-center justify-between gap-3 py-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <TickerLogo ticker={item.ticker} size={20} />
+                                <span className="font-bold text-foreground truncate">{item.ticker}</span>
+                              </div>
+                              <div className="text-right shrink-0 font-mono">
+                                <div className={`font-bold ${tone}`}>{tlSigned(item.total_profit)}</div>
+                                <div className="t-caption">{pctSigned(item.profit_percentage, 1)}</div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground py-4 text-center">Zararda varlık bulunmuyor.</p>
-                )}
+                  ))}
+                </div>
               </CardContent>
             </Card>
-          </div>
+          )}
         </TabsContent>
 
         {/* Analiz: dağılım + risk. İkisi de "portföyüm nasıl kurulmuş"
@@ -2054,24 +2136,7 @@ export default function PortfolioPage() {
                     <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
                   </div>
                 ) : distributionData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={distributionData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={45}
-                        outerRadius={65}
-                        paddingAngle={4}
-                        dataKey="value"
-                      >
-                        {distributionData.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => value !== undefined && value !== null ? `₺${Number(value).toLocaleString("tr-TR")}` : ""} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <PortfolioDistributionChart data={distributionData} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Dağılım verisi bulunamadı</div>
                 )}

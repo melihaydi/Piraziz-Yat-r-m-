@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts"
+import dynamic from "next/dynamic"
 import { Search, Sparkles, Filter, RefreshCw, Loader2, ArrowUpDown, Star, Eye, EyeOff, Scale, X, FileSearch } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -15,7 +15,19 @@ import { authFetch } from "@/lib/auth"
 import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 
-const COMPARE_COLORS = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899"]
+import { COMPARE_COLORS } from "@/lib/chartColors"
+
+// Karşılaştırma grafiği tembel yükleniyor - gerekçe bileşenin kendi
+// başlığında. Grafik yalnızca kullanıcı hisse karşılaştırması açtığında
+// çiziliyor, o yüzden recharts'ın sayfa açılışında inmesi gereksizdi.
+const ComparisonLineChart = dynamic(() => import("@/components/charts/ComparisonLineChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
 
 function buildStockComparisonChartData(stocks: any[]) {
   const withCandles = stocks.filter((s) => Array.isArray(s.candles) && s.candles.length > 0)
@@ -828,33 +840,7 @@ export default function ScreenerPage() {
             <div className="space-y-6">
               <div className="h-64 w-full">
                 {compareChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={compareChartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-                      <XAxis
-                        dataKey="time"
-                        tickFormatter={(t) => new Date(t * 1000).toLocaleDateString("tr-TR", { month: "short", day: "numeric" })}
-                        tick={{ fontSize: 10 }}
-                        minTickGap={30}
-                      />
-                      <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} />
-                      <RechartsTooltip
-                        labelFormatter={(t) => new Date(Number(t) * 1000).toLocaleDateString("tr-TR")}
-                        formatter={(value: any, name: any) => [`${value}%`, name]}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      {compareResult.map((s, idx) => (
-                        <Line
-                          key={s.ticker}
-                          type="monotone"
-                          dataKey={s.ticker}
-                          stroke={COMPARE_COLORS[idx % COMPARE_COLORS.length]}
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <ComparisonLineChart data={compareChartData} seriesKeys={compareResult.map((s: any) => s.ticker)} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
                     Ortak tarih aralığında grafik verisi bulunamadı.
