@@ -66,6 +66,19 @@ interface BacktestResult {
   last_trade: BacktestTrade | null
   recent_trades: BacktestTrade[]
   error: string | null
+  // Ölçüm revizyonuyla gelen alanlar (bkz. strategy_engine.py, BacktestResult).
+  // total_return_pct artık bileşik ve maliyet düşülmüş; eskiden yüzdelerin
+  // düz toplamıydı ve hiçbir hesabın elde edemeyeceği bir rakamdı.
+  max_drawdown_pct: number | null
+  profit_factor: number | null
+  exposure_pct: number | null
+  gross_return_pct: number | null
+  cost_drag_pct: number | null
+  benchmark_return_pct: number | null
+  excess_return_pct: number | null
+  oos_trades: number | null
+  oos_win_rate: number | null
+  oos_return_pct: number | null
 }
 
 interface SignalHistoryEntry {
@@ -89,7 +102,7 @@ interface SignalHistoryEntry {
 
 type DirectionFilter = "ALL" | "LONG" | "SHORT"
 type SortKey = "score" | "ticker" | "change_percent" | "risk_reward" | "captured_pnl_pct"
-type BacktestSortKey = "total_return_pct" | "win_rate" | "ticker"
+type BacktestSortKey = "excess_return_pct" | "total_return_pct" | "win_rate" | "ticker"
 type HistorySortKey = "timestamp" | "captured_pnl_pct"
 
 const fmt = (n: number | null, digits = 2) => (n === null || n === undefined ? "-" : n.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits }))
@@ -198,7 +211,7 @@ export default function StrategyPage() {
   const [backtestComputing, setBacktestComputing] = useState(false)
   const [backtestLoaded, setBacktestLoaded] = useState(false)
   const [backtestQuery, setBacktestQuery] = useState("")
-  const [backtestSort, setBacktestSort] = useState<BacktestSortKey>("total_return_pct")
+  const [backtestSort, setBacktestSort] = useState<BacktestSortKey>("excess_return_pct")
   const [expandedBt, setExpandedBt] = useState<string | null>(null)
 
   // Free tier can't use Frantic Algoritmik Strateji at all (see
@@ -330,7 +343,11 @@ export default function StrategyPage() {
       switch (backtestSort) {
         case "ticker": return a.ticker.localeCompare(b.ticker)
         case "win_rate": return (b.win_rate ?? -1) - (a.win_rate ?? -1)
-        default: return (b.total_return_pct ?? -999) - (a.total_return_pct ?? -999)
+        case "total_return_pct": return (b.total_return_pct ?? -999) - (a.total_return_pct ?? -999)
+        // Varsayılan sıralama artık ham getiri değil, XU100'e göre fark:
+        // yükselen bir piyasada pozitif getiri tek başına bir üstünlük
+        // göstermiyor, listenin başına onu çıkarmak yanıltıcıydı.
+        default: return (b.excess_return_pct ?? -9999) - (a.excess_return_pct ?? -9999)
       }
     })
   }, [backtestResults, backtestQuery, backtestSort])
@@ -811,7 +828,8 @@ export default function StrategyPage() {
           onChange={e => setBacktestSort(e.target.value as BacktestSortKey)}
           className="h-9 px-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground focus:outline-none focus:border-amber-500/40 cursor-pointer"
         >
-          <option value="total_return_pct">Sırala: Toplam Getiri</option>
+          <option value="excess_return_pct">Sırala: XU100 Farkı</option>
+          <option value="total_return_pct">Sırala: Net Getiri</option>
           <option value="win_rate">Sırala: Başarı Oranı</option>
           <option value="ticker">Sırala: Sembol</option>
         </select>
@@ -849,12 +867,12 @@ export default function StrategyPage() {
               <thead>
                 <tr className="text-muted-foreground font-bold border-b border-border h-10 bg-secondary/20">
                   <th className="px-4">Sembol</th>
-                  <th className="px-4 text-right">İşlem Sayısı</th>
+                  <th className="px-4 text-right">İşlem</th>
                   <th className="px-4 text-right">Başarı Oranı</th>
-                  <th className="px-4 text-right">Toplam Getiri</th>
-                  <th className="px-4 text-right">Ort. Getiri</th>
-                  <th className="px-4 text-right">En İyi</th>
-                  <th className="px-4 text-right">En Kötü</th>
+                  <th className="px-4 text-right" title="Bileşik, komisyon ve kayma düşülmüş">Net Getiri</th>
+                  <th className="px-4 text-right" title="Net getiri eksi aynı dönemde XU100'ü alıp tutmak">XU100 Farkı</th>
+                  <th className="px-4 text-right" title="Sermaye eğrisinin tepeden en derin düşüşü">Maks. Düşüş</th>
+                  <th className="px-4 text-right" title="Brüt kâr / brüt zarar. 1'in altı: kayıplar kazançlardan büyük">PF</th>
                   <th className="px-4"></th>
                 </tr>
               </thead>
@@ -879,11 +897,20 @@ export default function StrategyPage() {
                         <td className={`px-4 text-right font-bold ${(r.total_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                           {r.total_return_pct != null ? `${r.total_return_pct >= 0 ? "+" : ""}${r.total_return_pct}%` : "-"}
                         </td>
-                        <td className={`px-4 text-right font-semibold ${(r.avg_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
-                          {r.avg_return_pct != null ? `${r.avg_return_pct >= 0 ? "+" : ""}${r.avg_return_pct}%` : "-"}
+                        {/* Asıl karar veren sütun: stratejinin getirisi, aynı
+                            dönemde hiçbir şey yapmamaya (XU100 al-tut) göre
+                            nerede duruyor. Tek başına pozitif bir getiri,
+                            yükselen bir piyasada bir üstünlük anlamına
+                            gelmiyor. */}
+                        <td className={`px-4 text-right font-bold ${(r.excess_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                          {r.excess_return_pct != null ? `${r.excess_return_pct >= 0 ? "+" : ""}${r.excess_return_pct} p` : "-"}
                         </td>
-                        <td className="px-4 text-right font-semibold text-emerald-400">{r.best_trade_pct != null ? `+${r.best_trade_pct}%` : "-"}</td>
-                        <td className="px-4 text-right font-semibold text-rose-500">{r.worst_trade_pct != null ? `${r.worst_trade_pct}%` : "-"}</td>
+                        <td className="px-4 text-right font-semibold text-rose-400">
+                          {r.max_drawdown_pct != null ? `−%${r.max_drawdown_pct}` : "-"}
+                        </td>
+                        <td className={`px-4 text-right font-semibold ${(r.profit_factor ?? 0) >= 1 ? "text-emerald-400" : "text-rose-500"}`}>
+                          {r.profit_factor != null ? r.profit_factor.toFixed(2) : "-"}
+                        </td>
                         <td className="px-4 text-center">
                           {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
                         </td>
@@ -896,6 +923,47 @@ export default function StrategyPage() {
                             ) : r.recent_trades.length === 0 ? (
                               <p className="text-[11px] text-muted-foreground">Bu dönemde sinyal koşulları hiç sağlanmadı.</p>
                             ) : (
+                              <div className="space-y-4">
+                                {/* Özet satırında yer olmayan ama sonucu
+                                    yorumlamak için gereken üç şey: maliyetin
+                                    ne kadarını götürdüğü, sermayenin ne kadar
+                                    süre riskte olduğu ve aynı kuralların hiç
+                                    görülmemiş veride ne yaptığı. */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                  <div className="rounded-lg border border-border/40 bg-secondary/20 px-3 py-2">
+                                    <div className="text-[10px] font-bold uppercase text-muted-foreground">Maliyet Öncesi</div>
+                                    <div className="font-mono font-bold text-foreground">
+                                      {r.gross_return_pct != null ? `${r.gross_return_pct >= 0 ? "+" : ""}${r.gross_return_pct}%` : "-"}
+                                    </div>
+                                    <div className="text-[10px] text-rose-400 font-semibold">
+                                      {r.cost_drag_pct != null ? `komisyon/kayma: −${r.cost_drag_pct} p` : ""}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border border-border/40 bg-secondary/20 px-3 py-2">
+                                    <div className="text-[10px] font-bold uppercase text-muted-foreground">XU100 Al-Tut</div>
+                                    <div className="font-mono font-bold text-foreground">
+                                      {r.benchmark_return_pct != null ? `${r.benchmark_return_pct >= 0 ? "+" : ""}${r.benchmark_return_pct}%` : "-"}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground">aynı dönem</div>
+                                  </div>
+                                  <div className="rounded-lg border border-border/40 bg-secondary/20 px-3 py-2">
+                                    <div className="text-[10px] font-bold uppercase text-muted-foreground">Pozisyonda</div>
+                                    <div className="font-mono font-bold text-foreground">
+                                      {r.exposure_pct != null ? `%${r.exposure_pct}` : "-"}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground">geçen zaman</div>
+                                  </div>
+                                  <div className="rounded-lg border border-border/40 bg-secondary/20 px-3 py-2">
+                                    <div className="text-[10px] font-bold uppercase text-muted-foreground">Görülmemiş Veri</div>
+                                    <div className={`font-mono font-bold ${(r.oos_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                      {r.oos_return_pct != null ? `${r.oos_return_pct >= 0 ? "+" : ""}${r.oos_return_pct}%` : "-"}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                      {r.oos_trades != null ? `son %30, ${r.oos_trades} işlem` : ""}
+                                    </div>
+                                  </div>
+                                </div>
+
                               <div className="overflow-x-auto">
                                 <table className="w-full text-[11px] text-left">
                                   <thead>
@@ -925,6 +993,7 @@ export default function StrategyPage() {
                                     ))}
                                   </tbody>
                                 </table>
+                              </div>
                               </div>
                             )}
                           </td>

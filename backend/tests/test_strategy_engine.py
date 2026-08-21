@@ -17,6 +17,9 @@ from app.services.strategy_engine import (
     _stochastic,
     _ichimoku,
     _fibonacci_levels,
+    _compound_pct,
+    _max_drawdown_pct,
+    _profit_factor,
 )
 
 
@@ -369,3 +372,49 @@ def test_fibonacci_levels_between_last_swing_high_and_low():
 def test_fibonacci_levels_empty_without_both_swing_kinds():
     only_highs = [SwingPoint(index=0, date="2026-01-01", price=100, kind="high")]
     assert _fibonacci_levels(only_highs) == []
+
+
+# --- Backtest ölçüm fonksiyonları -----------------------------------------
+# Bunlar backtest'in raporladığı her rakamın altında duruyor; yanlış
+# olurlarsa strateji hakkındaki bütün sonuçlar sessizce yanlış olur.
+
+def test_compound_pct_chains_returns_instead_of_adding_them():
+    # 1.10 * 1.10 = 1.21 -> %21, %20 değil.
+    assert round(_compound_pct([10, 10]), 6) == 21.0
+
+
+def test_compound_pct_a_gain_and_an_equal_loss_do_not_cancel_out():
+    # Düzeltilen hatanın tam kalbi: +%50 sonra -%50 başa dönmez.
+    assert round(_compound_pct([50, -50]), 6) == -25.0
+
+
+def test_compound_pct_diverges_from_naive_sum_over_many_trades():
+    """Eski kod yüzdeleri topluyordu. On tane +%10 işlem toplamda %100
+    değil %159 eder - fark işlem sayısıyla birlikte büyür, yani en çok
+    sinyal üreten sembolde en çok yanılırdı."""
+    returns = [10.0] * 10
+    assert sum(returns) == 100.0
+    assert round(_compound_pct(returns), 2) == 159.37
+
+
+def test_compound_pct_empty_is_zero():
+    assert _compound_pct([]) == 0.0
+
+
+def test_max_drawdown_measures_peak_to_trough():
+    # 1.0 -> 1.1 (tepe) -> 0.55 : tepeden %50 düşüş.
+    assert round(_max_drawdown_pct([10, -50, 10]), 6) == 50.0
+
+
+def test_max_drawdown_is_zero_when_equity_never_falls():
+    assert _max_drawdown_pct([10, 10, 5]) == 0.0
+
+
+def test_profit_factor_is_gross_win_over_gross_loss():
+    assert _profit_factor([10, -5]) == 2.0
+
+
+def test_profit_factor_is_none_without_a_single_loss():
+    """Sonsuz bir oran raporlamak yerine None: kayıpsız bir örneklem
+    sonuç değil, örneklem küçüklüğü belirtisidir."""
+    assert _profit_factor([10, 5]) is None

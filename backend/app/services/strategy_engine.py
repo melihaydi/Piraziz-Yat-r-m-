@@ -88,7 +88,14 @@ MA_CROSS_VOTE_WEIGHT = 3  # outweighs any single other factor's ±1 vote
 # concurrent.futures.as_completed() has no timeout by default and a plain
 # `with ThreadPoolExecutor(...)` waits for every submitted task on exit.
 SCAN_TIMEOUT_SECONDS = 60        # generous vs. the ~20s a normal live scan takes
-BACKTEST_TIMEOUT_SECONDS = 240   # generous vs. backtest's own much heavier per-symbol workload
+# Measured on the production container after moving the backtest to hourly
+# bars: ~14.8 ms per evaluated bar, 6205 bars per symbol -> ~92 s/symbol,
+# ~11.4 min for all 30 across 4 workers (it's GIL-bound Python, so more
+# workers don't help much). The old 240 s was sized for the 730-bar daily
+# run and would now abort every single pass. This is a once-a-day
+# background job whose results are served from Redis, so nobody waits on
+# it - the ceiling only needs enough headroom to not kill a healthy run.
+BACKTEST_TIMEOUT_SECONDS = 30 * 60
 
 # StrategyEngine/BacktestEngine write their in-memory state through to these
 # Redis keys on every recompute, and hydrate from them on __init__ - so a
@@ -99,7 +106,12 @@ BACKTEST_TIMEOUT_SECONDS = 240   # generous vs. backtest's own much heavier per-
 # request); Redis is the durability layer underneath them.
 _SIGNALS_REDIS_KEY = "strategy_engine:signals"
 _HISTORY_REDIS_KEY = "strategy_engine:history"
-_BACKTEST_REDIS_KEY = "backtest_engine:results"
+# Version-suffixed on purpose: a v1 payload holds total_return_pct as a SUM
+# of percentages measured on daily bars with no costs. Those numbers aren't
+# comparable to what this module now produces, and _hydrate_from_redis would
+# happily serve them for up to three days after a deploy. A new key means the
+# old ones simply expire unread instead of quietly mixing two definitions.
+_BACKTEST_REDIS_KEY = "backtest_engine:results:v2"
 STRATEGY_REDIS_TTL_SECONDS = 900          # generous vs. the 180s scan interval
 HISTORY_REDIS_TTL_SECONDS = 24 * 60 * 60  # the log itself resets daily anyway
 BACKTEST_REDIS_TTL_SECONDS = 3 * 24 * 60 * 60  # backtest only refreshes once/day
@@ -488,8 +500,9 @@ def _decide_signal(
     and backtest stays external to this function: how momentum_ok_long/short
     get computed (live: TradingView's ta_signals rating; backtest: local
     RSI(14), since ta_signals has no historical/point-in-time API - see
-    STRATEGY_NOTES), and what timeframe `df` itself is on (live: 1h: see
-    _fetch_history_with_retry; backtest: 1d, unchanged)."""
+    STRATEGY_NOTES). Timeframe is no longer a difference: both sides now run
+    on 1h bars (see BACKTEST_INTERVAL for why the old 1d backtest wasn't
+    measuring the live strategy at all)."""
     reasons: List[str] = list(structure_tags)
     triggered: List[str] = []
     score = 0
@@ -841,7 +854,13 @@ class BacktestTrade:
     exit_date: str
     exit_price: float
     exit_reason: str  # "stop" | "target" | "timeout" | "açık pozisyon (güncel fiyat)"
+    # NET of commission + slippage on both legs (see ROUND_TRIP_COST_PCT).
     return_pct: float
+    # Same trade before frictions - kept so the cost drag stays auditable
+    # per trade rather than only in the aggregate.
+    gross_return_pct: float = 0.0
+    # True when the trade opened in the held-out tail of the history.
+    is_oos: bool = False
 
 
 @dataclass
@@ -850,6 +869,12 @@ class BacktestResult:
     name: str
     total_trades: int
     win_rate: Optional[float]
+    # COMPOUNDED net return of a single-position account that takes every
+    # signal this symbol produced, after costs. This used to be
+    # sum(trade returns) - adding percentages, which is neither how money
+    # compounds nor a figure any account could have achieved: it implicitly
+    # resets capital to the starting amount before every trade. Ten +10%
+    # trades are +159%, not +100%; two -50% trades are -75%, not -100%.
     total_return_pct: Optional[float]
     avg_return_pct: Optional[float]
     best_trade_pct: Optional[float]
@@ -857,6 +882,38 @@ class BacktestResult:
     last_trade: Optional[BacktestTrade]
     recent_trades: List[BacktestTrade]
     error: Optional[str] = None
+
+    # --- risk & quality -----------------------------------------------
+    # Largest peak-to-trough fall of the equity curve above. Win rate says
+    # nothing about this, and it's the number that decides whether a
+    # strategy is survivable rather than merely profitable on paper.
+    max_drawdown_pct: Optional[float] = None
+    # Gross wins / gross losses. Above 1 the edge exists; how far above
+    # says how much room it has before costs or a bad streak erase it.
+    profit_factor: Optional[float] = None
+    # Expected net return of taking one signal, in percent.
+    expectancy_pct: Optional[float] = None
+    # Share of bars actually spent holding a position. A tiny return earned
+    # while exposed 5% of the time is a different thing from the same
+    # return earned fully invested.
+    exposure_pct: Optional[float] = None
+
+    # --- honesty about costs -------------------------------------------
+    # What the same trades would have returned with zero commission and a
+    # perfect fill, so the drag is visible instead of hidden.
+    gross_return_pct: Optional[float] = None
+    cost_drag_pct: Optional[float] = None
+
+    # --- is it worth doing at all --------------------------------------
+    benchmark_return_pct: Optional[float] = None   # XU100 buy & hold, same window
+    excess_return_pct: Optional[float] = None      # net minus benchmark
+
+    # --- out-of-sample --------------------------------------------------
+    # Same metrics recomputed on the held-out tail only. If in-sample looks
+    # good and this doesn't, the strategy is fitted to its own history.
+    oos_trades: Optional[int] = None
+    oos_win_rate: Optional[float] = None
+    oos_return_pct: Optional[float] = None
 
 
 def _backtest_result_from_dict(d: dict) -> BacktestResult:
@@ -870,9 +927,54 @@ def _backtest_result_from_dict(d: dict) -> BacktestResult:
 
 
 BACKTEST_LOOKBACK_PERIOD = "2y"
+
+# The backtest used to run on interval="1d" while the live engine runs on
+# interval="1h" (see _fetch_history_with_retry). That was recorded as a
+# known difference, but its consequence wasn't: it means the backtest was
+# not measuring the strategy that actually runs. Every bar-counted
+# parameter changes meaning with the interval - SMA(50) is a ~10-week trend
+# filter on daily bars and a ~7-day one on hourly; MAX_HOLD_BARS=40 is 40
+# trading days vs ~5 sessions; ATR, the swing window and the breakout
+# lookback all shift the same way. So the empirical tuning that came out of
+# it (the SMA50 filter kept, the retest requirement reverted, etc.) was
+# decided on an instrument the live engine never traded.
+#
+# Measured on the production box before switching: 2y of hourly history
+# returns 6205 bars per symbol (vs 730 daily), reaching back to 2024-02, so
+# aligning costs no statistical power - it gains it.
+BACKTEST_INTERVAL = "1h"
+
 BACKTEST_WINDOW_BARS = 120    # bars of context fed to swing/structure/breakout detection at each step
 BACKTEST_WARMUP_BARS = 60     # need this many bars of history before evaluating the first signal
-BACKTEST_MAX_HOLD_BARS = 40   # force-close a still-open simulated trade after this many bars
+BACKTEST_MAX_HOLD_BARS = 40   # force-close a still-open simulated trade after this many bars (~5 BIST sessions on 1h)
+
+# --- Trading frictions -----------------------------------------------------
+# The old simulation filled at the exact close/stop/target price, which
+# quietly assumes zero commission, zero spread and a perfect fill. On a
+# strategy whose measured edge is ~1% per symbol over two years, that
+# assumption is not a rounding error - it can be the entire result. Both are
+# charged on BOTH legs (entry and exit).
+#
+# 0.04% is a mid-range BIST retail commission; slippage is a deliberately
+# conservative stand-in for spread plus the fact that a stop is filled at
+# the worst available price, not the exact trigger. Neither is a claim
+# about a specific broker - they're inputs, and the point is that the
+# reported number is now net of SOMETHING rather than gross of everything.
+COMMISSION_PCT_PER_SIDE = 0.04
+SLIPPAGE_PCT_PER_SIDE = 0.05
+ROUND_TRIP_COST_PCT = (COMMISSION_PCT_PER_SIDE + SLIPPAGE_PCT_PER_SIDE) * 2
+
+# Fraction of the history used as in-sample. Anything tuned by looking at
+# results must be judged on the remaining out-of-sample tail, which no
+# tuning decision is allowed to have seen. Four strategy variants were
+# previously compared on one undivided dataset and the winner kept on a
+# +0.9% -> +1.0% difference across 30 symbols - a gap well inside noise,
+# which is exactly how a backtest gets fitted to its own sample.
+BACKTEST_IN_SAMPLE_FRACTION = 0.70
+
+# Buy-and-hold reference. A strategy's return only means something next to
+# what doing nothing would have returned over the identical window.
+BENCHMARK_TICKER = "XU100"
 
 
 def _rsi_series(closes: pd.Series, period: int = 14) -> pd.Series:
@@ -886,7 +988,64 @@ def _rsi_series(closes: pd.Series, period: int = 14) -> pd.Series:
     return rsi.fillna(50.0)
 
 
-def _backtest_symbol(ticker: str, name: str) -> BacktestResult:
+def _compound_pct(returns: List[float]) -> float:
+    """Chain a list of percentage returns the way an account actually
+    compounds them, instead of adding them up."""
+    equity = 1.0
+    for r in returns:
+        equity *= (1.0 + r / 100.0)
+    return (equity - 1.0) * 100.0
+
+
+def _max_drawdown_pct(returns: List[float]) -> float:
+    """Deepest peak-to-trough fall of the equity curve those returns build,
+    as a positive percentage (0 means the curve never gave anything back)."""
+    equity = 1.0
+    peak = 1.0
+    worst = 0.0
+    for r in returns:
+        equity *= (1.0 + r / 100.0)
+        peak = max(peak, equity)
+        if peak > 0:
+            worst = max(worst, (peak - equity) / peak * 100.0)
+    return worst
+
+
+def _profit_factor(returns: List[float]) -> Optional[float]:
+    gross_win = sum(r for r in returns if r > 0)
+    gross_loss = -sum(r for r in returns if r < 0)
+    if gross_loss <= 0:
+        # No losing trade at all - a ratio would be infinite, which is a
+        # sample-size artifact rather than a result worth reporting.
+        return None
+    return gross_win / gross_loss
+
+
+def _benchmark_return_pct() -> Optional[float]:
+    """Buy-and-hold return of BENCHMARK_TICKER over the same window and
+    interval the symbol backtests use, charged the same round-trip cost so
+    the two sides are compared on equal terms.
+
+    Fetched once per backtest run and passed into every symbol - not
+    re-fetched 30 times."""
+    try:
+        df = borsapy.Ticker(BENCHMARK_TICKER).history(
+            period=BACKTEST_LOOKBACK_PERIOD, interval=BACKTEST_INTERVAL
+        )
+        if df is None or len(df) < 2:
+            return None
+        first = float(df["Close"].iloc[0])
+        last = float(df["Close"].iloc[-1])
+        if first <= 0:
+            return None
+        gross = (last - first) / first * 100.0
+        return round(gross - ROUND_TRIP_COST_PCT, 2)
+    except Exception as e:
+        logger.warning(f"Benchmark ({BENCHMARK_TICKER}) fetch failed: {e}")
+        return None
+
+
+def _backtest_symbol(ticker: str, name: str, benchmark_return_pct: Optional[float] = None) -> BacktestResult:
     """Walk-forward simulation of the exact same signal logic _build_signal
     uses live (swing structure, ATR-normalized breakout+retest, candle
     pattern, risk/R:R floor) - re-evaluated at every historical bar using
@@ -900,22 +1059,36 @@ def _backtest_symbol(ticker: str, name: str) -> BacktestResult:
     close in spirit to the live filter, not a re-run of the identical
     TradingView computation. This is a real, documented scope difference
     (see STRATEGY_NOTES), not a shortcut that inflates results.
+
+    What it reports is deliberately unflattering:
+      - returns are COMPOUNDED, not summed (see BacktestResult docstring)
+      - every trade pays commission + slippage on both legs
+      - the same window's XU100 buy-and-hold sits next to the result, so a
+        return that merely tracked a rising market can't read as an edge
+      - trades opening in the last 30% of history are flagged is_oos and
+        reported separately, so tuning can be judged on data it never saw
     """
     try:
-        df = borsapy.Ticker(ticker).history(period=BACKTEST_LOOKBACK_PERIOD, interval="1d")
+        df = borsapy.Ticker(ticker).history(period=BACKTEST_LOOKBACK_PERIOD, interval=BACKTEST_INTERVAL)
         if df is None or len(df) < BACKTEST_WARMUP_BARS + 10:
             return BacktestResult(ticker, name, 0, None, None, None, None, None, None, [], error="Yeterli geçmiş veri yok")
 
         rsi = _rsi_series(df["Close"])
         sma50 = df["Close"].rolling(50).mean()
 
+        # Index at which the held-out tail begins. Every trade opened at or
+        # after this bar is flagged out-of-sample.
+        oos_start_idx = int(len(df) * BACKTEST_IN_SAMPLE_FRACTION)
+
         trades: List[BacktestTrade] = []
         open_trade: Optional[Dict[str, Any]] = None
+        bars_in_position = 0
 
         for i in range(BACKTEST_WARMUP_BARS, len(df)):
             bar = df.iloc[i]
 
             if open_trade:
+                bars_in_position += 1
                 d = open_trade
                 hit_stop = (bar["Low"] <= d["stop"]) if d["direction"] == "LONG" else (bar["High"] >= d["stop"])
                 hit_target = (bar["High"] >= d["target"]) if d["direction"] == "LONG" else (bar["Low"] <= d["target"])
@@ -933,13 +1106,18 @@ def _backtest_symbol(ticker: str, name: str) -> BacktestResult:
                     exit_price, exit_reason = float(bar["Close"]), "timeout"
 
                 if exit_price is not None:
-                    ret = (exit_price - d["entry_price"]) / d["entry_price"] * 100
+                    gross = (exit_price - d["entry_price"]) / d["entry_price"] * 100
                     if d["direction"] == "SHORT":
-                        ret = -ret
+                        gross = -gross
+                    # Frictions are direction-independent: they cost the
+                    # same whether the trade won or lost.
+                    net = gross - ROUND_TRIP_COST_PCT
                     trades.append(BacktestTrade(
                         direction=d["direction"], entry_date=d["entry_date"], entry_price=round(d["entry_price"], 4),
-                        exit_date=str(df.index[i].date()), exit_price=round(exit_price, 4),
-                        exit_reason=exit_reason, return_pct=round(ret, 2),
+                        exit_date=str(df.index[i]), exit_price=round(exit_price, 4),
+                        exit_reason=exit_reason, return_pct=round(net, 2),
+                        gross_return_pct=round(gross, 2),
+                        is_oos=d["entry_idx"] >= oos_start_idx,
                     ))
                     open_trade = None
                 continue
@@ -970,35 +1148,70 @@ def _backtest_symbol(ticker: str, name: str) -> BacktestResult:
 
             open_trade = {
                 "direction": decision["direction"], "entry_idx": i, "entry_price": entry_price,
-                "entry_date": str(df.index[i].date()), "stop": decision["stop"], "target": decision["target"],
+                "entry_date": str(df.index[i]), "stop": decision["stop"], "target": decision["target"],
             }
 
         if open_trade:
             last_close = float(df["Close"].iloc[-1])
-            ret = (last_close - open_trade["entry_price"]) / open_trade["entry_price"] * 100
+            gross = (last_close - open_trade["entry_price"]) / open_trade["entry_price"] * 100
             if open_trade["direction"] == "SHORT":
-                ret = -ret
+                gross = -gross
             trades.append(BacktestTrade(
                 direction=open_trade["direction"], entry_date=open_trade["entry_date"],
-                entry_price=round(open_trade["entry_price"], 4), exit_date=str(df.index[-1].date()),
+                entry_price=round(open_trade["entry_price"], 4), exit_date=str(df.index[-1]),
                 exit_price=round(last_close, 4), exit_reason="açık pozisyon (güncel fiyat)",
-                return_pct=round(ret, 2),
+                return_pct=round(gross - ROUND_TRIP_COST_PCT, 2),
+                gross_return_pct=round(gross, 2),
+                is_oos=open_trade["entry_idx"] >= oos_start_idx,
             ))
 
         if not trades:
-            return BacktestResult(ticker, name, 0, None, None, None, None, None, None, [], error=None)
+            return BacktestResult(
+                ticker, name, 0, None, None, None, None, None, None, [], error=None,
+                benchmark_return_pct=benchmark_return_pct,
+            )
 
-        wins = [t for t in trades if t.return_pct > 0]
         returns = [t.return_pct for t in trades]
+        gross_returns = [t.gross_return_pct for t in trades]
+        wins = [r for r in returns if r > 0]
+
+        net_total = _compound_pct(returns)
+        gross_total = _compound_pct(gross_returns)
+        evaluated_bars = max(1, len(df) - BACKTEST_WARMUP_BARS)
+
+        oos = [t for t in trades if t.is_oos]
+        oos_returns = [t.return_pct for t in oos]
+
         return BacktestResult(
             ticker=ticker, name=name, total_trades=len(trades),
             win_rate=round(len(wins) / len(trades) * 100, 1),
-            total_return_pct=round(sum(returns), 2),
+            total_return_pct=round(net_total, 2),
             avg_return_pct=round(sum(returns) / len(returns), 2),
             best_trade_pct=round(max(returns), 2),
             worst_trade_pct=round(min(returns), 2),
             last_trade=trades[-1],
             recent_trades=trades[-10:],
+
+            max_drawdown_pct=round(_max_drawdown_pct(returns), 2),
+            profit_factor=(lambda pf: round(pf, 2) if pf is not None else None)(_profit_factor(returns)),
+            expectancy_pct=round(sum(returns) / len(returns), 2),
+            exposure_pct=round(bars_in_position / evaluated_bars * 100, 1),
+
+            gross_return_pct=round(gross_total, 2),
+            cost_drag_pct=round(gross_total - net_total, 2),
+
+            benchmark_return_pct=benchmark_return_pct,
+            excess_return_pct=(
+                round(net_total - benchmark_return_pct, 2)
+                if benchmark_return_pct is not None else None
+            ),
+
+            oos_trades=len(oos),
+            oos_win_rate=(
+                round(len([r for r in oos_returns if r > 0]) / len(oos_returns) * 100, 1)
+                if oos_returns else None
+            ),
+            oos_return_pct=round(_compound_pct(oos_returns), 2) if oos_returns else None,
         )
     except Exception as e:
         logger.error(f"Backtest failed for {ticker}: {e}")
@@ -1018,6 +1231,7 @@ class BacktestEngine:
         self._lock = threading.Lock()
         self._results: List[BacktestResult] = []
         self._last_run: Optional[str] = None
+        self._last_run_monotonic: Optional[float] = None
         self._scheduler_started = False
         self._running = False
         self._hydrate_from_redis()
@@ -1047,12 +1261,15 @@ class BacktestEngine:
             self._running = True
         try:
             names = {t["ticker"]: t["name"] for t in _ticker_names()}
+            # Fetched once per run, then shared - every symbol is measured
+            # against the identical benchmark window.
+            benchmark = _benchmark_return_pct()
             results: List[BacktestResult] = []
             pool = ThreadPoolExecutor(max_workers=4)
             try:
                 futures = {}
                 for ticker in BIST30_TICKERS:
-                    futures[pool.submit(_backtest_symbol, ticker, names.get(ticker, ticker))] = ticker
+                    futures[pool.submit(_backtest_symbol, ticker, names.get(ticker, ticker), benchmark)] = ticker
                     time.sleep(0.15)
                 try:
                     for fut in as_completed(futures, timeout=BACKTEST_TIMEOUT_SECONDS):
@@ -1075,6 +1292,10 @@ class BacktestEngine:
             with self._lock:
                 self._results = results
                 self._last_run = datetime.now(timezone.utc).isoformat()
+                # Separate from _last_run: that one is a wall-clock string
+                # for display and survives a Redis rehydrate, so it can't be
+                # used to decide "has 24h of THIS process elapsed".
+                self._last_run_monotonic = time.monotonic()
             self._persist_to_redis()
         finally:
             with self._lock:
@@ -1112,8 +1333,23 @@ class BacktestEngine:
             # First run happens lazily on the first request instead of
             # blocking startup - a 2-year x 30-symbol backtest takes real
             # time and there's no need to make every app boot wait on it.
+            #
+            # This used to be a plain 24h sleep, which fired at whatever
+            # o'clock the container last booted. That was tolerable while a
+            # pass took ~1.3 min on daily bars; on hourly bars it's a
+            # measured ~11.4 min of CPU-bound work, and landing that
+            # mid-session on a 1 GB box starves the 180s live scanner and
+            # the request handlers sharing it. So: wake often, but only
+            # actually run once a day AND while BIST is closed.
+            CHECK_EVERY_SECONDS = 30 * 60
             while True:
-                time.sleep(self.REFRESH_INTERVAL_SECONDS)
+                time.sleep(CHECK_EVERY_SECONDS)
+                if _is_bist_session_open():
+                    continue
+                with self._lock:
+                    last = self._last_run_monotonic
+                if last is not None and (time.monotonic() - last) < self.REFRESH_INTERVAL_SECONDS:
+                    continue
                 try:
                     self._run_backtest()
                     logger.info(f"Backtest engine: re-ran walk-forward backtest for {len(BIST30_TICKERS)} symbols.")
@@ -1418,3 +1654,57 @@ strategy_engine = StrategyEngine()
 #   cadence that the earlier all-must-agree gate destroyed), but a genuine
 #   3+ factor consensus against it can neutralize or flip the call.
 #   Dissenting factors are listed in `reasons` and cost 5 score points each.
+#
+# 2026-08-22 measurement overhaul (nothing about the SIGNAL logic changed):
+#   The backtest above was rebuilt because it was not measuring the strategy
+#   that runs. Five separate problems, all of which pushed results in the
+#   flattering direction:
+#
+#   1. TIMEFRAME. Live ran 1h, backtest ran 1d. Recorded as a known
+#      difference, but its consequence wasn't: every bar-counted parameter
+#      (SMA50, ATR, swing window, MAX_HOLD_BARS) means something different
+#      per interval, so the two were different strategies. Both are 1h now.
+#      Hourly history returns 6205 bars/symbol vs 730 daily - more data, not
+#      less. Cost: a full run went from ~1.3 min to a measured ~11.4 min,
+#      which is why BACKTEST_TIMEOUT_SECONDS moved to 30 min. It's a daily
+#      background job served from Redis; nobody waits on it.
+#
+#   2. RETURNS WERE ADDED, NOT COMPOUNDED. total_return_pct was
+#      sum(trade returns). That figure belongs to no account: it silently
+#      resets capital before every trade. It also overstated the symbols
+#      that traded MOST, i.e. exactly the ones the UI sorted to the top.
+#
+#   3. NO TRADING FRICTIONS. Fills were at the exact close/stop/target, so
+#      commission, spread and stop slippage were all zero. Against a measured
+#      edge of ~1%/symbol over two years, that is not a rounding error.
+#      Both legs are now charged (ROUND_TRIP_COST_PCT), and gross_return_pct
+#      / cost_drag_pct keep the size of the deduction visible.
+#
+#   4. NOTHING TO COMPARE AGAINST. A return means nothing without the return
+#      of doing nothing over the identical window. XU100 buy-and-hold is now
+#      fetched once per run and carried on every result as
+#      benchmark_return_pct / excess_return_pct.
+#
+#   5. TUNED AND JUDGED ON ONE SAMPLE. The four 2026-07-28 experiments were
+#      compared on a single undivided dataset and the winner kept on a
+#      +0.9% -> +1.0% difference across 30 symbols - a gap comfortably inside
+#      noise. That is the textbook route to a curve-fitted strategy. The
+#      history is now split (BACKTEST_IN_SAMPLE_FRACTION) and the held-out
+#      tail reported separately as oos_*.
+#
+#   Consequence worth stating plainly: the 2026-07-28 conclusions above were
+#   all reached on 1d bars with no costs. They are NOT carried over as
+#   validated. The SMA(50) filter and the SHORT score penalty remain in the
+#   code because they were left in place, not because the new measurement has
+#   re-confirmed them - re-running those four comparisons on the aligned,
+#   cost-charged, out-of-sample-split setup is the next piece of work, and
+#   the earlier numbers should not be quoted until it's done.
+#
+#   Also still open, and both flatter the result:
+#     - SURVIVORSHIP. BIST30_TICKERS is today's constituent list applied to
+#       two years of history. Stocks that dropped out aren't here; the ones
+#       that are, are partly there because they did well.
+#     - PORTFOLIO LEVEL. Each symbol is simulated as its own single-position
+#       account. There is no shared capital, no cap on concurrent positions
+#       and no position sizing, so the per-symbol figures cannot simply be
+#       added into "what the strategy would have returned".

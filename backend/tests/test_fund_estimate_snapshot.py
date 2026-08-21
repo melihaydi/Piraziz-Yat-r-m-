@@ -54,10 +54,21 @@ def _fake_fund(code):
 # happened to land in that window.
 _today_tr = lambda: real_datetime.now(ZoneInfo("Europe/Istanbul")).date()
 
+# Every test that drives _run_snapshot() pins the clock to this instant.
+# They used to run against the real "today", which meant they passed Monday
+# to Friday and failed all weekend: the service deliberately records nothing
+# on a Saturday or Sunday (TEFAS publishes no NAV, so actual_change_pct
+# would just be Friday's stale cached figure), so the snapshot count came
+# back zero and the assertions blew up. Since CI gates deployment on these
+# tests, that turned every weekend into a deploy freeze.
+_FIXED_WEEKDAY = real_datetime(2026, 1, 2)  # a Friday
+
 
 def test_records_one_snapshot_per_tracked_fund(snap_db):
     service = FundEstimateSnapshotService()
+    _FixedDateTime._fixed = _FIXED_WEEKDAY
     with patch("app.services.fund_estimate_snapshot.SessionLocal", return_value=snap_db), \
+         patch("app.services.fund_estimate_snapshot.datetime", _FixedDateTime), \
          patch("app.services.fund_estimate_snapshot.tefas_service.get_live_estimated_return", side_effect=_fake_estimate), \
          patch("app.services.fund_estimate_snapshot.tefas_service.get_fund", side_effect=_fake_fund):
         service._run_snapshot()
@@ -65,7 +76,7 @@ def test_records_one_snapshot_per_tracked_fund(snap_db):
     rows = snap_db.query(FundEstimateSnapshot).all()
     assert {r.fund_code for r in rows} == set(TRACKED_FUND_CODES)
     for r in rows:
-        assert r.snapshot_date == _today_tr()
+        assert r.snapshot_date == _FIXED_WEEKDAY.date()
         assert r.estimated_change_pct == 1.5
         assert r.resolved_weight_pct == 90.0
         assert r.actual_change_pct == 1.2
@@ -73,13 +84,15 @@ def test_records_one_snapshot_per_tracked_fund(snap_db):
 
 def test_skips_funds_that_already_have_a_snapshot_today(snap_db):
     snap_db.add(FundEstimateSnapshot(
-        fund_code="TMV", snapshot_date=_today_tr(),
+        fund_code="TMV", snapshot_date=_FIXED_WEEKDAY.date(),
         estimated_change_pct=9.9, resolved_weight_pct=50.0, actual_change_pct=9.9,
     ))
     snap_db.commit()
 
     service = FundEstimateSnapshotService()
+    _FixedDateTime._fixed = _FIXED_WEEKDAY
     with patch("app.services.fund_estimate_snapshot.SessionLocal", return_value=snap_db), \
+         patch("app.services.fund_estimate_snapshot.datetime", _FixedDateTime), \
          patch("app.services.fund_estimate_snapshot.tefas_service.get_live_estimated_return", side_effect=_fake_estimate), \
          patch("app.services.fund_estimate_snapshot.tefas_service.get_fund", side_effect=_fake_fund):
         service._run_snapshot()
@@ -94,7 +107,9 @@ def test_skips_funds_that_already_have_a_snapshot_today(snap_db):
 
 def test_handles_unresolvable_fund_gracefully(snap_db):
     service = FundEstimateSnapshotService()
+    _FixedDateTime._fixed = _FIXED_WEEKDAY
     with patch("app.services.fund_estimate_snapshot.SessionLocal", return_value=snap_db), \
+         patch("app.services.fund_estimate_snapshot.datetime", _FixedDateTime), \
          patch("app.services.fund_estimate_snapshot.tefas_service.get_live_estimated_return", return_value=None), \
          patch("app.services.fund_estimate_snapshot.tefas_service.get_fund", return_value=None):
         service._run_snapshot()
