@@ -17,7 +17,7 @@ from app.models.audit_log import AuditLog
 from app.models.fund_composition_override import FundCompositionOverride
 from app.models.portfolio import Portfolio, PortfolioAsset
 from app.models.support_ticket import SupportTicket
-from app.models.user import User
+from app.models.user import User, anonymized_email, DELETED_EMAIL_DOMAIN, LEGACY_DELETED_EMAIL_DOMAINS
 from app.schemas.support import SupportTicketAdminResponse, SupportTicketUpdate
 from app.schemas.user import UserOut
 from app.services import corporate_actions, portfolio_ledger
@@ -32,11 +32,29 @@ VALID_ROLES = {"free", "premium"}
 @limiter.limit("60/minute")
 def list_users(
     request: Request,
+    include_deleted: bool = False,
     db: Session = Depends(deps.get_db),
     _admin: User = Depends(deps.get_current_active_superuser),
 ):
-    """All registered users, newest first - superuser only."""
-    return db.query(User).order_by(User.created_at.desc()).all()
+    """All registered users, newest first - superuser only.
+
+    Soft-deleted accounts are hidden unless include_deleted=true. Deletion
+    keeps the row (financial/audit history) and only anonymizes it, so those
+    placeholders accumulate forever and drown out the real accounts - on
+    production they were already 21 of 31 rows. They stay reachable behind
+    the flag rather than being dropped from the API, since an admin still
+    needs to see that an id was deleted rather than never existing.
+
+    Filtered in SQL by the anonymized address, matching every domain either
+    delete path has ever written (see models.user.DELETED_EMAIL_DOMAIN) -
+    is_active alone can't stand in for this, because an admin-deactivated
+    but NOT deleted account is also inactive and must keep showing up.
+    """
+    query = db.query(User)
+    if not include_deleted:
+        for domain in (DELETED_EMAIL_DOMAIN, *LEGACY_DELETED_EMAIL_DOMAINS):
+            query = query.filter(~User.email.like(f"%@{domain}"))
+    return query.order_by(User.created_at.desc()).all()
 
 
 @router.put("/users/{user_id}/role", response_model=UserOut)
@@ -192,7 +210,7 @@ def admin_delete_user(
 
     target_email = target.email
     target.is_active = False
-    target.email = f"deleted-user-{target.id}@bipterminal.local"
+    target.email = anonymized_email(target.id)
     target.full_name = None
     target.totp_secret = None
     target.totp_enabled = False

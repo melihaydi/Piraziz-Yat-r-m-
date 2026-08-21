@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.models.user import User
+from app.models.user import User, DELETED_EMAIL_DOMAIN
 
 
 def _register_and_login(client, email="datarights@example.com", password="mypassword"):
@@ -63,8 +63,12 @@ def test_delete_my_account_soft_deletes_and_anonymizes(client, db):
     res = client.post("/api/v1/auth/me/delete", json={"password": "correctpassword"}, headers=headers)
     assert res.status_code == 200
 
+    # Domain comes from the shared constant rather than being spelled out
+    # here: this path used to write "@piraziz.local" while the admin delete
+    # path wrote "@bipterminal.local", and the admin listing's filter needs
+    # all three to agree (see models.user.DELETED_EMAIL_DOMAIN).
     user = db.query(User).filter(User.id != None).filter(
-        User.email.like("deleted-user-%@piraziz.local")
+        User.email.like(f"deleted-user-%@{DELETED_EMAIL_DOMAIN}")
     ).first()
     assert user is not None
     assert user.is_active is False

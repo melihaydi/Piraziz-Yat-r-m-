@@ -29,3 +29,31 @@ class User(Base):
     totp_recovery_codes = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# Soft-delete anonymizes the address rather than dropping the row (see
+# admin_delete_user / delete_my_account). The domain lives here, in one
+# place, because three call sites have to agree on it: both delete paths
+# write it and the admin listing filters on it. They previously did NOT
+# agree - the admin path wrote "@bipterminal.local" while the self-service
+# path wrote "@piraziz.local", so any filter keyed to one silently missed
+# the other. .local stays deliberately unroutable; note that it's an IANA
+# special-use TLD, so no EmailStr-typed field may ever carry these values
+# (that's why UserInDBBase.email is a plain str).
+DELETED_EMAIL_DOMAIN = "bipterminal.local"
+
+# Written by the self-service delete path before the two were unified.
+# Rows created back then still exist, so the filter has to recognize them.
+LEGACY_DELETED_EMAIL_DOMAINS = ("piraziz.local",)
+
+
+def anonymized_email(user_id: int) -> str:
+    """The placeholder address a soft-deleted account is renamed to."""
+    return f"deleted-user-{user_id}@{DELETED_EMAIL_DOMAIN}"
+
+
+def is_anonymized_email(email: str) -> bool:
+    """True for an address written by either delete path, current or legacy."""
+    return email.endswith(
+        tuple(f"@{d}" for d in (DELETED_EMAIL_DOMAIN, *LEGACY_DELETED_EMAIL_DOMAINS))
+    )

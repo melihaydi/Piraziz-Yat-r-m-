@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.models.user import User
+from app.models.user import User, anonymized_email
 
 
 @pytest.fixture
@@ -170,12 +170,26 @@ def test_admin_can_delete_a_plain_account(client, admin_headers, plain_headers, 
 
 
 def test_listing_users_still_works_after_a_deletion(client, admin_headers, plain_headers, db):
-    """Regression: deletion rewrites the address to
-    "deleted-user-{id}@bipterminal.local", and .local is an IANA special-use
-    TLD that email-validator rejects. While UserOut typed email as EmailStr,
-    that row broke response serialization and this endpoint returned 500 -
-    so the whole admin panel went dark as soon as any one account had ever
-    been deleted. The listing must survive its own anonymized rows."""
+    """Regression: deletion rewrites the address to an "@...local" placeholder,
+    and .local is an IANA special-use TLD that email-validator rejects. While
+    UserOut typed email as EmailStr, that row broke response serialization and
+    this endpoint returned 500 - so the whole admin panel went dark as soon as
+    any one account had ever been deleted. Asserted through include_deleted so
+    the row is actually in the payload: what's under test is that it
+    serializes at all, not whether it's shown by default."""
+    target = db.query(User).filter(User.email == "plainuser@example.com").first()
+    target_id = target.id
+    assert client.delete(f"/api/v1/admin/users/{target_id}", headers=admin_headers).status_code == 200
+
+    res = client.get("/api/v1/admin/users", headers=admin_headers, params={"include_deleted": "true"})
+    assert res.status_code == 200
+    emails = {u["email"] for u in res.json()}
+    assert anonymized_email(target_id) in emails
+
+
+def test_deleted_accounts_are_hidden_from_the_default_listing(client, admin_headers, plain_headers, db):
+    """Soft-deleted rows are kept forever for audit history, so without this
+    they pile up and bury the real accounts in the admin table."""
     target = db.query(User).filter(User.email == "plainuser@example.com").first()
     target_id = target.id
     assert client.delete(f"/api/v1/admin/users/{target_id}", headers=admin_headers).status_code == 200
@@ -183,4 +197,24 @@ def test_listing_users_still_works_after_a_deletion(client, admin_headers, plain
     res = client.get("/api/v1/admin/users", headers=admin_headers)
     assert res.status_code == 200
     emails = {u["email"] for u in res.json()}
-    assert f"deleted-user-{target_id}@bipterminal.local" in emails
+    assert anonymized_email(target_id) not in emails
+    assert "admin@example.com" in emails
+
+
+def test_deactivated_but_undeleted_accounts_still_appear(client, admin_headers, plain_headers, db):
+    """The filter keys on the anonymized address, not on is_active - an
+    account an admin merely suspended is inactive too, and hiding it would
+    leave no way to find it again and switch it back on."""
+    target = db.query(User).filter(User.email == "plainuser@example.com").first()
+    res = client.put(
+        f"/api/v1/admin/users/{target.id}/active",
+        headers=admin_headers,
+        params={"is_active": "false"},
+    )
+    assert res.status_code == 200
+
+    listing = client.get("/api/v1/admin/users", headers=admin_headers)
+    assert listing.status_code == 200
+    rows = {u["email"]: u for u in listing.json()}
+    assert "plainuser@example.com" in rows
+    assert rows["plainuser@example.com"]["is_active"] is False

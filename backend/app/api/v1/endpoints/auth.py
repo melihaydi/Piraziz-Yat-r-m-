@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.email import send_email
 from app.core.limiter import limiter
 from app.api import deps
-from app.models.user import User
+from app.models.user import User, anonymized_email
 from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.schemas.token import Token
 from app.schemas.auth import (
@@ -340,7 +340,7 @@ def delete_my_account(
 
     user_id = current_user.id
     current_user.is_active = False
-    current_user.email = f"deleted-user-{user_id}@piraziz.local"
+    current_user.email = anonymized_email(user_id)
     current_user.full_name = None
     current_user.totp_secret = None
     current_user.totp_enabled = False

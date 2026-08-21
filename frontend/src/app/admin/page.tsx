@@ -45,6 +45,10 @@ export default function AdminPage() {
   // üzerinden basit bir client-side filtre, backend'de ayrı bir arama
   // endpoint'i gerektirmeden tabloyu kullanılabilir tutar.
   const [userSearch, setUserSearch] = useState("")
+  // Silinen hesaplar satır olarak kalıyor (denetim izi için) ve zamanla
+  // gerçek kullanıcıları boğuyor - backend bunları varsayılan olarak
+  // filtreliyor, bu anahtar geri getiriyor.
+  const [showDeleted, setShowDeleted] = useState(false)
 
   const [tickets, setTickets] = useState<SupportTicket[]>([])
   const [ticketsLoading, setTicketsLoading] = useState(true)
@@ -84,9 +88,9 @@ export default function AdminPage() {
     }
   }
 
-  const loadUsers = async () => {
+  const loadUsers = async (includeDeleted: boolean) => {
     try {
-      const res = await authFetch("/admin/users")
+      const res = await authFetch(`/admin/users${includeDeleted ? "?include_deleted=true" : ""}`)
       if (res.status === 403) {
         setForbidden(true)
         return
@@ -101,8 +105,14 @@ export default function AdminPage() {
     }
   }
 
+  // Anahtar değiştiğinde listeyi yeniden çeker. setLoading burada tekrar
+  // true yapılmıyor - tam sayfa yükleyicisi yalnızca ilk açılışta görünsün,
+  // anahtara her basışta tablo yerinden oynamasın diye.
   useEffect(() => {
-    loadUsers()
+    loadUsers(showDeleted)
+  }, [showDeleted])
+
+  useEffect(() => {
     loadTickets()
   }, [])
 
@@ -273,14 +283,28 @@ export default function AdminPage() {
               </CardTitle>
               <CardDescription>Gerçek bir ödeme entegrasyonu olmadığı için üyelik seviyesi burada manuel atanır.</CardDescription>
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                placeholder="E-posta veya isim ara..."
-                className="pl-9 h-9 text-xs"
-              />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setShowDeleted(v => !v)}
+                title="Silinen hesaplar denetim izi için saklanır, listede varsayılan olarak gizlenir"
+                className={`h-9 px-3 rounded-md border text-[11px] font-bold cursor-pointer transition-colors shrink-0 ${
+                  showDeleted
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Silinmişler
+              </button>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  placeholder="E-posta veya isim ara..."
+                  className="pl-9 h-9 text-xs"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
