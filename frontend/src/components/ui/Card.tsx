@@ -3,13 +3,24 @@ import { cn } from "@/lib/utils"
 
 const Card = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { glass?: boolean }
->(({ className, glass = false, ...props }, ref) => (
+  React.HTMLAttributes<HTMLDivElement> & {
+    glass?: boolean
+    /** İmleci izleyen yumuşak aydınlanma. Tıklanabilir kartlar için. */
+    spotlight?: boolean
+    /** Üstüne gelindiğinde yüzeyden bir kez geçen ışık. `glass` ile eşleşir. */
+    sheen?: boolean
+  }
+>(({ className, glass = false, spotlight = false, sheen = false, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border border-border bg-card text-card-foreground shadow-lg shadow-black/20 lift",
+      // shadow-lg/black/20 yerine --elev-2: gölgenin yanında üstten çok ince
+      // bir ışık çizgisi de taşıyor. Koyu arayüzde katmanları ayıran şey
+      // gölgenin koyuluğu değil, kenara düşen o ışık.
+      "rounded-xl border border-border bg-card text-card-foreground shadow-[var(--elev-2)] lift",
       glass && "glass",
+      spotlight && "spotlight",
+      sheen && "sheen",
       className
     )}
     {...props}

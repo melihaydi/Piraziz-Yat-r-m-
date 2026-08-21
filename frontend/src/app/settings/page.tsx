@@ -141,7 +141,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
   return (
     <Card glass={true}>
       <CardHeader>
-        <CardTitle className="text-base flex items-center justify-between">
+        <CardTitle className="t-section flex items-center justify-between">
           <span className="flex items-center">
             <Smartphone className="h-4.5 w-4.5 mr-2 text-primary" />
             İki Adımlı Doğrulama (2FA)
@@ -643,9 +643,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
       {/* Title */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight">Hesap ve Uygulama Ayarları</h1>
-        <p className="text-muted-foreground mt-1">
+      <div className="animate-rise">
+        <h1 className="t-display">Hesap ve Uygulama Ayarları</h1>
+        <p className="t-caption mt-1.5">
           Kullanıcı profilinizi güncelleyin, hesap bilgilerini yönetin veya destek ekibiyle iletişime geçin.
         </p>
       </div>
@@ -655,7 +655,7 @@ export default function SettingsPage() {
           param itself is stripped on mount so a page refresh doesn't keep
           re-showing it. */}
       {paymentResult && (
-        <div className={`rounded-xl border px-4 py-3 flex items-center gap-2.5 text-xs font-semibold ${
+        <div className={`animate-pop rounded-xl border px-4 py-3 flex items-center gap-2.5 text-xs font-semibold ${
           paymentResult === "success"
             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
             : "border-rose-500/30 bg-rose-500/10 text-rose-400"
@@ -674,7 +674,7 @@ export default function SettingsPage() {
           mail silently no-ops, so the banner just nagged permanently with
           no way to clear it - hiding it there is the honest behavior. */}
       {!isEmailVerified && emailDeliveryEnabled && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+        <div className="animate-pop flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
           <div className="flex items-center gap-2 text-amber-300">
             <Mail className="h-4 w-4 shrink-0" />
             <span className="text-sm font-semibold">
@@ -701,7 +701,8 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <button
                 onClick={() => scrollToSection("profile")}
-                className={`w-full flex items-center px-4 py-3 text-sm font-semibold rounded-lg transition-all text-left cursor-pointer ${
+                data-active={activeSection === "profile"}
+                className={`nav-item press w-full flex items-center px-4 py-3 text-sm font-semibold rounded-lg transition-all text-left cursor-pointer ${
                   activeSection === "profile" ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
                 }`}
               >
@@ -710,7 +711,8 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={() => scrollToSection("security")}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
+                data-active={activeSection === "security"}
+                className={`nav-item press w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
                   activeSection === "security" ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
                 }`}
               >
@@ -719,7 +721,8 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={() => scrollToSection("privacy")}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
+                data-active={activeSection === "privacy"}
+                className={`nav-item press w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
                   activeSection === "privacy" ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
                 }`}
               >
@@ -728,7 +731,8 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={() => scrollToSection("help")}
-                className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
+                data-active={activeSection === "help"}
+                className={`nav-item press w-full flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all text-left cursor-pointer ${
                   activeSection === "help" ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
                 }`}
               >
@@ -747,7 +751,7 @@ export default function SettingsPage() {
           {/* Profile Form */}
           <Card glass={true} id="section-profile">
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <User className="h-4.5 w-4.5 mr-2 text-primary" />
                 Profil Düzenleme
               </CardTitle>
@@ -805,7 +809,7 @@ export default function SettingsPage() {
               backend account (PUT /auth/me), not a local-only mock. */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Lock className="h-4.5 w-4.5 mr-2 text-primary" />
                 Hesap Bilgileri
               </CardTitle>
@@ -870,7 +874,7 @@ export default function SettingsPage() {
               maintain. */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Monitor className="h-4.5 w-4.5 mr-2 text-cyan-400" />
                 Masaüstü ve Mobil Uygulamalar
               </CardTitle>
@@ -899,7 +903,7 @@ export default function SettingsPage() {
           {/* Security & Permissions */}
           <Card glass={true} id="section-security" className="border-primary/10">
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Shield className="h-4.5 w-4.5 mr-2 text-primary" />
                 Güvenlik & Yetkiler
               </CardTitle>
@@ -936,7 +940,7 @@ export default function SettingsPage() {
           {/* Notifications */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Bell className="h-4.5 w-4.5 mr-2 text-primary" />
                 Bildirimler
               </CardTitle>
@@ -977,7 +981,7 @@ export default function SettingsPage() {
           {/* Privacy & Data Rights (KVKK m.11) */}
           <Card glass={true} id="section-privacy">
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Database className="h-4.5 w-4.5 mr-2 text-primary" />
                 Gizlilik ve Veri
               </CardTitle>
@@ -1059,7 +1063,7 @@ export default function SettingsPage() {
           {/* Help & Support */}
           <Card glass={true} id="section-help">
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <HelpCircle className="h-4.5 w-4.5 mr-2 text-primary" />
                 Yardım & Destek
               </CardTitle>

@@ -206,14 +206,28 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
   return (
     <>
-      {/* Backdrop - mobile/tablet only, closes the drawer on tap outside */}
-      {open && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm lg:hidden"
-          onPointerDown={() => { armedRef.current = true }}
-          onClick={() => { if (armedRef.current) onClose?.() }}
-        />
-      )}
+      {/* Backdrop - mobile/tablet only, closes the drawer on tap outside.
+          Kalıcı olarak DOM'da duruyor ve yalnızca opaklığı değişiyor; ayrıca
+          `backdrop-blur-sm` KALDIRILDI. İkisi de aynı iOS sorununun parçası:
+
+          Perde, menü açılmasıyla AYNI karede oluşturulunca Safari tam ekran
+          bir backdrop-filter katmanı kurmak için sayfanın tamamının anlık
+          görüntüsünü alıp bulanıklaştırmak zorunda kalıyordu. Bu iş, sürgünün
+          kayma animasyonunun ilk karelerini bloke ediyor - dışarıdan görüntü
+          tam olarak "tuşa bastım, menü geç geliyor".
+
+          Düz koyu bir perde aynı işi görüyor (içeriği geri plana itmek) ve
+          hiçbir şey bulanıklaştırmıyor. `pointer-events-none`, kapalıyken
+          perdenin sayfayla etkileşimi engellememesini garanti eder. */}
+      <div
+        aria-hidden
+        className={cn(
+          "fixed inset-0 z-30 bg-black/60 lg:hidden transition-opacity duration-200 ease-out",
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+        onPointerDown={() => { armedRef.current = true }}
+        onClick={() => { if (armedRef.current) onClose?.() }}
+      />
 
       <aside
         style={{ width: isCollapsedNow ? 76 : 256 }}
@@ -225,12 +239,19 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           // şeyi yakalamıyordu: sürgü kayarak değil, tek karede yerine
           // zıplayarak açılıyordu. Hareket görünmediği için menünün açıldığı
           // da fark edilmiyordu.
-          "border-r border-border bg-card flex flex-col h-screen z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
+          // h-dvh, h-screen DEGIL: iOS Safari'de 100vh, adres cubugu
+          // goruniyorken GORUNUR ALANDAN BUYUKTUR. Sonuc olarak surgunun alt
+          // kismi (kenarlik, daralt tusu) ekranin altinda kaliyordu. `dvh`
+          // dinamik gorunum yuksekligi - cubuk gorunup kayboldukca guncellenir.
+          "border-r border-border bg-card flex flex-col h-dvh z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
           // Same safe-area reasoning as Header.tsx - this drawer is `fixed
           // inset-y-0`, so on a notched phone/PWA its own top row (logo,
           // close button) would otherwise sit behind the status bar too.
           "pt-[env(safe-area-inset-top)] lg:pt-0",
+          // Ayni gerekce alt taraf icin: standalone modda surgunun en alt
+          // satiri iPhone'un home gostergesinin arkasinda kaliyordu.
+          "pb-[env(safe-area-inset-bottom)] lg:pb-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
         onPointerDownCapture={() => { armedRef.current = true }}
@@ -270,7 +291,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         </div>
 
         {/* Navigation Links */}
-        <nav className={cn("flex-1 py-6 space-y-1.5 overflow-y-auto overflow-x-hidden", isCollapsedNow ? "px-3" : "px-4")}>
+        {/* stagger-list: menü öğeleri açılışta sırayla belirir. Sürgü
+            uygulama boyunca monte kalıyor (page-enter sarmalayıcısının
+            dışında), yani bu animasyon rota değiştikçe değil yalnızca ilk
+            yüklemede bir kez oynar. */}
+        <nav className={cn("flex-1 py-6 space-y-1.5 overflow-y-auto overflow-x-hidden stagger-list", isCollapsedNow ? "px-3" : "px-4")}>
           {(() => {
             // "/" needs an exact match (otherwise it'd match every route);
             // everything else uses startsWith so sub-routes like /trade/performance
@@ -293,8 +318,13 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 <Link
                   href={item.href}
                   onClick={() => onClose?.()}
+                  data-active={isActive}
                   className={cn(
-                    "w-full flex items-center h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
+                    // nav-item: etkin öğenin sol kenarında büyüyerek beliren
+                    // 3px'lik çubuk (globals.css). Renk zaten ayırt ediyor
+                    // ama tek başına renge dayanmak renk körlüğünde çalışmaz.
+                    // press: dokunmatikte basıldığını gösteren ölçek tepkisi.
+                    "nav-item press w-full flex items-center h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
                     isCollapsedNow ? "justify-center px-0" : "px-4",
                     isActive ? item.activeClass : item.hoverClass
                   )}
@@ -308,7 +338,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 </Link>
                 {/* Tooltip - collapsed desktop only, shown on hover next to the icon */}
                 {isCollapsedNow && (
-                  <div className="hidden group-hover/navitem:block absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-semibold text-foreground whitespace-nowrap shadow-lg z-50 pointer-events-none">
+                  <div className="hidden group-hover/navitem:block animate-pop absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-semibold text-foreground whitespace-nowrap shadow-[var(--elev-3)] z-50 pointer-events-none">
                     {item.name}
                   </div>
                 )}

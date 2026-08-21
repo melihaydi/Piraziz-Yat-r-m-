@@ -395,7 +395,7 @@ export default function ManagedPortfoliosPage() {
           <Briefcase className="h-7 w-7 text-primary" />
           Yönetilen Portföyler
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="t-caption mt-1.5">
           Bir kullanıcı seçip, o hesaba giriş yapmadan onun adına hisse/fon ekleyin - örneğin portföyünü
           sizin yönettiğiniz biri kendi hesabıyla kayıt olduysa, alım yaptığınız varlıkları buradan onun
           portföyüne işleyebilirsiniz.
@@ -404,7 +404,7 @@ export default function ManagedPortfoliosPage() {
 
       <Card glass={true}>
         <CardHeader>
-          <CardTitle className="text-lg">Kullanıcı Seç</CardTitle>
+          <CardTitle className="t-section">Kullanıcı Seç</CardTitle>
           <CardDescription>Her işlem denetim kaydına (audit log) yazılır.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

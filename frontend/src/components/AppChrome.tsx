@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react"
 import Sidebar from "@/components/Sidebar"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
+import { useReveal, useSpotlight } from "@/lib/useReveal"
 
 interface AppChromeProps {
   children: React.ReactNode
@@ -41,6 +42,13 @@ export default function AppChrome({ children }: AppChromeProps) {
   // applies the user's saved preference. localStorage isn't available
   // during SSR at all, so this couldn't be the initial state directly.
   const [collapsed, setCollapsed] = useState(false)
+
+  // Uygulama genelindeki hareket altyapısı tek yerde kuruluyor - ayrıntılar
+  // için lib/useReveal.ts. Trade/bare rotalar aşağıda erken dönüyor ama
+  // hook'lar koşulsuz çağrılmak zorunda (React kuralı); ikisi de kendi
+  // içinde ucuz ve o rotalarda eşleşen öğe bulamadığı için etkisiz kalır.
+  useReveal(pathname)
+  useSpotlight()
 
   useEffect(() => {
     const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
@@ -78,7 +86,9 @@ export default function AppChrome({ children }: AppChromeProps) {
   }, [isTradeRoute])
 
   if (isTradeRoute || isBareRoute) {
-    return <div className="flex-1 flex flex-col overflow-hidden h-screen w-full">{children}</div>
+    // h-dvh: iOS Safari'de 100vh gorunur alandan buyuk oldugu icin bu tam
+    // ekran rotalarin alt kismi adres cubugunun arkasinda kaliyordu.
+    return <div className="flex-1 flex flex-col overflow-hidden h-dvh w-full">{children}</div>
   }
 
   return (
@@ -89,9 +99,9 @@ export default function AppChrome({ children }: AppChromeProps) {
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}
       />
-      <div className="flex-1 flex flex-col overflow-hidden h-screen w-full min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden h-dvh w-full min-w-0">
         <Header onMenuClick={() => setMobileMenuOpen(true)} />
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-[calc(2rem+env(safe-area-inset-bottom))]">
           {/* Every page except the homepage gets a back button - added here
               once, in the shared shell, rather than duplicated per-page. */}
           {pathname !== "/" && (
@@ -103,7 +113,13 @@ export default function AppChrome({ children }: AppChromeProps) {
               Geri
             </button>
           )}
-          {children}
+          {/* key={pathname}: rota değişince React bu ağacı yeniden kurar,
+              böylece `page-enter` animasyonu her gezinmede yeniden çalışır.
+              Anahtar olmadan React aynı DOM düğümlerini yeniden kullanır ve
+              animasyon yalnızca ilk yüklemede bir kez oynardı. */}
+          <div key={pathname} className="page-enter">
+            {children}
+          </div>
           <Footer />
         </main>
       </div>

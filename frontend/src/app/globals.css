@@ -74,6 +74,27 @@
   /* BIP Accent Colors */
   --bull: 152 72% 45%; /* Emerald Green */
   --bear: 346.8 82% 58%; /* Rose Red */
+
+  /* --- Hareket sözlüğü ---------------------------------------------------
+     Süre ve yumuşatma eğrileri tek yerde tanımlanır ki uygulamanın her
+     yerinde aynı "his" olsun. Daha önce her bileşen kendi duration/easing
+     değerini seçiyordu (150/200/220/250/300ms karışık), bu da tek tek doğru
+     ama birlikte dağınık bir hareket dili üretiyordu. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);   /* varsayılan - keskin çıkış */
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);   /* uzun mesafeli giriş */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* geri tepmeli vurgu */
+  --dur-1: 140ms;  /* anlık geri bildirim: renk, opaklık */
+  --dur-2: 240ms;  /* varsayılan: hover, kayma, ölçek */
+  --dur-3: 420ms;  /* giriş animasyonları */
+
+  /* --- Yükseklik ölçeği ---------------------------------------------------
+     Koyu arayüzde gölge tek başına yeterli ayrım yapmıyor; her kademe bir
+     gölgeyle birlikte üstten çok ince bir ışık çizgisi (inset highlight)
+     taşır - yüzeyin kenarına düşen ışık. Fiziksel katman hissini kuran şey
+     gölgenin koyuluğu değil, bu çizgi. */
+  --elev-1: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.03) inset;
+  --elev-2: 0 6px 16px -8px rgb(0 0 0 / 0.6), 0 1px 0 0 rgb(255 255 255 / 0.045) inset;
+  --elev-3: 0 18px 44px -18px rgb(0 0 0 / 0.75), 0 1px 0 0 rgb(255 255 255 / 0.06) inset;
 }
 
 /* Custom Base Styles */
@@ -87,18 +108,45 @@ body {
 }
 
 /* Ambient aurora wash behind the whole app - fixed, non-interactive, and
-   very low opacity, so it reads as depth rather than decoration. */
+   very low opacity, so it reads as depth rather than decoration.
+
+   Üç lekeye çıkarıldı ama BİLEREK HAREKETSİZ.
+
+   Kısa süre sürükleniyordu; kaldırıldı. Sebep ölçüldü: bu uygulamada 21
+   öğe `backdrop-filter: blur()` kullanıyor (.glass ve türevleri). Bir
+   backdrop-filter, ARKASINDAKİ katman her değiştiğinde bulanıklığı
+   yeniden hesaplamak zorunda. Yani tam ekran bir arka planı animasyonlamak,
+   sayfadaki her cam kartı saniyede 60 kez yeniden bulanıklaştırmak demekti -
+   portföy sayfasında tek başına 12 kart.
+
+   iPhone'da bunun bedeli doğrudan görülüyordu: sürgü menü açılırken kare
+   düşüyor, menü "geç geliyormuş" gibi hissettiriyordu. Bir gradyanın algı
+   eşiğinin altında sürüklenmesi, o bedele değmez. */
 body::before {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: -20%;
   /* Behind every painted box, including the app's unpositioned page content -
      at z-index 0 this positioned pseudo-element would paint over it. */
-  z-index: -1;
+  z-index: -2;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 12% -10%, hsl(263 76% 58% / 0.10), transparent 60%),
-    radial-gradient(50rem 35rem at 105% 8%, hsl(190 80% 50% / 0.07), transparent 60%);
+    radial-gradient(60rem 40rem at 12% -10%, hsl(263 76% 58% / 0.11), transparent 60%),
+    radial-gradient(50rem 35rem at 105% 8%, hsl(190 80% 50% / 0.075), transparent 60%),
+    radial-gradient(45rem 32rem at 50% 108%, hsl(280 70% 55% / 0.055), transparent 62%);
+}
+
+/* İnce grain dokusu: düz radyal gradyanlar geniş ekranda gözle görülür
+   bantlanma (banding) yapıyordu. Çok düşük opaklıkta bir gürültü katmanı
+   bandları kırıyor ve yüzeye "kağıt" hissi veriyor. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Headings tighten up as they scale, the standard optical correction -
@@ -359,3 +407,314 @@ h1, h2, h3 {
   animation-play-state: paused;
 }
 
+
+/* ═════════════════════════════════════════════════════════════════════════
+   MODERN KATMAN
+   ─────────────────────────────────────────────────────────────────────────
+   Ölçüm (2026-08): uygulamanın hareket katmanı globals.css'te tanımlıydı
+   ama YALNIZCA /portfolio kullanıyordu - diğer 8 sayfada `stagger`,
+   `animate-rise`, `animate-pop` toplam 0 kez geçiyordu. Yani tasarım dili
+   yazılmış, uygulanmamıştı. Aşağıdaki blok o dili (a) tüm uygulamada
+   kullanılabilir hale getirecek kadar genişletiyor, (b) yüzey/etkileşim
+   tarafına birkaç modern katman ekliyor.
+
+   Kural: her efekt prefers-reduced-motion altında kapanır ve hiçbiri
+   layout'u (width/height/top/left) animasyonlamaz - yalnızca transform,
+   opacity ve renk. Bir finans terminalinde tablo satırının yeniden
+   yerleşmesi okumayı bozar.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* --- 1. Kademeli giriş, uzun listeler için -------------------------------
+   Mevcut `.stagger` 8 çocuktan sonra sabitleniyor; bu 4-6 kartlı ızgaralar
+   için doğru ama tarama sonuçları / haber listesi / fon listesi gibi 10-30
+   satırlık listelerde ilk 8 satır sırayla, kalan hepsi birden beliriyor -
+   göze "yarım kalmış animasyon" olarak çarpar.
+
+   `.stagger-list` bu yüzden ayrı: kademe adımı çok daha kısa (28ms) ve 14
+   öğede sonlanır. Uzun listede toplam bekleme 400ms'i geçmez. */
+.stagger-list > *              { animation: rise-in 0.34s var(--ease-out) both; }
+.stagger-list > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-list > *:nth-child(2) { animation-delay: 28ms; }
+.stagger-list > *:nth-child(3) { animation-delay: 56ms; }
+.stagger-list > *:nth-child(4) { animation-delay: 84ms; }
+.stagger-list > *:nth-child(5) { animation-delay: 112ms; }
+.stagger-list > *:nth-child(6) { animation-delay: 140ms; }
+.stagger-list > *:nth-child(7) { animation-delay: 168ms; }
+.stagger-list > *:nth-child(8) { animation-delay: 196ms; }
+.stagger-list > *:nth-child(9) { animation-delay: 224ms; }
+.stagger-list > *:nth-child(10){ animation-delay: 252ms; }
+.stagger-list > *:nth-child(11){ animation-delay: 280ms; }
+.stagger-list > *:nth-child(12){ animation-delay: 308ms; }
+.stagger-list > *:nth-child(13){ animation-delay: 336ms; }
+.stagger-list > *:nth-child(n+14) { animation-delay: 360ms; }
+
+/* --- 2. Sayfa geçişi -----------------------------------------------------
+   Rota değişiminde içerik tek karede takas oluyordu; kullanıcı "sayfa
+   değişti mi, yoksa aynı sayfa mı yeniden çizildi" ayrımını yapamıyordu.
+   Çok kısa (260ms) ve çok küçük mesafeli (6px) - gezinme animasyonu uzun
+   olursa uygulamayı yavaş hissettirir. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: page-in 0.26s var(--ease-expo) both; }
+
+/* --- 3. Kaydırma ile ortaya çıkma ----------------------------------------
+   Katlamanın altındaki bölümler için. `data-reveal` taşıyan öğe görünür
+   alana girdiğinde useReveal (lib/useReveal.ts) `is-visible` ekler.
+
+   Kritik: JS hiç çalışmazsa (hidrasyon hatası, script bloklandı) içerik
+   ERİŞİLMEZ olmamalı - bu yüzden gizleme yalnızca gözlemci kurulduktan
+   sonra, <html> üzerine eklenen `reveal-ready` sınıfıyla devreye girer.
+   O sınıf yoksa her şey normal şekilde görünür kalır. */
+.reveal-ready [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.5s var(--ease-expo), transform 0.5s var(--ease-expo);
+  will-change: opacity, transform;
+}
+.reveal-ready [data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* --- 3b. Kaydirmayla gelen izgaralarda kademeli giris --------------------
+   `data-reveal` ve `stagger` AYNI ogeye verilince calismaz - ve bu sessizce
+   yanlis calisir, hata vermez:
+
+     data-reveal kabi opacity:0 yapar
+       -> cocuklarin stagger animasyonu MOUNT aninda baslar
+       -> kap gorunur oldugunda animasyon coktan bitmistir
+       -> kartlar hep birlikte, kademesiz belirir
+
+   Burada animasyon kabin uzerine `.is-visible` gelene kadar hic baslamiyor;
+   kabin kendi kaydirma-donusumu de kapatiliyor (cocuklar zaten kayiyor,
+   ikisi ust uste binince mesafe iki katina cikiyordu). */
+.reveal-ready [data-reveal].stagger-reveal {
+  opacity: 1;
+  transform: none;
+}
+.reveal-ready [data-reveal].stagger-reveal > * { opacity: 0; }
+.reveal-ready [data-reveal].stagger-reveal.is-visible > * {
+  animation: rise-in 0.42s var(--ease-out) both;
+}
+.stagger-reveal.is-visible > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-reveal.is-visible > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-reveal.is-visible > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-reveal.is-visible > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-reveal.is-visible > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-reveal.is-visible > *:nth-child(n+6) { animation-delay: 280ms; }
+
+/* --- 4. Işık süpürme (sheen) ---------------------------------------------
+   İmleç kartın üstüne geldiğinde yüzeyde bir kez soldan sağa geçen ince
+   ışık. Cam/parlak yüzey metaforunu tamamlayan ayrıntı - `.glass` tek
+   başına statik bir bulanıklıktı, dokunulduğunda tepki vermiyordu. */
+.sheen { position: relative; overflow: hidden; isolation: isolate; }
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.07) 48%, transparent 62%);
+  transform: translateX(-120%);
+  transition: transform 0.75s var(--ease-expo);
+}
+.sheen:hover::after { transform: translateX(120%); }
+
+/* --- 5. İmleç takipli aydınlatma (spotlight) -----------------------------
+   Kartın üstünde imlecin bulunduğu noktada yumuşak bir aydınlanma.
+   --mx/--my değerlerini AppChrome'daki TEK bir pointermove dinleyicisi
+   yazar - kart başına dinleyici değil, çünkü 30 kartlı bir ızgarada 30
+   dinleyici kaydırma performansını düşürür. */
+.spotlight { position: relative; isolation: isolate; }
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--dur-2) ease;
+  background: radial-gradient(
+    18rem 18rem at var(--mx, 50%) var(--my, 50%),
+    hsl(var(--primary) / 0.13),
+    transparent 70%
+  );
+}
+.spotlight:hover::before { opacity: 1; }
+/* Kartın kendi içeriği aydınlatmanın üstünde kalmalı. */
+.spotlight > * { position: relative; z-index: 1; }
+
+/* --- 6. Gradyan saç teli kenarlık ----------------------------------------
+   Öne çıkan kartlar için: düz 1px kenarlık yerine üstten aydınlanıp aşağı
+   sönen bir kenar. Kartı "ışık yukarıdan geliyor" mantığına oturtur ve
+   sayfadaki diğer kartlardan renk kullanmadan ayırır. */
+.edge-lit {
+  position: relative;
+  background-clip: padding-box;
+  border: 1px solid transparent;
+}
+.edge-lit::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(160deg, hsl(var(--primary) / 0.5), hsl(var(--border) / 0.6) 40%, hsl(var(--border) / 0.25));
+  /* Maske ile içi oyuluyor, yalnızca kenarlık kalıyor. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+}
+
+/* --- 7. Basma tepkisi ----------------------------------------------------
+   Button.tsx'te `active:scale-[0.97]` zaten var; ancak uygulamadaki
+   tıklanabilir kartlar/satırlar <button> değil, bu yüzden dokunulduğunda
+   hiçbir şey olmuyordu. Dokunmatikte bu geri bildirimin yokluğu "bastım mı
+   acaba" tereddüdü yaratır. */
+.press { transition: transform var(--dur-1) var(--ease-out); }
+.press:active { transform: scale(0.985); }
+
+/* --- 8. Canlı veri göstergesi --------------------------------------------
+   Borsa açık / veri akıyor durumunu anlatan nabız noktası. Sabit yeşil bir
+   nokta "bağlı" der ama "canlı" demez; genişleyen halka farkı kuran şey. */
+@keyframes live-ping {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.live-dot { position: relative; display: inline-flex; }
+.live-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: live-ping 2s var(--ease-out) infinite;
+}
+
+/* --- 9. Işıltılı yükleme iskeleti ----------------------------------------
+   `animate-pulse` tüm kutuyu aynı anda soldurup açıyor - "donmuş" görünür.
+   Soldan sağa geçen ışıltı ise yön taşır: veri geliyor. */
+@keyframes skeleton-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: hsl(var(--muted) / 0.45);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.055), transparent);
+  animation: skeleton-sweep 1.5s ease-in-out infinite;
+}
+
+/* --- 10. Etkin gezinme göstergesi ----------------------------------------
+   Sürgü menüde etkin öğe yalnızca renk değiştiriyordu. Sol kenardaki dikey
+   çubuk, "neredeyim" sorusunu renk ayırt etmeden yanıtlar - renk körlüğü
+   için de önemli. Yükseklik animasyonu güvenli: öğe konumlanmış bir
+   sözde-öğe, komşularının yerleşimini etkilemiyor. */
+.nav-item { position: relative; }
+.nav-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: currentColor;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: height var(--dur-2) var(--ease-spring), opacity var(--dur-1) ease;
+}
+.nav-item[data-active="true"]::before { height: 60%; opacity: 1; }
+
+/* --- 11. Sekme / segment geçişi ------------------------------------------
+   Tabs.tsx'te etkin sekmenin arka planı anında yer değiştiriyor. Kısa bir
+   yumuşatma hangi sekmeden hangisine geçildiğini gösterir. */
+[role="tab"] {
+  transition: background-color var(--dur-2) var(--ease-out),
+              color var(--dur-1) ease,
+              box-shadow var(--dur-2) var(--ease-out);
+}
+
+/* --- 12. Sayı değişim vurgusu, satır düzeyinde ---------------------------
+   Mevcut .flash-up/.flash-down yalnızca metin rengini değiştiriyor. Arka
+   plana da çok kısa bir renk yıkaması eklemek, tablo içinde HANGİ satırın
+   güncellendiğini çevresel görüşle bile fark ettirir. */
+@keyframes row-flash-up   { 0% { background-color: hsl(var(--bull) / 0.14); } 100% { background-color: transparent; } }
+@keyframes row-flash-down { 0% { background-color: hsl(var(--bear) / 0.14); } 100% { background-color: transparent; } }
+.row-flash-up   { animation: row-flash-up 1.1s ease-out; }
+.row-flash-down { animation: row-flash-down 1.1s ease-out; }
+
+/* --- 13. Yumuşatılmış kaydırma çubuğu ------------------------------------
+   Dosyanın üst kısmındaki --muted temelli kural gövde renginde kalıyordu;
+   yarı saydam bir başparmak koyu zeminde daha az dikkat çeker ve yalnızca
+   üstüne gelindiğinde belirginleşir. */
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 999px;
+  transition: background var(--dur-1) ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+::-webkit-scrollbar-corner { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent; }
+
+/* --- 14. Yüzen ışık lekeleri (giriş / boş durum ekranları) ---------------
+   Giriş ekranı gibi tek kartlı, içeriği az sayfalarda arka plandaki blur
+   lekeleri tamamen sabitti - ekran "yüklendi ve dondu" gibi duruyordu. Çok
+   yavaş (18-24sn) ve küçük genlikli bir sürüklenme, sayfayı canlı tutarken
+   forma odaklanmayı bozmuyor. İki leke farklı süre/yönde: eşit hızda
+   olsalardı tek bir blok gibi kayarlardı. */
+@keyframes blob-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(6%, 8%, 0) scale(1.12); }
+}
+@keyframes blob-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.08); }
+  50%      { transform: translate3d(-7%, -6%, 0) scale(1); }
+}
+/* Yalnizca genis + hassas isaretleyicili ekranlarda. Telefonda giris karti
+   (.glass) bu lekelerin tam ustunde duruyor ve her kare blur'unu yeniden
+   hesaplardi; giris ekrani, uygulamanin ilk izlenimi olarak takilmamali. */
+@media (min-width: 1024px) and (pointer: fine) {
+  .blob-a { animation: blob-a 18s ease-in-out infinite; }
+  .blob-b { animation: blob-b 24s ease-in-out infinite; }
+}
+
+/* --- 14. Hareket duyarlılığı --------------------------------------------
+   Yukarıdaki her şeyin kapatıldığı tek yer. `animation: none` tek başına
+   yetmez - `.reveal-ready [data-reveal]` opaklığı 0'da BIRAKIR ve içerik
+   hiç görünmez; bu yüzden görünürlük açıkça geri veriliyor. */
+@media (prefers-reduced-motion: reduce) {
+  .stagger-list > *, .page-enter,
+  .live-dot::before, .skeleton::after,
+  .row-flash-up, .row-flash-down,
+  .blob-a, .blob-b {
+    animation: none !important;
+  }
+  .reveal-ready [data-reveal],
+  .reveal-ready [data-reveal].is-visible,
+  .reveal-ready [data-reveal].stagger-reveal > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .reveal-ready [data-reveal].stagger-reveal.is-visible > * { animation: none !important; }
+  .sheen::after { display: none; }
+  .spotlight::before { display: none; }
+  .press:active { transform: none; }
+  .nav-item::before { transition: none; }
+}

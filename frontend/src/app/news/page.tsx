@@ -1,12 +1,13 @@
 "use client"
 
 import React, { useEffect, useState, useCallback, useMemo } from "react"
-import { Newspaper, RefreshCw, Sparkles, ExternalLink, Gift, ChevronDown, ChevronUp, Loader2, Info } from "lucide-react"
+import { Newspaper, RefreshCw, Sparkles, ExternalLink, Gift, ChevronDown, Loader2, Info } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { authFetch } from "@/lib/auth"
 import { pollWhileVisible } from "@/lib/usePolling"
+import { fetchWatchlist } from "@/lib/watchlist"
 
 interface NewsItem {
   title: string
@@ -86,9 +87,12 @@ export default function EconomyNewsPage() {
     }
   }, [])
 
+  // Favoriler sunucudan okunuyor, localStorage'dan DEGIL. Ayrintili gerekce
+  // lib/watchlist.ts'te: /screener favorileri sunucuya tasiyip yerel anahtari
+  // siliyor, dolayisiyla burada localStorage okumak bir kez /screener'a
+  // ugramis her kullanicida bos liste donduruyordu.
   useEffect(() => {
-    const saved = localStorage.getItem("favorites_stocks")
-    if (saved) setFavorites(JSON.parse(saved))
+    fetchWatchlist().then(setFavorites)
   }, [])
 
   useEffect(() => {
@@ -120,13 +124,13 @@ export default function EconomyNewsPage() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-6 animate-rise">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
-            <Newspaper className="h-7 w-7 text-primary mr-3 animate-pulse" />
+          <h1 className="t-display flex items-center">
+            <Newspaper className="h-7 w-7 text-primary mr-3" />
             Ekonomi Haberleri
           </h1>
-          <p className="text-muted-foreground mt-1.5">
+          <p className="t-caption mt-1.5">
             Anadolu Ajansı, Habertürk Ekonomi ve KAP bildirimlerinden gerçek zamanlı akış - KAP duyuruları yapay zekâ ile analiz edilir.
           </p>
         </div>
@@ -148,13 +152,13 @@ export default function EconomyNewsPage() {
           <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold w-fit">
             <button
               onClick={() => setTab("news")}
-              className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "news" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "news" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               Piyasa Haberleri
             </button>
             <button
               onClick={() => setTab("kap")}
-              className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "kap" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "kap" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               KAP Bildirimleri
             </button>
@@ -173,7 +177,7 @@ export default function EconomyNewsPage() {
                     <span className="text-xs font-bold">Haber bulunamadı</span>
                   </div>
                 ) : (
-                  <div className="divide-y divide-border/40">
+                  <div className="divide-y divide-border/40 stagger-list">
                     {news.map((n, i) => (
                       <a
                         key={`${n.link}-${i}`}
@@ -241,7 +245,7 @@ export default function EconomyNewsPage() {
                       <span className="text-xs font-bold">Bildirim bulunamadı</span>
                     </div>
                   ) : (
-                    <div className="divide-y divide-border/40">
+                    <div className="divide-y divide-border/40 stagger-list">
                       {filteredKap.map(k => {
                         const isExpanded = expandedKap === k.id
                         return (
@@ -261,14 +265,14 @@ export default function EconomyNewsPage() {
                                 </div>
                                 <span className="text-[10px] text-muted-foreground shrink-0 flex items-center gap-2">
                                   {k.time}
-                                  {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                  <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`} />
                                 </span>
                               </div>
                               <div className="text-sm font-bold text-foreground leading-snug">{k.title}</div>
                               <p className={`text-xs text-muted-foreground leading-relaxed ${isExpanded ? "" : "line-clamp-2"}`}>{k.summary}</p>
                             </button>
                             {isExpanded && (
-                              <div className="px-5 pb-4 bg-secondary/10">
+                              <div className="px-5 pb-4 bg-secondary/10 animate-rise">
                                 <a
                                   href={k.link}
                                   target="_blank"
@@ -294,7 +298,7 @@ export default function EconomyNewsPage() {
         <div className="space-y-8">
           <Card glass={true} className="border-zinc-800 bg-zinc-950/10">
             <CardHeader>
-              <CardTitle className="text-base uppercase tracking-wider text-muted-foreground font-black">
+              <CardTitle className="t-section uppercase tracking-wider text-muted-foreground font-black">
                 Ekonomi Takvimi
               </CardTitle>
               <CardDescription>Piyasa üzerinde etkili olacak kritik açıklamalar (canlı, TradingView)</CardDescription>

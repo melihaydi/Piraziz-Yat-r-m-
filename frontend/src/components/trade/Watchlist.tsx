@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Search, Star, TrendingUp, TrendingDown, PanelLeftClose, ListFilter } from "lucide-react"
 import { useTrade, WatchlistItem, InstrumentType } from "@/contexts/TradeContext"
 import { TickerLogo } from "@/components/ui/TickerLogo"
+import { fetchWatchlist, setWatchlistEntry } from "@/lib/watchlist"
 
 interface WatchlistProps {
   onCollapse?: () => void
@@ -27,6 +28,32 @@ const WatchlistRow = React.memo(function WatchlistRow({
   item, activeTab, isSelected, isFav, onSelect, onToggleFavorite,
 }: WatchlistRowProps) {
   const isUp = item.change_percent >= 0
+
+  // --- Tik yonu vurgusu --------------------------------------------------
+  // Bir alim-satim terminalinde "fiyat degisti" bilgisi rakami okumadan,
+  // cevresel gorusle alinabilmeli - bant (tape) boyle izlenir. globals.css
+  // bunun icin flash-up/flash-down'i zaten tanimliyordu ama uygulamada
+  // hicbir yerde kullanilmiyordu.
+  //
+  // Gunluk degisim yuzdesi (change_percent) bu isi goremez: o, ONCEKI KAPANISA
+  // gore yon. Burada gereken SON TIKE gore yon - fiyat gun boyu eksideyken de
+  // yukari tikleyebilir.
+  //
+  // Efekt yerine render sirasinda state ayarlaniyor: React'in "prop
+  // degistiginde state'i ayarla" kalibi. useEffect kullanmak bu projedeki
+  // react-hooks/set-state-in-effect kuralini ihlal ederdi ve iki kere render
+  // gerektirirdi.
+  const [prevPrice, setPrevPrice] = useState(item.price)
+  const [flash, setFlash] = useState<{ dir: "up" | "down"; seq: number } | null>(null)
+  if (item.price !== prevPrice) {
+    setPrevPrice(item.price)
+    // 0 fiyat "veri yok" demek - ilk gercek fiyat geldiginde bunu yukari
+    // tik sayip tum listeyi yesile boyamak yanlis bilgi olurdu.
+    if (prevPrice > 0 && item.price > 0) {
+      setFlash({ dir: item.price > prevPrice ? "up" : "down", seq: (flash?.seq ?? 0) + 1 })
+    }
+  }
+
   return (
     <button
       onClick={() => onSelect(item.symbol)}
@@ -53,7 +80,10 @@ const WatchlistRow = React.memo(function WatchlistRow({
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="text-xs font-semibold text-white">
+        <div
+          key={flash?.seq ?? 0}
+          className={`text-xs font-semibold text-white ${flash ? (flash.dir === "up" ? "flash-up" : "flash-down") : ""}`}
+        >
           {item.price > 0 ? item.price.toFixed(2) : "-"}
         </div>
         <div className={`text-[10px] font-bold flex items-center justify-end ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
@@ -80,16 +110,29 @@ export default function Watchlist({ onCollapse }: WatchlistProps) {
 
   const list = activeTab === "stock" ? watchlist : viopWatchlist
 
+  // Favoriler sunucuda tutuluyor, localStorage'da DEGIL. Gerekce
+  // lib/watchlist.ts'te ayrintili: bu panel localStorage'a yaziyordu, oysa
+  // /screener ayni favorileri sunucuda tutup yerel anahtari siliyor. Sonuc,
+  // iki yonlu bozuk bir eslesmeydi - burada yildizlanan hisse taramada
+  // gorunmuyor, taramada yildizlanan burada gorunmuyordu.
   useEffect(() => {
-    const saved = localStorage.getItem("favorites_stocks")
-    if (saved) setFavorites(JSON.parse(saved))
+    fetchWatchlist().then(setFavorites)
   }, [])
 
   const toggleFavorite = (symbol: string) => {
     setFavorites(prev => {
-      const updated = prev.includes(symbol) ? prev.filter(s => s !== symbol) : [...prev, symbol]
-      localStorage.setItem("favorites_stocks", JSON.stringify(updated))
-      return updated
+      const isRemoving = prev.includes(symbol)
+      // Iyimser guncelleme: yildiz aninda dolsun, sunucu istegi arkada
+      // tamamlansin, basarisiz olursa geri alinsin. /screener'daki
+      // toggleFavorite ile ayni davranis.
+      setWatchlistEntry(symbol, !isRemoving).then(ok => {
+        if (!ok) {
+          setFavorites(current =>
+            isRemoving ? [...current, symbol] : current.filter(s => s !== symbol),
+          )
+        }
+      })
+      return isRemoving ? prev.filter(s => s !== symbol) : [...prev, symbol]
     })
   }
 

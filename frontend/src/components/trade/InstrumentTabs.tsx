@@ -17,7 +17,7 @@ export default function InstrumentTabs() {
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
-          className={`px-4 h-8 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+          className={`press px-4 h-8 rounded-md text-xs font-bold transition-colors cursor-pointer ${
             activeTab === tab.id
               ? "bg-white text-[#101015]"
               : "text-slate-400 hover:text-white"

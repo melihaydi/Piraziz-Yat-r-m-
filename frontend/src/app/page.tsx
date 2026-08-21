@@ -18,7 +18,6 @@ import {
   Loader2,
   Calendar,
   Star,
-  Activity,
   User,
   ShieldCheck,
   CheckCircle2,
@@ -36,6 +35,7 @@ import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
+import { fetchWatchlist } from "@/lib/watchlist"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
 // Fallback index chart points in case of connection limits
@@ -148,11 +148,20 @@ export default function Home() {
 
     // 4. Fetch details for favorites (Request 12 & 16!)
     const loadFavorites = async () => {
-      const favStocksStr = localStorage.getItem("favorites_stocks")
+      // Hisse favorileri sunucuda (bkz. lib/watchlist.ts) - localStorage'daki
+      // "favorites_stocks" anahtarini /screener goc sonrasi siliyor, yani
+      // burada onu okumak bir kez taramaya ugramis kullanicida kartI bosaltiyordu.
+      const favStockTickers = await fetchWatchlist()
+      // Fon favorileri hala localStorage'da ve bu tutarli: fonlarin sunucu
+      // tarafinda bir izleme listesi ucu yok.
       const favFundsStr = localStorage.getItem("favorites_funds")
-      
-      const favStockTickers = favStocksStr ? JSON.parse(favStocksStr) : []
-      const favFundCodes = favFundsStr ? JSON.parse(favFundsStr) : []
+      let favFundCodes: string[] = []
+      try {
+        const parsed = favFundsStr ? JSON.parse(favFundsStr) : []
+        if (Array.isArray(parsed)) favFundCodes = parsed
+      } catch {
+        // Bozuk yerel veri favori kartini cokertmesin.
+      }
 
       if (favStockTickers.length > 0) {
         try {
@@ -233,14 +242,18 @@ export default function Home() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Welcome & AI Summary Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-rise">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">BIP Terminal</h1>
-          <p className="text-muted-foreground mt-1">TradingView canlı verileri ve yapay zekâ destekli analiz terminali.</p>
+          <h1 className="t-display">BIP Terminal</h1>
+          <p className="t-caption mt-1.5">TradingView canlı verileri ve yapay zekâ destekli analiz terminali.</p>
         </div>
         <div className="flex items-center space-x-3">
-          <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold px-3 py-1.5 rounded-full flex items-center">
-            <Activity className="h-3.5 w-3.5 mr-1.5 animate-pulse" />
+          <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold px-3 py-1.5 rounded-full flex items-center gap-2">
+            {/* Nabız noktası, dönen `animate-pulse` ikondan farklı bir şey
+                söylüyor: ikonun solup açılması "bir şey yükleniyor" diye de
+                okunabiliyordu. Genişleyip sönen halka ise yayın metaforu -
+                seans açık, veri akıyor. */}
+            <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-400 text-emerald-400" />
             Canlı Seans Aktif
           </span>
         </div>
@@ -256,7 +269,7 @@ export default function Home() {
           <Card glass={true}>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
-                <CardTitle className="text-lg">{indexDetails.title}</CardTitle>
+                <CardTitle className="t-section">{indexDetails.title}</CardTitle>
                 <CardDescription>Günlük Fiyat Gelişimi ve Hacim Trendi</CardDescription>
               </div>
               <div className="text-right">
@@ -342,9 +355,9 @@ export default function Home() {
 
           {/* Popüler Fonlar - Anlık Getiri (moved here from /funds page, same
               live-estimate endpoint and disclaimer text). */}
-          <Card glass={true} className="border-amber-500/20">
+          <Card glass={true} sheen className="border-amber-500/20" data-reveal>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Zap className="h-5 w-5 mr-2 text-amber-400" />
                 Popüler Fonlar - Anlık Getiri
               </CardTitle>
@@ -364,14 +377,14 @@ export default function Home() {
               ) : popularFunds.length === 0 ? (
                 <p className="text-center text-xs text-muted-foreground py-6">Veri alınamadı.</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 stagger">
                   {popularFunds.map(f => {
                     const isUp = f.estimated_change_pct >= 0
                     return (
                       <div
                         key={f.code}
                         onClick={() => router.push(`/funds?code=${f.code}`)}
-                        className="border border-border/40 rounded-xl bg-secondary/10 p-3 cursor-pointer hover:bg-secondary/20 transition-colors"
+                        className="border border-border/40 rounded-xl bg-secondary/10 p-3 cursor-pointer hover:bg-secondary/20 hover:border-amber-500/30 transition-colors lift press"
                       >
                         <div className="flex items-center justify-between">
                           <span className="bg-amber-500 text-amber-950 font-black px-2 py-0.5 rounded text-xs">
@@ -400,10 +413,10 @@ export default function Home() {
 
           {/* Ekonomi haberleri akışı - just the newest few headlines, sitting
               directly under the funds card. The full list lives at /news. */}
-          <Card glass={true} className="border-purple-500/20">
+          <Card glass={true} sheen className="border-purple-500/20" data-reveal>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-lg flex items-center">
+                <CardTitle className="t-section flex items-center">
                   <Newspaper className="h-5 w-5 mr-2 text-purple-400" />
                   Ekonomi Haberleri
                 </CardTitle>
@@ -460,7 +473,7 @@ export default function Home() {
           {/* Favorites Widget (Request 12 & 16!) */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-base flex items-center">
+              <CardTitle className="t-section flex items-center">
                 <Star className="h-4.5 w-4.5 text-amber-400 mr-2 fill-amber-400" />
                 Favori Varlıklar
               </CardTitle>
@@ -526,7 +539,7 @@ export default function Home() {
               hardcoded 3-event array that never changed). Moved up (was
               below the sentiment gauge, now removed) and shrunk a bit -
               this card doesn't need to be as tall as the market chart. */}
-          <Card glass={true} className="border-purple-500/15 hover:border-purple-500/30 transition-colors duration-300">
+          <Card glass={true} className="border-purple-500/15 hover:border-purple-500/30 transition-colors duration-300" data-reveal>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-purple-400">
                 <Calendar className="h-4.5 w-4.5 text-purple-400 mr-2 animate-pulse" />
@@ -543,9 +556,9 @@ export default function Home() {
               Real live quotes for BIST's 5 headline indices (see
               /screener/market-summary), not sector averages computed from
               the tracked-ticker sample. */}
-          <Card glass={true}>
+          <Card glass={true} data-reveal>
             <CardHeader>
-              <CardTitle className="text-base">Endeks Performansları</CardTitle>
+              <CardTitle className="t-section">Endeks Performansları</CardTitle>
               <CardDescription>BIST endekslerinin günlük değişimi</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
