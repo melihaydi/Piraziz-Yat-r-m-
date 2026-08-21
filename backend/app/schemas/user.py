@@ -19,6 +19,20 @@ class UserUpdate(UserBase):
     password: Optional[str] = None
 
 class UserInDBBase(UserBase):
+    # Deliberately widened from UserBase's EmailStr to a plain str: this is
+    # the OUTBOUND side, and the value always comes from our own DB, so
+    # re-validating it buys nothing - but it can (and did) break. Account
+    # deletion anonymizes the address to "deleted-user-{id}@bipterminal.local"
+    # (see admin_delete_user / delete_my_account), and .local is an IANA
+    # special-use TLD that email-validator refuses. With EmailStr here, every
+    # such row failed response serialization, so GET /admin/users returned a
+    # 500 once a single account had ever been deleted - and because that 500
+    # is an unhandled exception it carries no CORS headers, so the browser
+    # blocked it and fetch() threw, which the admin pages surfaced as
+    # "Sunucuya ulaşılamadı" / "Bu sayfaya erişim yetkiniz yok".
+    # UserCreate/UserUpdate still inherit EmailStr from UserBase, so incoming
+    # addresses are validated exactly as before.
+    email: str
     id: int
     is_superuser: bool
     totp_enabled: bool = False

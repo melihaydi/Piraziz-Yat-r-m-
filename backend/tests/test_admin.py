@@ -167,3 +167,20 @@ def test_admin_can_delete_a_plain_account(client, admin_headers, plain_headers, 
     # 401 - "Inactive user").
     res2 = client.get("/api/v1/auth/me", headers=plain_headers)
     assert res2.status_code == 400
+
+
+def test_listing_users_still_works_after_a_deletion(client, admin_headers, plain_headers, db):
+    """Regression: deletion rewrites the address to
+    "deleted-user-{id}@bipterminal.local", and .local is an IANA special-use
+    TLD that email-validator rejects. While UserOut typed email as EmailStr,
+    that row broke response serialization and this endpoint returned 500 -
+    so the whole admin panel went dark as soon as any one account had ever
+    been deleted. The listing must survive its own anonymized rows."""
+    target = db.query(User).filter(User.email == "plainuser@example.com").first()
+    target_id = target.id
+    assert client.delete(f"/api/v1/admin/users/{target_id}", headers=admin_headers).status_code == 200
+
+    res = client.get("/api/v1/admin/users", headers=admin_headers)
+    assert res.status_code == 200
+    emails = {u["email"] for u in res.json()}
+    assert f"deleted-user-{target_id}@bipterminal.local" in emails
