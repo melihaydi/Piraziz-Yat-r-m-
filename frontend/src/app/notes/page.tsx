@@ -157,13 +157,13 @@ export default function NotesPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-start justify-between gap-4 flex-wrap animate-rise">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
+          <h1 className="t-display flex items-center">
             <StickyNote className="h-7 w-7 text-pink-400 mr-3" />
             Notlarım
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="t-caption mt-1.5">
             Hisseler, fonlar veya aklınıza takılan her şey hakkında kişisel notlarınızı burada tutun.
           </p>
         </div>
@@ -216,14 +216,14 @@ export default function NotesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="columns-1 sm:columns-2 xl:columns-3 gap-4 [column-fill:_balance]">
+        <div className="columns-1 sm:columns-2 xl:columns-3 gap-4 [column-fill:_balance] stagger-list">
           {filtered.map(n => {
             const c = COLORS[n.color] || COLORS.amber
             return (
               <div
                 key={n.id}
                 onClick={() => openEditNote(n)}
-                className={`break-inside-avoid mb-4 rounded-xl border ${c.border} ${c.wash} p-4 cursor-pointer group transition-all hover:shadow-lg hover:-translate-y-0.5`}
+                className={`break-inside-avoid mb-4 rounded-xl border ${c.border} ${c.wash} p-4 cursor-pointer group transition-all hover:shadow-[var(--elev-3)] hover:-translate-y-0.5 press sheen`}
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">

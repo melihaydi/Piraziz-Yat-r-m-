@@ -36,7 +36,7 @@ export default function TradePage() {
   // with no explanation.
   if (accessDenied) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 min-h-screen bg-[#101015] text-center px-6">
+      <div className="flex flex-col items-center justify-center gap-3 min-h-dvh bg-[#101015] text-center px-6">
         <Lock className="h-8 w-8 text-cyan-400" />
         <span className="text-sm font-bold text-white">Trade modülü Premium üyelik gerektirir</span>
         <span className="text-xs text-zinc-400 max-w-sm">
@@ -54,7 +54,7 @@ export default function TradePage() {
   // brief auto-provisioning window with the same spinner.
   if (loading || !account) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#101015]">
+      <div className="flex items-center justify-center min-h-dvh bg-[#101015]">
         <Loader2 className="h-8 w-8 text-white animate-spin" />
       </div>
     )
@@ -91,7 +91,7 @@ export default function TradePage() {
   const chartColSpan = watchlistCollapsed ? "xl:col-span-9" : "xl:col-span-6"
 
   return (
-    <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#101015] overflow-y-auto" : "min-h-screen bg-[#101015]"}>
+    <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#101015] overflow-y-auto" : "min-h-dvh bg-[#101015]"}>
       {/* Terminal chrome - replaces the app's global Header for this route,
        * so it carries its own brand mark + a way back to the main app. */}
       {/* Same safe-area reasoning as the global Header.tsx - this route skips
@@ -112,7 +112,7 @@ export default function TradePage() {
               </Link>
             )}
             <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+              <span className="live-dot h-2 w-2 rounded-full bg-white text-white" />
               Trade
             </h1>
             <button
@@ -137,14 +137,14 @@ export default function TradePage() {
             <button
               onClick={() => setIsFullscreen(v => !v)}
               title={isFullscreen ? "Tam ekrandan çık" : "Tam ekran"}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-white/30 hover:text-white transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-white/30 hover:text-white transition-colors cursor-pointer press"
             >
               {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
             {!isFullscreen && (
               <button
                 onClick={() => setShowSettings(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-white/30 hover:text-white transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-slate-800 text-slate-400 hover:border-white/30 hover:text-white transition-colors cursor-pointer press"
               >
                 <Settings className="h-4 w-4" />
               </button>
@@ -157,13 +157,13 @@ export default function TradePage() {
         <AccountSummaryBar />
 
         {/* Main 3-column terminal layout */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 animate-fade">
           {watchlistCollapsed ? (
             <div className="hidden xl:flex xl:col-span-1 items-start">
               <button
                 onClick={() => setWatchlistCollapsed(false)}
                 title="Listeyi aç"
-                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-[#16171E] text-slate-500 hover:text-white hover:border-white/30 transition-colors cursor-pointer"
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-slate-800 bg-[#16171E] text-slate-500 hover:text-white hover:border-white/30 transition-colors cursor-pointer press"
               >
                 <PanelLeftOpen className="h-4 w-4" />
               </button>

@@ -261,14 +261,14 @@ export default function AdminPage() {
           <ShieldCheck className="h-7 w-7 text-red-400" />
           Yönetim Paneli
         </h1>
-        <p className="text-muted-foreground mt-1">Kayıtlı kullanıcıların üyelik seviyesini ve hesap durumunu yönetin.</p>
+        <p className="t-caption mt-1.5">Kayıtlı kullanıcıların üyelik seviyesini ve hesap durumunu yönetin.</p>
       </div>
 
       <Card glass={true}>
         <CardHeader>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <CardTitle className="text-lg">
+              <CardTitle className="t-section">
                 Kullanıcılar ({filteredUsers.length}{filteredUsers.length !== users.length ? ` / ${users.length}` : ""})
               </CardTitle>
               <CardDescription>Gerçek bir ödeme entegrasyonu olmadığı için üyelik seviyesi burada manuel atanır.</CardDescription>
@@ -392,7 +392,7 @@ export default function AdminPage() {
 
       <Card glass={true}>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="t-section flex items-center gap-2">
             <LifeBuoy className="h-5 w-5 text-primary" />
             Destek Talepleri ({tickets.filter(t => t.status === "open").length} açık)
           </CardTitle>

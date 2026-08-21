@@ -196,7 +196,7 @@ export default function FundCompositionsPage() {
           <PieChart className="h-7 w-7 text-emerald-400" />
           Fon Ağırlık Ayarlamaları
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="t-caption mt-1.5">
           &quot;Popüler Fonlar - Anlık Getiri&quot; tahmininde kullanılan varlık ağırlıklarını buradan güncelleyin -
           kaydettiğiniz an devreye girer, kod değişikliği veya yeniden dağıtım gerekmez.
         </p>
@@ -262,7 +262,7 @@ export default function FundCompositionsPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <CardTitle className="text-lg flex items-center gap-2">
+                      <CardTitle className="t-section flex items-center gap-2">
                         {selected.fund_code}
                         {selected.is_override ? (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase">

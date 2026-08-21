@@ -314,8 +314,13 @@ export default function StrategyPage() {
 
   useEffect(() => {
     if (!backtestComputing) return
-    const interval = setInterval(fetchBacktest, 5000)
-    return () => clearInterval(interval)
+    // pollWhileVisible, duz setInterval DEGIL. Bu, usePolling.ts'in tam da
+    // cozmek icin yazildigi durumun atlanmis tek cagri yeriydi: backtest
+    // hesaplanirken kullanici baska sekmeye gecerse (hesaplama dakikalarca
+    // surebiliyor) tarayici bu araligi atmaya devam ediyordu - hicbiri
+    // ekrana cizilmeyen, 5 saniyede bir istek. Dosyadaki diger her poll
+    // zaten bu yardimciyi kullaniyor.
+    return pollWhileVisible(fetchBacktest, 5000)
   }, [backtestComputing, fetchBacktest])
 
   const filteredBacktest = useMemo(() => {
@@ -347,13 +352,16 @@ export default function StrategyPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3 animate-rise">
         <div className="flex items-center gap-3">
           <div className="h-11 w-11 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center shrink-0">
             <Bot className="h-5 w-5 text-amber-400" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tight text-foreground">Frantic Algoritmik Strateji</h1>
+            <h1 className="text-xl font-black tracking-tight text-foreground flex items-center gap-2">
+              Frantic Algoritmik Strateji
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-amber-400 text-amber-400" />
+            </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               Piyasa yapısı, kırılım-retest dinamikleri, mum formasyonları ve momentum teyitlerini harmanlayan BIST30 tabanlı profesyonel sinyal motoru.
 
@@ -382,19 +390,19 @@ export default function StrategyPage() {
       <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold w-fit">
         <button
           onClick={() => setTab("live")}
-          className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "live" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "live" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
         >
           Canlı Tarama
         </button>
         <button
           onClick={() => setTab("history")}
-          className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "history" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "history" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
         >
           Sinyal Geçmişi{history.length > 0 ? ` (${history.length})` : ""}
         </button>
         <button
           onClick={() => setTab("backtest")}
-          className={`px-4 h-8 rounded-md transition-colors cursor-pointer ${tab === "backtest" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "backtest" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
         >
           Backtest
         </button>
@@ -403,8 +411,8 @@ export default function StrategyPage() {
       {tab === "live" && (
       <>
       {/* Stat strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-border bg-card p-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 stagger">
+        <div className="rounded-xl border border-border bg-card p-3 lift">
           <div className="text-[10px] font-bold text-muted-foreground uppercase">Taranan</div>
           <div className="text-lg font-black text-foreground">{signals.length || "-"}</div>
         </div>

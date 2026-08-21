@@ -242,13 +242,13 @@ export default function StockDetailPage() {
       </div>
 
       {/* Header Info */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-rise">
         <div>
           <div className="flex items-center space-x-3">
             <TickerLogo ticker={ticker} size={32} />
-            <h1 className="text-3xl font-extrabold tracking-tight">{stockDetails.name}</h1>
+            <h1 className="t-display">{stockDetails.name}</h1>
           </div>
-          <p className="text-muted-foreground mt-1.5 flex items-center text-sm">
+          <p className="t-caption mt-1.5 flex items-center">
             {ticker} · {stockDetails.sector} Sektörü • BIST Canlı Veri Motoru
           </p>
         </div>
@@ -376,7 +376,7 @@ export default function StockDetailPage() {
           <Card glass={true}>
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 gap-4">
               <div>
-                <CardTitle className="text-base flex items-center">
+                <CardTitle className="t-section flex items-center">
                   <TrendingUp className="h-4 w-4 mr-2 text-primary" />
                   TradingView Canlı Grafik
                 </CardTitle>
@@ -431,26 +431,26 @@ export default function StockDetailPage() {
           </Card>
 
           {/* Quick Ratios Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card glass={true} className="text-center py-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 stagger-reveal" data-reveal>
+            <Card glass={true} spotlight className="text-center py-4">
               <span className="text-xs text-muted-foreground font-semibold">F/K (PE)</span>
               <p className="text-2xl font-black font-mono mt-1">
                 {stockDetails.pe > 0 ? stockDetails.pe.toFixed(1) : "-"}
               </p>
             </Card>
-            <Card glass={true} className="text-center py-4">
+            <Card glass={true} spotlight className="text-center py-4">
               <span className="text-xs text-muted-foreground font-semibold">Hisse Başı Kazanç (EPS)</span>
               <p className="text-2xl font-black font-mono mt-1">
                 {stockDetails.eps > 0 ? `₺${stockDetails.eps.toFixed(2)}` : "-"}
               </p>
             </Card>
-            <Card glass={true} className="text-center py-4">
+            <Card glass={true} spotlight className="text-center py-4">
               <span className="text-xs text-muted-foreground font-semibold">Piyasa Değeri</span>
               <p className="text-2xl font-black font-mono text-purple-400 mt-1">
                 {stockDetails.market_cap > 0 ? `₺${(stockDetails.market_cap / 1e9).toFixed(1)}B` : "-"}
               </p>
             </Card>
-            <Card glass={true} className="text-center py-4">
+            <Card glass={true} spotlight className="text-center py-4">
               <span className="text-xs text-muted-foreground font-semibold">Alış / Satış</span>
               <p className="text-sm font-black font-mono mt-2.5">
                 {stockDetails.bid > 0 ? `₺${stockDetails.bid.toFixed(2)}` : "-"} / {stockDetails.ask > 0 ? `₺${stockDetails.ask.toFixed(2)}` : "-"}
@@ -464,7 +464,7 @@ export default function StockDetailPage() {
           <Card glass={true} className="h-full">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center">
+                <CardTitle className="t-section flex items-center">
                   <Sparkles className="h-4 w-4 mr-2 text-primary" />
                   BIP AI Skor Dökümü
                 </CardTitle>
@@ -541,7 +541,7 @@ export default function StockDetailPage() {
       {/* AI Analysis Commentary Card */}
       <Card glass={true}>
         <CardHeader>
-          <CardTitle className="text-base flex items-center">
+          <CardTitle className="t-section flex items-center">
             <FileText className="h-4 w-4 mr-2 text-primary" />
             Yapay Zekâ Temel Analiz Raporu
           </CardTitle>

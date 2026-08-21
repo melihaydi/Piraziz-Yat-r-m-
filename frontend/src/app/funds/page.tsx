@@ -197,9 +197,18 @@ export default function FundsPage() {
 
   // Load favorites from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("favorites_funds")
-    if (saved) {
-      setFavorites(JSON.parse(saved))
+    // try/catch + Array.isArray: JSON.parse burada KORUMASIZDI. Bozuk ya da
+    // beklenmedik bicimde bir deger (eski surumden kalma, elle duzenlenmis,
+    // yarim yazilmis) sayfayi acilista tamamen cokertirdi - ustelik
+    // kullanicinin kendi kendine duzeltemeyecegi bir sekilde, cunku hata her
+    // yuklemede tekrarlanirdi. Dizi olmayan bir deger de `.includes`
+    // cagrilarinda patlardi.
+    try {
+      const saved = localStorage.getItem("favorites_funds")
+      const parsed = saved ? JSON.parse(saved) : []
+      if (Array.isArray(parsed)) setFavorites(parsed)
+    } catch {
+      // Bozuk yerel veri sayfayi engellemesin - favorisiz devam edilir.
     }
   }, [])
 
@@ -359,12 +368,12 @@ export default function FundsPage() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Title */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight flex items-center">
-          <Coins className="h-7 w-7 text-emerald-400 mr-3 animate-pulse" />
+      <div className="animate-rise">
+        <h1 className="t-display flex items-center">
+          <Coins className="h-7 w-7 text-emerald-400 mr-3" />
           TEFAS Fon Takip Terminali
         </h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="t-caption mt-1.5">
           Yapay zekâ ve canlı BİST entegrasyonuyla TEFAS yatırım fonlarını süzün, grafiklerini ve getirilerini izleyin.
         </p>
       </div>
@@ -390,12 +399,12 @@ export default function FundsPage() {
           ) : popularFunds.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">Veri alınamadı.</div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 stagger">
               {popularFunds.map(f => {
                 const isUp = f.estimated_change_pct >= 0
                 const isExpanded = expandedPopularCodes.has(f.code)
                 return (
-                  <div key={f.code} className="border border-border/40 rounded-xl bg-secondary/10 overflow-hidden">
+                  <div key={f.code} className="border border-border/40 rounded-xl bg-secondary/10 overflow-hidden lift press">
                     <button
                       onClick={() => setExpandedPopularCodes(prev => {
                         const next = new Set(prev)

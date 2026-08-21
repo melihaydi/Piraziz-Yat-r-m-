@@ -128,8 +128,9 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   if (checkingSession) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950">
-        <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-zinc-950 animate-fade">
+        <span className="text-sm font-black tracking-tight text-gradient-purple">BIP Terminal</span>
+        <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
       </div>
     )
   }
@@ -141,11 +142,11 @@ export default function AuthGate({ children }: AuthGateProps) {
   if (pendingTempToken) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl p-4">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl blob-a" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl blob-b" />
 
         <div className="w-full max-w-md relative z-10">
-          <Card glass={true} className="border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-2xl">
+          <Card glass={true} className="animate-pop border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-[var(--elev-3)]">
             <CardHeader className="text-center pb-2">
               <div className="mx-auto h-12 w-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
                 <ShieldCheck className="h-6 w-6 text-purple-400" />
@@ -218,11 +219,11 @@ export default function AuthGate({ children }: AuthGateProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl p-4">
       {/* Background radial glows */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl blob-a" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl blob-b" />
 
       <div className="w-full max-w-md relative z-10">
-        <Card glass={true} className="border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-2xl">
+        <Card glass={true} className="animate-pop border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-[var(--elev-3)]">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto h-12 w-12 rounded-2xl overflow-hidden mb-4">
               <img src="/logo.png" alt="BIP Terminal" className="h-full w-full object-cover" />
@@ -242,7 +243,7 @@ export default function AuthGate({ children }: AuthGateProps) {
               </div>
             )}
 
-            <form onSubmit={handleAuth} className="space-y-3.5">
+            <form onSubmit={handleAuth} className="space-y-3.5 stagger-list">
               {isRegister && (
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase tracking-wider font-extrabold text-muted-foreground">Ad Soyad</label>

@@ -483,9 +483,9 @@ export default function ScreenerPage() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Title */}
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight">Hisse Tarama ve Grafik Terminali</h1>
-        <p className="text-muted-foreground mt-1">
+      <div className="animate-rise">
+        <h1 className="t-display">Hisse Tarama ve Grafik Terminali</h1>
+        <p className="t-caption mt-1.5">
           TradingView canlı verileriyle hisseleri tarayın, anlık grafiklerini inceleyin ve favorilerinizi yönetin.
         </p>
       </div>
@@ -656,7 +656,10 @@ export default function ScreenerPage() {
         {/* Right Side: Stock Detail View & Interactive Chart (5 cols) */}
         <div id="stock-detail-pane" className="lg:col-span-5 space-y-6">
           {selectedStockDetails ? (
-            <Card glass={true} className="border-primary/20">
+            // key: hisse değişince panel yeniden kurulur ve `animate-pop`
+            // yeniden oynar - listeden başka bir satıra tıklandığında sağdaki
+            // panelin GÜNCELLENDİĞİNİ gösteren tek ipucu bu.
+            <Card key={selectedStockDetails.ticker} glass={true} className="border-primary/20 animate-pop">
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2.5">
