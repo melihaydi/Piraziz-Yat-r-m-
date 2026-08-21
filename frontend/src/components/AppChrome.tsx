@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react"
 import Sidebar from "@/components/Sidebar"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
+import MobileTabBar from "@/components/MobileTabBar"
 import { useReveal, useSpotlight } from "@/lib/useReveal"
 
 interface AppChromeProps {
@@ -101,7 +102,10 @@ export default function AppChrome({ children }: AppChromeProps) {
       />
       <div className="flex-1 flex flex-col overflow-hidden h-dvh w-full min-w-0">
         <Header onMenuClick={() => setMobileMenuOpen(true)} />
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-[calc(2rem+env(safe-area-inset-bottom))]">
+        {/* Alt boşluk lg altında sabit alt sekme çubuğunun (h-14 + safe-area)
+            içeriğin üstüne binmemesi için genişletildi; lg'de çubuk zaten
+            görünmediğinden eski değerlere dönüyor. */}
+        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
           {/* Every page except the homepage gets a back button - added here
               once, in the shared shell, rather than duplicated per-page. */}
           {pathname !== "/" && (
@@ -123,6 +127,7 @@ export default function AppChrome({ children }: AppChromeProps) {
           <Footer />
         </main>
       </div>
+      <MobileTabBar onMoreClick={() => setMobileMenuOpen(true)} drawerOpen={mobileMenuOpen} />
     </>
   )
 }
