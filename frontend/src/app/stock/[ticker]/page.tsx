@@ -260,7 +260,7 @@ export default function StockDetailPage() {
               ₺{stockDetails.price.toFixed(2)}
             </div>
             <div className={`flex items-center text-sm font-bold px-2 py-0.5 rounded ${
-              stockDetails.change_percent >= 0 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+              stockDetails.change_percent >= 0 ? "bg-bull/10 text-bull border border-bull/20" : "bg-bear/10 text-bear border border-bear/20"
             }`}>
               {stockDetails.change_percent >= 0 ? <TrendingUp className="h-4.5 w-4.5 mr-1" /> : <TrendingDown className="h-4.5 w-4.5 mr-1" />}
               {stockDetails.change_percent >= 0 ? "+" : ""}{stockDetails.change_percent.toFixed(2)}%
@@ -287,7 +287,7 @@ export default function StockDetailPage() {
               </DialogHeader>
               {alertSuccess ? (
                 <div className="flex flex-col items-center justify-center py-8 space-y-2 text-center">
-                  <Check className="h-10 w-10 text-emerald-400 bg-emerald-500/10 p-2 rounded-full border border-emerald-500/20 animate-bounce" />
+                  <Check className="h-10 w-10 text-bull bg-bull/10 p-2 rounded-full border border-bull/20 animate-bounce" />
                   <p className="font-extrabold text-foreground text-sm">Alarm Başarıyla Kuruldu!</p>
                   <p className="text-xs text-muted-foreground">Koşul gerçekleştiğinde anlık bildirim alacaksınız.</p>
                 </div>
@@ -516,12 +516,12 @@ export default function StockDetailPage() {
                     {scoreDetails.reasons.map((r: any, idx: number) => (
                       <div key={idx} className="flex items-center justify-between bg-secondary/30 p-2 rounded-lg border border-border/25">
                         <span className="flex items-center text-muted-foreground">
-                          <span className={`mr-1.5 font-bold ${r.icon === "✔" ? "text-emerald-400" : "text-rose-500"}`}>
+                          <span className={`mr-1.5 font-bold ${r.icon === "✔" ? "text-bull" : "text-bear"}`}>
                             {r.icon}
                           </span>
                           {r.text}
                         </span>
-                        <span className={`font-bold font-mono ${r.value.startsWith("+") ? "text-emerald-400" : "text-rose-500"}`}>
+                        <span className={`font-bold font-mono ${r.value.startsWith("+") ? "text-bull" : "text-bear"}`}>
                           {r.value}
                         </span>
                       </div>
@@ -583,8 +583,8 @@ export default function StockDetailPage() {
                     <div className="bg-secondary/25 p-3.5 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Trend Yönü</span>
                       <span className={`text-sm font-black mt-1 block ${
-                        aiReport.trend === "Yükseliş" ? "text-emerald-400" :
-                        aiReport.trend === "Düşüş" ? "text-rose-500" : "text-zinc-400"
+                        aiReport.trend === "Yükseliş" ? "text-bull" :
+                        aiReport.trend === "Düşüş" ? "text-bear" : "text-muted-foreground"
                       }`}>{aiReport.trend}</span>
                     </div>
 
@@ -600,7 +600,7 @@ export default function StockDetailPage() {
                     <div className="bg-secondary/25 p-3.5 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Risk Düzeyi</span>
                       <span className={`text-sm font-black mt-1 block ${
-                        aiReport.risk_level === "Düşük" ? "text-emerald-400" :
+                        aiReport.risk_level === "Düşük" ? "text-bull" :
                         aiReport.risk_level === "Yüksek" ? "val-down" : "val-warn"
                       }`}>{aiReport.risk_level}</span>
                     </div>
@@ -620,16 +620,16 @@ export default function StockDetailPage() {
                       <div>
                         <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Kısa Vadeli Beklenti</span>
                         <span className={`text-sm font-black mt-0.5 block ${
-                          aiReport.short_term_expectation === "Pozitif" ? "text-emerald-400" :
-                          aiReport.short_term_expectation === "Negatif" ? "text-rose-500" : "text-zinc-400"
+                          aiReport.short_term_expectation === "Pozitif" ? "text-bull" :
+                          aiReport.short_term_expectation === "Negatif" ? "text-bear" : "text-muted-foreground"
                         }`}>{aiReport.short_term_expectation}</span>
                       </div>
                       <div className="border-l border-border/40 h-8 mx-4" />
                       <div>
                         <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Orta Vadeli Beklenti</span>
                         <span className={`text-sm font-black mt-0.5 block ${
-                          aiReport.medium_term_expectation === "Pozitif" ? "text-emerald-400" :
-                          aiReport.medium_term_expectation === "Negatif" ? "text-rose-500" : "text-zinc-400"
+                          aiReport.medium_term_expectation === "Pozitif" ? "text-bull" :
+                          aiReport.medium_term_expectation === "Negatif" ? "text-bear" : "text-muted-foreground"
                         }`}>{aiReport.medium_term_expectation}</span>
                       </div>
                     </div>
@@ -655,14 +655,14 @@ export default function StockDetailPage() {
               {/* Strengths & Weaknesses */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border/40">
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center">
-                    <Check className="h-4 w-4 mr-1.5 bg-emerald-500/10 p-0.5 rounded-full" />
+                  <h4 className="text-xs font-black uppercase text-bull tracking-wider flex items-center">
+                    <Check className="h-4 w-4 mr-1.5 bg-bull/10 p-0.5 rounded-full" />
                     Güçlü Yönler (Strengths)
                   </h4>
                   <ul className="space-y-2">
                     {aiReport.strengths && aiReport.strengths.map((str: string, idx: number) => (
                       <li key={idx} className="text-xs text-muted-foreground flex items-start leading-relaxed">
-                        <span className="text-emerald-400 mr-2 font-bold">•</span>
+                        <span className="text-bull mr-2 font-bold">•</span>
                         {str}
                       </li>
                     ))}
@@ -670,14 +670,14 @@ export default function StockDetailPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase text-rose-400 tracking-wider flex items-center">
-                    <AlertTriangle className="h-4 w-4 mr-1.5 bg-rose-500/10 p-0.5 rounded-full" />
+                  <h4 className="text-xs font-black uppercase text-bear tracking-wider flex items-center">
+                    <AlertTriangle className="h-4 w-4 mr-1.5 bg-bear/10 p-0.5 rounded-full" />
                     Zayıf Yönler (Weaknesses)
                   </h4>
                   <ul className="space-y-2">
                     {aiReport.weaknesses && aiReport.weaknesses.map((weak: string, idx: number) => (
                       <li key={idx} className="text-xs text-muted-foreground flex items-start leading-relaxed">
-                        <span className="text-rose-400 mr-2 font-bold">•</span>
+                        <span className="text-bear mr-2 font-bold">•</span>
                         {weak}
                       </li>
                     ))}

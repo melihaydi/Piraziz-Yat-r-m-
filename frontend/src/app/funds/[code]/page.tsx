@@ -131,7 +131,7 @@ export default function FundDetailPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center space-x-3">
-            <span className="bg-emerald-500 text-black font-black px-2.5 py-1 rounded text-lg">
+            <span className="bg-bull text-background font-black px-2.5 py-1 rounded text-lg">
               {code}
             </span>
             <h1 className="text-3xl font-extrabold tracking-tight">{fund.name}</h1>
@@ -144,7 +144,7 @@ export default function FundDetailPage() {
         {/* Live Return Display */}
         <div className="flex items-baseline space-x-4">
           <span className="text-3xl font-black font-mono text-foreground">₺{fund.price.toFixed(4)}</span>
-          <span className={`text-sm font-bold font-mono ${fund.daily_return >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+          <span className={`text-sm font-bold font-mono ${fund.daily_return >= 0 ? "text-bull" : "text-bear"}`}>
             {fund.daily_return >= 0 ? "+" : ""}{fund.daily_return.toFixed(2)}% (Günlük)
           </span>
         </div>
@@ -157,7 +157,7 @@ export default function FundDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground font-semibold uppercase">Fiyat</span>
-              <Wallet className="h-4 w-4 text-emerald-400" />
+              <Wallet className="h-4 w-4 text-bull" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="text-2xl font-extrabold font-mono text-foreground">₺{fund.price.toFixed(4)}</span>
@@ -171,7 +171,7 @@ export default function FundDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground font-semibold uppercase">Risk Düzeyi</span>
-              <Shield className="h-4 w-4 text-rose-500" />
+              <Shield className="h-4 w-4 text-bear" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className={`text-2xl font-extrabold font-mono ${getRiskColor(fund.risk_level)}`}>
@@ -180,7 +180,7 @@ export default function FundDetailPage() {
             </div>
             <div className="w-full bg-secondary/40 h-2 rounded-full overflow-hidden mt-1.5 border border-border/30">
               <div 
-                className="bg-rose-500 h-full rounded-full transition-all duration-500" 
+                className="bg-bear h-full rounded-full transition-all duration-500" 
                 style={{ width: `${(fund.risk_level / 7) * 100}%` }}
               />
             </div>
@@ -321,19 +321,19 @@ export default function FundDetailPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-xs font-semibold py-1.5 border-b border-border/20">
                 <span className="text-muted-foreground">Günlük Getiri</span>
-                <span className={fund.daily_return >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                <span className={fund.daily_return >= 0 ? "text-bull" : "text-bear"}>
                   {fund.daily_return >= 0 ? "+" : ""}{fund.daily_return.toFixed(2)}%
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs font-semibold py-1.5 border-b border-border/20">
                 <span className="text-muted-foreground">Haftalık Getiri</span>
-                <span className={fund.weekly_return >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                <span className={fund.weekly_return >= 0 ? "text-bull" : "text-bear"}>
                   {fund.weekly_return >= 0 ? "+" : ""}{fund.weekly_return.toFixed(2)}%
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs font-semibold py-1.5">
                 <span className="text-muted-foreground">Aylık Getiri</span>
-                <span className={fund.monthly_return >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                <span className={fund.monthly_return >= 0 ? "text-bull" : "text-bear"}>
                   {fund.monthly_return >= 0 ? "+" : ""}{fund.monthly_return.toFixed(2)}%
                 </span>
               </div>

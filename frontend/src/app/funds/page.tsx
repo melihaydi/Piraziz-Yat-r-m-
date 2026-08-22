@@ -183,9 +183,9 @@ function FundsPageInner() {
   // Same 3-tier scale used both for the summary badge and every row's "Fark"
   // cell, so the two always agree on what counts as accurate.
   function accuracyTier(absError: number): { label: string; className: string } {
-    if (absError <= 0.5) return { label: "İsabetli", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" }
+    if (absError <= 0.5) return { label: "İsabetli", className: "text-bull bg-bull/10 border-bull/20" }
     if (absError <= 1.5) return { label: "Orta", className: "val-warn bg-warn/10 border-warn/20" }
-    return { label: "Sapmalı", className: "text-rose-400 bg-rose-500/10 border-rose-500/20" }
+    return { label: "Sapmalı", className: "text-bear bg-bear/10 border-bear/20" }
   }
 
   // Fund comparison state (2-5 funds, matches the backend's GET /funds/compare cap)
@@ -401,7 +401,7 @@ function FundsPageInner() {
       {/* Title */}
       <div className="animate-rise">
         <h1 className="t-display flex items-center">
-          <Coins className="h-7 w-7 text-emerald-400 mr-3" />
+          <Coins className="h-7 w-7 text-bull mr-3" />
           TEFAS Fon Takip Terminali
         </h1>
         <p className="t-caption mt-1.5">
@@ -467,7 +467,7 @@ function FundsPageInner() {
                       </div>
                       <div className="text-xs text-muted-foreground mt-1.5 truncate">{f.name}</div>
                       <div className="flex items-baseline justify-between mt-2">
-                        <span className={`text-xl font-black font-mono ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+                        <span className={`text-xl font-black font-mono ${isUp ? "text-bull" : "text-bear"}`}>
                           {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
                         </span>
                         <span className="text-[11px] text-muted-foreground">
@@ -507,8 +507,8 @@ function FundsPageInner() {
                                     title="Fona Etkisi - bu varlığın fonun bugünkü tahmini getirisine kaç puan katkısı olduğu"
                                     className={`font-bold px-1.5 py-0.5 rounded border ${
                                       h.impact_pct >= 0
-                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                        : "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                                        ? "bg-bull/10 text-bull border-bull/20"
+                                        : "bg-bear/10 text-bear border-bear/20"
                                     }`}
                                   >
                                     {h.impact_pct >= 0 ? "+" : ""}{h.impact_pct.toFixed(2)}p
@@ -573,7 +573,7 @@ function FundsPageInner() {
                     <div className="h-8 w-px bg-border/40" />
                     <div>
                       <div className="text-[11px] text-muted-foreground uppercase font-bold">İsabet Oranı</div>
-                      <div className="text-lg font-black font-mono text-emerald-400">
+                      <div className="text-lg font-black font-mono text-bull">
                         %{estimateAccuracySummary.accuratePct.toFixed(0)}
                       </div>
                     </div>
@@ -600,10 +600,10 @@ function FundsPageInner() {
                           <tr key={`${row.fund_code}-${row.date}`} className="border-b border-border/20">
                             <td className="py-1.5 pr-4 font-mono text-muted-foreground whitespace-nowrap">{formatDateWithWeekday(row.date)}</td>
                             <td className="py-1.5 pr-4 font-bold">{row.fund_code}</td>
-                            <td className={`py-1.5 pr-4 text-right font-mono ${row.estimated_change_pct == null ? "text-muted-foreground" : row.estimated_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                            <td className={`py-1.5 pr-4 text-right font-mono ${row.estimated_change_pct == null ? "text-muted-foreground" : row.estimated_change_pct >= 0 ? "text-bull" : "text-bear"}`}>
                               {row.estimated_change_pct == null ? "—" : `${row.estimated_change_pct >= 0 ? "+" : ""}${row.estimated_change_pct.toFixed(2)}%`}
                             </td>
-                            <td className={`py-1.5 pr-4 text-right font-mono ${row.actual_change_pct == null ? "text-muted-foreground" : row.actual_change_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                            <td className={`py-1.5 pr-4 text-right font-mono ${row.actual_change_pct == null ? "text-muted-foreground" : row.actual_change_pct >= 0 ? "text-bull" : "text-bear"}`}>
                               {row.actual_change_pct == null ? "—" : `${row.actual_change_pct >= 0 ? "+" : ""}${row.actual_change_pct.toFixed(2)}%`}
                             </td>
                             <td className="py-1.5 text-right">
@@ -782,7 +782,7 @@ function FundsPageInner() {
                               <td className="px-4 text-muted-foreground">{fund.category}</td>
                               <td className="px-4 text-right font-mono font-bold">₺{fund.price.toFixed(4)}</td>
                               <td className="px-4 text-right font-mono font-semibold">
-                                <span className={fund.daily_return >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                                <span className={fund.daily_return >= 0 ? "text-bull" : "text-bear"}>
                                   {fund.daily_return >= 0 ? "+" : ""}{fund.daily_return.toFixed(2)}%
                                 </span>
                               </td>
@@ -811,7 +811,7 @@ function FundsPageInner() {
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2.5">
-                    <span className="bg-emerald-500 text-emerald-950 font-black px-2 py-0.5 rounded text-sm shadow">
+                    <span className="bg-bull text-background font-black px-2 py-0.5 rounded text-sm shadow">
                       {selectedCode}
                     </span>
                     <div>
@@ -829,7 +829,7 @@ function FundsPageInner() {
 
                 <div className="flex items-baseline justify-between mt-3 pt-3 border-t border-border/40">
                   <span className="text-2xl font-black font-mono text-foreground">₺{selectedFundDetails.price.toFixed(4)}</span>
-                  <span className={`text-xs font-bold font-mono ${selectedFundDetails.daily_return >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <span className={`text-xs font-bold font-mono ${selectedFundDetails.daily_return >= 0 ? "text-bull" : "text-bear"}`}>
                     {selectedFundDetails.daily_return >= 0 ? "+" : ""}{selectedFundDetails.daily_return.toFixed(2)}% Bugün
                   </span>
                 </div>
@@ -852,13 +852,13 @@ function FundsPageInner() {
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="bg-secondary/20 p-2.5 border border-border/30 rounded-lg flex items-center justify-between">
                       <span className="text-muted-foreground">Son 1 Hafta</span>
-                      <span className={`font-bold font-mono ${selectedFundDetails.weekly_return >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      <span className={`font-bold font-mono ${selectedFundDetails.weekly_return >= 0 ? "text-bull" : "text-bear"}`}>
                         {selectedFundDetails.weekly_return >= 0 ? "+" : ""}{selectedFundDetails.weekly_return.toFixed(2)}%
                       </span>
                     </div>
                     <div className="bg-secondary/20 p-2.5 border border-border/30 rounded-lg flex items-center justify-between">
                       <span className="text-muted-foreground">Son 1 Ay</span>
-                      <span className={`font-bold font-mono ${selectedFundDetails.monthly_return >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                      <span className={`font-bold font-mono ${selectedFundDetails.monthly_return >= 0 ? "text-bull" : "text-bear"}`}>
                         {selectedFundDetails.monthly_return >= 0 ? "+" : ""}{selectedFundDetails.monthly_return.toFixed(2)}%
                       </span>
                     </div>
@@ -870,7 +870,7 @@ function FundsPageInner() {
                     variant="default" 
                     size="sm" 
                     onClick={() => router.push(`/funds/${selectedCode.toLowerCase()}`)}
-                    className="w-full text-xs font-black cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-black border-0 shadow-md shadow-emerald-500/10"
+                    className="w-full text-xs font-black cursor-pointer bg-gradient-to-r from-bull to-bull/80 hover:from-bull/90 hover:to-bull/70 text-background border-0 shadow-md shadow-bull/10"
                   >
                     Detaylı Analiz & Varlık Kırılımı (Premium)
                   </Button>
@@ -911,7 +911,7 @@ function FundsPageInner() {
               <span className="text-xs text-muted-foreground">Karşılaştırma hesaplanıyor...</span>
             </div>
           ) : compareError ? (
-            <div className="py-10 text-center text-xs text-rose-400">{compareError}</div>
+            <div className="py-10 text-center text-xs text-bear">{compareError}</div>
           ) : (
             <div className="space-y-6">
               {/* Normalized overlay chart */}
@@ -967,7 +967,7 @@ function FundsPageInner() {
                         {["return_1m_pct", "return_3m_pct", "return_1y_pct"].map((key) => (
                           <td key={key} className="px-3 text-right font-mono font-semibold">
                             {f[key] != null ? (
-                              <span className={f[key] >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                              <span className={f[key] >= 0 ? "text-bull" : "text-bear"}>
                                 {f[key] >= 0 ? "+" : ""}{f[key]}%
                               </span>
                             ) : "—"}
@@ -979,7 +979,7 @@ function FundsPageInner() {
                         <td className="px-3 text-center">
                           <button
                             onClick={() => setCompareCodes((prev) => prev.filter((c) => c !== f.code))}
-                            className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
+                            className="text-muted-foreground hover:text-bear transition-colors cursor-pointer"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -1010,7 +1010,7 @@ function FundsPageInner() {
                   <span className="text-[11px] font-bold text-foreground">{code}</span>
                   <button
                     onClick={() => toggleCompare(code)}
-                    className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer p-0.5"
+                    className="text-muted-foreground hover:text-bear transition-colors cursor-pointer p-0.5"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -1055,7 +1055,7 @@ export default function FundsPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center py-32">
-          <Loader2 className="h-6 w-6 text-emerald-400 animate-spin" />
+          <Loader2 className="h-6 w-6 text-bull animate-spin" />
         </div>
       }
     >

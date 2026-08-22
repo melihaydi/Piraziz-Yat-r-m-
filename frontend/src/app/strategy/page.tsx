@@ -110,14 +110,14 @@ const fmt = (n: number | null, digits = 2) => (n === null || n === undefined ? "
 function DirectionBadge({ direction }: { direction: Direction }) {
   if (direction === "LONG") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-bull/15 text-bull border border-bull/30">
         <ArrowUpCircle className="h-3 w-3" /> LONG
       </span>
     )
   }
   if (direction === "SHORT") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/15 text-rose-400 border border-rose-500/30">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-bear/15 text-bear border border-bear/30">
         <ArrowDownCircle className="h-3 w-3" /> SHORT
       </span>
     )
@@ -433,13 +433,13 @@ export default function StrategyPage() {
           <div className="text-[10px] font-bold text-muted-foreground uppercase">Taranan</div>
           <div className="text-lg font-black text-foreground">{signals.length || "-"}</div>
         </div>
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-          <div className="text-[10px] font-bold text-emerald-400/80 uppercase">LONG Sinyal</div>
-          <div className="text-lg font-black text-emerald-400">{signals.filter(s => s.direction === "LONG").length}</div>
+        <div className="rounded-xl border border-bull/20 bg-bull/5 p-3">
+          <div className="text-[10px] font-bold text-bull/80 uppercase">LONG Sinyal</div>
+          <div className="text-lg font-black text-bull">{signals.filter(s => s.direction === "LONG").length}</div>
         </div>
-        <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
-          <div className="text-[10px] font-bold text-rose-400/80 uppercase">SHORT Sinyal</div>
-          <div className="text-lg font-black text-rose-400">{signals.filter(s => s.direction === "SHORT").length}</div>
+        <div className="rounded-xl border border-bear/20 bg-bear/5 p-3">
+          <div className="text-[10px] font-bold text-bear/80 uppercase">SHORT Sinyal</div>
+          <div className="text-lg font-black text-bear">{signals.filter(s => s.direction === "SHORT").length}</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3">
           <div className="text-[10px] font-bold text-muted-foreground uppercase">Aktif Sinyal Oranı</div>
@@ -540,7 +540,7 @@ export default function StrategyPage() {
                         </td>
                         <td className="px-4 text-right">
                           <div className="font-bold text-foreground">₺{fmt(s.price)}</div>
-                          <div className={`text-[10px] font-bold flex items-center justify-end gap-0.5 ${isUp ? "text-emerald-400" : "text-rose-500"}`}>
+                          <div className={`text-[10px] font-bold flex items-center justify-end gap-0.5 ${isUp ? "text-bull" : "text-bear"}`}>
                             {isUp ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
                             {isUp ? "+" : ""}{fmt(s.change_percent)}%
                           </div>
@@ -549,15 +549,15 @@ export default function StrategyPage() {
                         <td className="px-4 text-[11px] text-muted-foreground max-w-[160px] truncate">{s.structure}</td>
                         <td className="px-4"><ConfidenceBar score={s.score} confidence={s.confidence} /></td>
                         <td className="px-4 text-right font-semibold text-foreground">{s.entry ? fmt(s.entry) : "-"}</td>
-                        <td className="px-4 text-right font-semibold text-rose-400">{s.stop_loss ? fmt(s.stop_loss) : "-"}</td>
-                        <td className="px-4 text-right font-semibold text-emerald-400">{s.take_profit ? fmt(s.take_profit) : "-"}</td>
+                        <td className="px-4 text-right font-semibold text-bear">{s.stop_loss ? fmt(s.stop_loss) : "-"}</td>
+                        <td className="px-4 text-right font-semibold text-bull">{s.take_profit ? fmt(s.take_profit) : "-"}</td>
                         <td className="px-4 text-right font-bold text-foreground">{s.risk_reward ? `${fmt(s.risk_reward, 1)}R` : "-"}</td>
                         <td className="px-4 text-right">
                           {s.captured_pnl_pct == null ? (
                             <span className="text-muted-foreground">-</span>
                           ) : (
                             <>
-                              <div className={`font-bold ${s.captured_pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                              <div className={`font-bold ${s.captured_pnl_pct >= 0 ? "text-bull" : "text-bear"}`}>
                                 {s.captured_pnl_pct >= 0 ? "+" : ""}{fmt(s.captured_pnl_pct)}%
                               </div>
                               <div className="text-[10px] text-muted-foreground">₺{fmt(s.live_price)} anlık</div>
@@ -583,7 +583,7 @@ export default function StrategyPage() {
                                   <ul className="space-y-1">
                                     {s.triggered_conditions.map((c, i) => (
                                       <li key={i} className="text-[11px] text-foreground flex items-start gap-1.5">
-                                        <span className="text-emerald-400 mt-0.5">✔</span>{c}
+                                        <span className="text-bull mt-0.5">✔</span>{c}
                                       </li>
                                     ))}
                                   </ul>
@@ -607,12 +607,12 @@ export default function StrategyPage() {
                                 <div className="text-[10px] font-black text-muted-foreground uppercase mb-1.5">Destek / Direnç Seviyeleri</div>
                                 <div className="flex flex-wrap gap-1.5">
                                   {s.resistance_levels.map((lvl, i) => (
-                                    <span key={`r${i}`} className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[10px] font-bold border border-rose-500/20">
+                                    <span key={`r${i}`} className="px-2 py-0.5 rounded bg-bear/10 text-bear text-[10px] font-bold border border-bear/20">
                                       D: {fmt(lvl)}
                                     </span>
                                   ))}
                                   {s.support_levels.map((lvl, i) => (
-                                    <span key={`s${i}`} className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                                    <span key={`s${i}`} className="px-2 py-0.5 rounded bg-bull/10 text-bull text-[10px] font-bold border border-bull/20">
                                       S: {fmt(lvl)}
                                     </span>
                                   ))}
@@ -639,8 +639,8 @@ export default function StrategyPage() {
                                   <div className="text-[10px] text-muted-foreground font-bold mb-1">Ichimoku Bulutu</div>
                                   {s.ichimoku_position ? (
                                     <span className={`text-[11px] font-bold ${
-                                      s.ichimoku_position === "Bulut Üzerinde" ? "text-emerald-400" :
-                                      s.ichimoku_position === "Bulut Altında" ? "text-rose-500" : "text-muted-foreground"
+                                      s.ichimoku_position === "Bulut Üzerinde" ? "text-bull" :
+                                      s.ichimoku_position === "Bulut Altında" ? "text-bear" : "text-muted-foreground"
                                     }`}>
                                       {s.ichimoku_position}
                                     </span>
@@ -778,14 +778,14 @@ export default function StrategyPage() {
                     <td className="px-4"><ConfidenceBar score={h.score} confidence={h.confidence} /></td>
                     <td className="px-4 text-right font-bold text-foreground">₺{fmt(h.price)}</td>
                     <td className="px-4 text-right font-semibold text-foreground">{h.entry ? fmt(h.entry) : "-"}</td>
-                    <td className="px-4 text-right font-semibold text-rose-400">{h.stop_loss ? fmt(h.stop_loss) : "-"}</td>
-                    <td className="px-4 text-right font-semibold text-emerald-400">{h.take_profit ? fmt(h.take_profit) : "-"}</td>
+                    <td className="px-4 text-right font-semibold text-bear">{h.stop_loss ? fmt(h.stop_loss) : "-"}</td>
+                    <td className="px-4 text-right font-semibold text-bull">{h.take_profit ? fmt(h.take_profit) : "-"}</td>
                     <td className="px-4 text-right">
                       {h.captured_pnl_pct == null ? (
                         <span className="text-muted-foreground">-</span>
                       ) : (
                         <>
-                          <div className={`font-bold ${h.captured_pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                          <div className={`font-bold ${h.captured_pnl_pct >= 0 ? "text-bull" : "text-bear"}`}>
                             {h.captured_pnl_pct >= 0 ? "+" : ""}{fmt(h.captured_pnl_pct)}%
                           </div>
                           <div className="text-[10px] text-muted-foreground">₺{fmt(h.live_price)} anlık</div>
@@ -894,7 +894,7 @@ export default function StrategyPage() {
                         </td>
                         <td className="px-4 text-right font-semibold text-foreground">{r.total_trades}</td>
                         <td className="px-4 text-right font-semibold text-foreground">{r.win_rate != null ? `%${r.win_rate}` : "-"}</td>
-                        <td className={`px-4 text-right font-bold ${(r.total_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                        <td className={`px-4 text-right font-bold ${(r.total_return_pct ?? 0) >= 0 ? "text-bull" : "text-bear"}`}>
                           {r.total_return_pct != null ? `${r.total_return_pct >= 0 ? "+" : ""}${r.total_return_pct}%` : "-"}
                         </td>
                         {/* Asıl karar veren sütun: stratejinin getirisi, aynı
@@ -902,13 +902,13 @@ export default function StrategyPage() {
                             nerede duruyor. Tek başına pozitif bir getiri,
                             yükselen bir piyasada bir üstünlük anlamına
                             gelmiyor. */}
-                        <td className={`px-4 text-right font-bold ${(r.excess_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                        <td className={`px-4 text-right font-bold ${(r.excess_return_pct ?? 0) >= 0 ? "text-bull" : "text-bear"}`}>
                           {r.excess_return_pct != null ? `${r.excess_return_pct >= 0 ? "+" : ""}${r.excess_return_pct} p` : "-"}
                         </td>
-                        <td className="px-4 text-right font-semibold text-rose-400">
+                        <td className="px-4 text-right font-semibold text-bear">
                           {r.max_drawdown_pct != null ? `−%${r.max_drawdown_pct}` : "-"}
                         </td>
-                        <td className={`px-4 text-right font-semibold ${(r.profit_factor ?? 0) >= 1 ? "text-emerald-400" : "text-rose-500"}`}>
+                        <td className={`px-4 text-right font-semibold ${(r.profit_factor ?? 0) >= 1 ? "text-bull" : "text-bear"}`}>
                           {r.profit_factor != null ? r.profit_factor.toFixed(2) : "-"}
                         </td>
                         <td className="px-4 text-center">
@@ -935,7 +935,7 @@ export default function StrategyPage() {
                                     <div className="font-mono font-bold text-foreground">
                                       {r.gross_return_pct != null ? `${r.gross_return_pct >= 0 ? "+" : ""}${r.gross_return_pct}%` : "-"}
                                     </div>
-                                    <div className="text-[10px] text-rose-400 font-semibold">
+                                    <div className="text-[10px] text-bear font-semibold">
                                       {r.cost_drag_pct != null ? `komisyon/kayma: −${r.cost_drag_pct} p` : ""}
                                     </div>
                                   </div>
@@ -955,7 +955,7 @@ export default function StrategyPage() {
                                   </div>
                                   <div className="rounded-lg border border-border/40 bg-secondary/20 px-3 py-2">
                                     <div className="text-[10px] font-bold uppercase text-muted-foreground">Görülmemiş Veri</div>
-                                    <div className={`font-mono font-bold ${(r.oos_return_pct ?? 0) >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                    <div className={`font-mono font-bold ${(r.oos_return_pct ?? 0) >= 0 ? "text-bull" : "text-bear"}`}>
                                       {r.oos_return_pct != null ? `${r.oos_return_pct >= 0 ? "+" : ""}${r.oos_return_pct}%` : "-"}
                                     </div>
                                     <div className="text-[10px] text-muted-foreground">
@@ -986,7 +986,7 @@ export default function StrategyPage() {
                                         <td className="px-2 text-right font-mono">{fmt(t.entry_price)}</td>
                                         <td className="px-2 text-right font-mono">{fmt(t.exit_price)}</td>
                                         <td className="px-2 text-muted-foreground">{t.exit_reason}</td>
-                                        <td className={`px-2 text-right font-bold ${t.return_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                        <td className={`px-2 text-right font-bold ${t.return_pct >= 0 ? "text-bull" : "text-bear"}`}>
                                           {t.return_pct >= 0 ? "+" : ""}{t.return_pct}%
                                         </td>
                                       </tr>
