@@ -906,29 +906,29 @@ export default function PortfolioPage() {
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           <Button
             variant="outline"
-            className="cursor-pointer flex items-center"
+            className="cursor-pointer flex items-center h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm"
             onClick={() => setIsOpenHistoryModal(true)}
           >
-            <History className="h-4 w-4 mr-2 text-primary" />
+            <History className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 text-primary" />
             İşlem Geçmişi
           </Button>
           <Button
             variant="outline"
-            className="cursor-pointer flex items-center"
+            className="cursor-pointer flex items-center h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm"
             onClick={() => setIsOpenDividendModal(true)}
           >
-            <Coins className="h-4 w-4 mr-2 text-primary" />
+            <Coins className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 text-primary" />
             Temettü Ekle
           </Button>
           <Button
             variant="outline"
-            className="cursor-pointer flex items-center"
+            className="cursor-pointer flex items-center h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm"
             onClick={() => { setIsOpenAnnualModal(true); loadAnnual(annualYear) }}
           >
-            <FileText className="h-4 w-4 mr-2 text-bull" />
+            <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 text-bull" />
             Yıllık Özet
           </Button>
 
@@ -941,8 +941,8 @@ export default function PortfolioPage() {
               unlike plain parked cash). */}
           <Dialog open={isOpenUsdCashModal} onOpenChange={setIsOpenUsdCashModal}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="cursor-pointer flex items-center">
-                <DollarSign className="h-4 w-4 mr-2 text-primary" />
+              <Button variant="outline" className="cursor-pointer flex items-center h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm">
+                <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 text-primary" />
                 Döviz Nakit
               </Button>
             </DialogTrigger>
@@ -1005,8 +1005,8 @@ export default function PortfolioPage() {
           {/* Create Alarm Dialog */}
           <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="cursor-pointer flex items-center">
-                <Bell className="h-4 w-4 mr-2 text-primary" />
+              <Button variant="outline" className="cursor-pointer flex items-center h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm">
+                <Bell className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 text-primary" />
                 Alarm Kur
               </Button>
             </DialogTrigger>
@@ -1077,8 +1077,8 @@ export default function PortfolioPage() {
           {/* Add Asset Dialog */}
           <Dialog open={isOpenAssetModal} onOpenChange={setIsOpenAssetModal}>
             <DialogTrigger asChild>
-              <Button variant="default" className="cursor-pointer flex items-center">
-                <Plus className="h-4 w-4 mr-2" />
+              <Button variant="default" className="cursor-pointer flex items-center h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm">
+                <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                 Varlık Ekle
               </Button>
             </DialogTrigger>

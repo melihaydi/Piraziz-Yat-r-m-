@@ -140,6 +140,18 @@
 }
 
 /* Custom Base Styles */
+html {
+  /* Android WebView/Chrome "font boosting": küçük metni dar bir sütunda
+     (ör. Header'ın 10px mobil ticker şeridi) OKUNABİLİRLİK İÇİN OTOMATİK
+     büyütür - CSS'te yazan punto boyutunu görmezden gelerek. Bu, "bazı
+     yazılar saçma büyük bazıları küçük" hissinin gerçek kaynağıydı: aynı
+     sayfada bazı metin blokları büyütülüyor, bazıları (zaten "yeterince
+     büyük" sayıldığı için) büyütülmüyordu - tutarsız bir görünüm. Kapatınca
+     her yerde CSS'te yazan punto boyutu birebir uygulanıyor.
+  */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));

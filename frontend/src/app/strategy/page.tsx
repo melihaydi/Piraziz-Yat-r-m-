@@ -501,12 +501,12 @@ export default function StrategyPage() {
                   <th className="px-4">Sembol</th>
                   <th className="px-4 text-right">Fiyat</th>
                   <th className="px-4">Yön</th>
-                  <th className="px-4">Sinyal</th>
-                  <th className="px-4">Güven</th>
+                  <th className="px-4 hidden md:table-cell">Sinyal</th>
+                  <th className="px-4 hidden sm:table-cell">Güven</th>
                   <th className="px-4 text-right">Giriş</th>
-                  <th className="px-4 text-right">Stop</th>
-                  <th className="px-4 text-right">Hedef</th>
-                  <th className="px-4 text-right">R:R</th>
+                  <th className="px-4 text-right hidden sm:table-cell">Stop</th>
+                  <th className="px-4 text-right hidden sm:table-cell">Hedef</th>
+                  <th className="px-4 text-right hidden sm:table-cell">R:R</th>
                   <th
                     className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${sortKey === "captured_pnl_pct" ? "text-primary" : ""}`}
                     onClick={() => setSortKey("captured_pnl_pct")}
@@ -517,7 +517,7 @@ export default function StrategyPage() {
                       <ArrowUpDown className="h-3 w-3" />
                     </span>
                   </th>
-                  <th className="px-4 text-right">Son Güncelleme</th>
+                  <th className="px-4 text-right hidden md:table-cell">Son Güncelleme</th>
                   <th className="px-4"></th>
                 </tr>
               </thead>
@@ -546,12 +546,12 @@ export default function StrategyPage() {
                           </div>
                         </td>
                         <td className="px-4"><DirectionBadge direction={s.direction} /></td>
-                        <td className="px-4 text-[11px] text-muted-foreground max-w-[160px] truncate">{s.structure}</td>
-                        <td className="px-4"><ConfidenceBar score={s.score} confidence={s.confidence} /></td>
+                        <td className="px-4 text-[11px] text-muted-foreground max-w-[160px] truncate hidden md:table-cell">{s.structure}</td>
+                        <td className="px-4 hidden sm:table-cell"><ConfidenceBar score={s.score} confidence={s.confidence} /></td>
                         <td className="px-4 text-right font-semibold text-foreground">{s.entry ? fmt(s.entry) : "-"}</td>
-                        <td className="px-4 text-right font-semibold text-bear">{s.stop_loss ? fmt(s.stop_loss) : "-"}</td>
-                        <td className="px-4 text-right font-semibold text-bull">{s.take_profit ? fmt(s.take_profit) : "-"}</td>
-                        <td className="px-4 text-right font-bold text-foreground">{s.risk_reward ? `${fmt(s.risk_reward, 1)}R` : "-"}</td>
+                        <td className="px-4 text-right font-semibold text-bear hidden sm:table-cell">{s.stop_loss ? fmt(s.stop_loss) : "-"}</td>
+                        <td className="px-4 text-right font-semibold text-bull hidden sm:table-cell">{s.take_profit ? fmt(s.take_profit) : "-"}</td>
+                        <td className="px-4 text-right font-bold text-foreground hidden sm:table-cell">{s.risk_reward ? `${fmt(s.risk_reward, 1)}R` : "-"}</td>
                         <td className="px-4 text-right">
                           {s.captured_pnl_pct == null ? (
                             <span className="text-muted-foreground">-</span>
@@ -564,7 +564,7 @@ export default function StrategyPage() {
                             </>
                           )}
                         </td>
-                        <td className="px-4 text-right text-[10px] text-muted-foreground">
+                        <td className="px-4 text-right text-[10px] text-muted-foreground hidden md:table-cell">
                           {new Date(s.last_update).toLocaleTimeString("tr-TR")}
                         </td>
                         <td className="px-4 text-center">
@@ -743,14 +743,14 @@ export default function StrategyPage() {
             <table className="w-full text-xs text-left">
               <thead>
                 <tr className="text-muted-foreground font-bold border-b border-border h-10 bg-secondary/20">
-                  <th className="px-4">Saat</th>
+                  <th className="px-4 hidden md:table-cell">Saat</th>
                   <th className="px-4">Sembol</th>
                   <th className="px-4">Yön</th>
-                  <th className="px-4">Güven</th>
-                  <th className="px-4 text-right">Fiyat</th>
+                  <th className="px-4 hidden sm:table-cell">Güven</th>
+                  <th className="px-4 text-right hidden sm:table-cell">Fiyat</th>
                   <th className="px-4 text-right">Giriş</th>
-                  <th className="px-4 text-right">Stop</th>
-                  <th className="px-4 text-right">Hedef</th>
+                  <th className="px-4 text-right hidden sm:table-cell">Stop</th>
+                  <th className="px-4 text-right hidden sm:table-cell">Hedef</th>
                   <th
                     className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${historySortKey === "captured_pnl_pct" ? "text-primary" : ""}`}
                     onClick={() => setHistorySortKey(prev => prev === "captured_pnl_pct" ? "timestamp" : "captured_pnl_pct")}
@@ -766,7 +766,7 @@ export default function StrategyPage() {
               <tbody>
                 {filteredHistory.map((h, i) => (
                   <tr key={`${h.ticker}-${h.timestamp}-${i}`} className="border-b border-border/60 h-12 hover:bg-secondary/20 transition-colors">
-                    <td className="px-4 text-muted-foreground font-mono">{new Date(h.timestamp).toLocaleTimeString("tr-TR")}</td>
+                    <td className="px-4 text-muted-foreground font-mono hidden md:table-cell">{new Date(h.timestamp).toLocaleTimeString("tr-TR")}</td>
                     <td className="px-4">
                       <div className="flex items-center gap-1.5">
                         <TickerLogo ticker={h.ticker} size={16} />
@@ -775,11 +775,11 @@ export default function StrategyPage() {
                       <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{h.name}</div>
                     </td>
                     <td className="px-4"><DirectionBadge direction={h.direction} /></td>
-                    <td className="px-4"><ConfidenceBar score={h.score} confidence={h.confidence} /></td>
-                    <td className="px-4 text-right font-bold text-foreground">₺{fmt(h.price)}</td>
+                    <td className="px-4 hidden sm:table-cell"><ConfidenceBar score={h.score} confidence={h.confidence} /></td>
+                    <td className="px-4 text-right font-bold text-foreground hidden sm:table-cell">₺{fmt(h.price)}</td>
                     <td className="px-4 text-right font-semibold text-foreground">{h.entry ? fmt(h.entry) : "-"}</td>
-                    <td className="px-4 text-right font-semibold text-bear">{h.stop_loss ? fmt(h.stop_loss) : "-"}</td>
-                    <td className="px-4 text-right font-semibold text-bull">{h.take_profit ? fmt(h.take_profit) : "-"}</td>
+                    <td className="px-4 text-right font-semibold text-bear hidden sm:table-cell">{h.stop_loss ? fmt(h.stop_loss) : "-"}</td>
+                    <td className="px-4 text-right font-semibold text-bull hidden sm:table-cell">{h.take_profit ? fmt(h.take_profit) : "-"}</td>
                     <td className="px-4 text-right">
                       {h.captured_pnl_pct == null ? (
                         <span className="text-muted-foreground">-</span>
