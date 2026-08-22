@@ -211,13 +211,14 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           // şeyi yakalamıyordu: sürgü kayarak değil, tek karede yerine
           // zıplayarak açılıyordu. Hareket görünmediği için menünün açıldığı
           // da fark edilmiyordu.
-          // h-dvh, h-screen DEGIL: iOS Safari'de 100vh, adres cubugu
-          // goruniyorken GORUNUR ALANDAN BUYUKTUR. Sonuc olarak surgunun alt
-          // kismi (kenarlik, daralt tusu) ekranin altinda kaliyordu. `dvh`
-          // dinamik gorunum yuksekligi - cubuk gorunup kayboldukca guncellenir.
+          // h-full, h-dvh DEGIL: layout.tsx'te body artik `fixed inset-0` ile
+          // gercek gorsel viewport'a kilitli (kesin bir yukseklik veriyor),
+          // bu yuzden burada tekrar dvh hesaplamaya gerek yok - standalone
+          // modda dvh'nin kendi (surgunun alt kismini ekranin altinda
+          // birakan) hesaplama tutarsizligini miras almiyoruz.
           // V2: sürgü Base yüzeyinde (workspace'ten bir tık koyu), böylece
           // içerik alanı ondan ayrılıyor - kenarlık taşımaya gerek kalmıyor.
-          "border-r border-border bg-background flex flex-col h-dvh z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
+          "border-r border-border bg-background flex flex-col h-full z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
           // Same safe-area reasoning as Header.tsx - this drawer is `fixed
           // inset-y-0`, so on a notched phone/PWA its own top row (logo,

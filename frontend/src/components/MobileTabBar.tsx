@@ -101,14 +101,7 @@ export default function MobileTabBar({ onMoreClick, drawerOpen }: MobileTabBarPr
         // V2: Base yüzeyi (sürgü/üst çubukla aynı kademe) - içerik alanı
         // Workspace'te durduğu için çubuk ondan kendiliğinden ayrılıyor.
         "border-t border-border bg-background/95 backdrop-blur-md",
-        // env(safe-area-inset-bottom) bazı Android WebView'lerde gerçek
-        // jest navigasyon çubuğundan çok daha büyük bir değer bildirebiliyor
-        // - çubuk o zaman gerektiğinden fazla yukarı şişiyor, ikonlarla asıl
-        // ekran alt kenarı arasında büyük bir boş şerit bırakıyor. 16px'lik
-        // ilk sınır yetersiz kaldı (hâlâ gözle görülür boşluk bırakıyordu),
-        // 6px'e düşürüldü - gerçek bir çentik/jest payı varsa yine kısmen
-        // saygı görüyor ama WebView'in şişirdiği değer artık baskın çıkmıyor.
-        "pb-[min(env(safe-area-inset-bottom),6px)]"
+        "pb-[env(safe-area-inset-bottom)]"
       )}
       aria-label="Birincil gezinme"
     >

@@ -87,9 +87,11 @@ export default function AppChrome({ children }: AppChromeProps) {
   }, [isTradeRoute])
 
   if (isTradeRoute || isBareRoute) {
-    // h-dvh: iOS Safari'de 100vh gorunur alandan buyuk oldugu icin bu tam
-    // ekran rotalarin alt kismi adres cubugunun arkasinda kaliyordu.
-    return <div className="flex-1 flex flex-col overflow-hidden h-dvh w-full">{children}</div>
+    // h-full: body artık layout.tsx'te `fixed inset-0` ile gerçek görsel
+    // viewport'a kilitli, bu yüzden burada tekrar dvh hesaplamaya gerek yok
+    // (ve standalone modda dvh'nin kendi hesaplama tutarsızlığını miras
+    // almamış oluyoruz).
+    return <div className="flex-1 flex flex-col overflow-hidden h-full w-full">{children}</div>
   }
 
   return (
@@ -100,7 +102,7 @@ export default function AppChrome({ children }: AppChromeProps) {
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}
       />
-      <div className="flex-1 flex flex-col overflow-hidden h-dvh w-full min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden h-full w-full min-w-0">
         <Header onMenuClick={() => setMobileMenuOpen(true)} />
         {/* Alt boşluk lg altında sabit alt sekme çubuğunun (h-14 + safe-area)
             içeriğin üstüne binmemesi için genişletildi; lg'de çubuk zaten
@@ -111,7 +113,7 @@ export default function AppChrome({ children }: AppChromeProps) {
             kendiliğinden ayrılıyor - araya kenarlık koymaya gerek yok.
             bip-grid: çok düşük opaklıkta teknik ızgara, üstte belirgin,
             aşağı doğru soluyor (globals.css). */}
-        <main className="bip-grid surface-workspace flex-1 overflow-y-auto p-4 md:p-8 pb-[calc(4.5rem+min(env(safe-area-inset-bottom),6px))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
+        <main className="bip-grid surface-workspace flex-1 overflow-y-auto p-4 md:p-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
           {/* Every page except the homepage gets a back button - added here
               once, in the shared shell, rather than duplicated per-page. */}
           {pathname !== "/" && (

@@ -53,16 +53,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  // h-dvh, h-full (100%) DEĞİL: AppChrome'un içerideki div'leri zaten aynı
-  // sebeple h-dvh kullanıyor (iOS Safari'de 100vh görünür alandan büyük).
-  // html/body eski 100%'te kalınca zincir tutarsız oluyordu - Safari'den ana
-  // ekrana eklenmiş (standalone) modda alt sekme çubuğunun gerçek ekran
-  // altından bir miktar yukarıda kaldığı bildirimi tam olarak bu
-  // tutarsızlıkla eşleşen bilinen bir WebKit deseni. Tüm zincirin (html ->
-  // body -> AppChrome'un iç div'leri) AYNI dinamik birimi kullanması gerekiyor.
+  // h-dvh yerine fixed inset-0: standalone (Ana Ekrana Ekle) modda gerçek
+  // Safari'den bildirilen bir şikayetle uyuşan bilinen bir WebKit hatası var
+  // - 100vh/100dvh standalone modda GERÇEK görünür alandan biraz daha KISA
+  // hesaplanabiliyor, bu da body'nin (ve içindeki fixed alt sekme çubuğunun)
+  // ekranın gerçek alt kenarına ulaşamayıp bir miktar yukarıda kalmasına,
+  // altında boş (aynı arkaplan renginde, fark edilmesi güç) bir şerit
+  // bırakmasına yol açıyor. `position: fixed; inset: 0` hiçbir vh/dvh
+  // hesabına dayanmıyor - tarayıcının GERÇEK görsel viewport'una göre
+  // tanımlanıyor, bu yüzden bu sınıf hatalara karşı bağışık.
   return (
-    <html lang="tr" className={`h-dvh dark ${plexMono.variable}`}>
-      <body className={`${inter.className} bg-background text-foreground h-dvh overflow-hidden flex`}>
+    <html lang="tr" className={`dark ${plexMono.variable}`}>
+      <body className={`${inter.className} bg-background text-foreground fixed inset-0 overflow-hidden flex`}>
         <AuthGate>
           <AppChrome>{children}</AppChrome>
         </AuthGate>
