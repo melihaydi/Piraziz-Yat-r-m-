@@ -107,9 +107,9 @@ export default function FundDetailPage() {
 
   // Risk rating color mappings
   const getRiskColor = (risk: number) => {
-    if (risk <= 2) return "text-emerald-400"
-    if (risk <= 4) return "text-amber-400"
-    return "text-rose-500"
+    if (risk <= 2) return "val-up"
+    if (risk <= 4) return "val-warn"
+    return "val-down"
   }
 
   return (
@@ -192,7 +192,7 @@ export default function FundDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground font-semibold uppercase">Portföy Büyüklüğü</span>
-              <TrendingUp className="h-4 w-4 text-purple-400" />
+              <TrendingUp className="h-4 w-4 text-primary" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="text-2xl font-extrabold font-mono text-foreground">
@@ -208,7 +208,7 @@ export default function FundDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground font-semibold uppercase">Fon Yöneticisi</span>
-              <User className="h-4 w-4 text-cyan-400" />
+              <User className="h-4 w-4 text-primary" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="text-sm font-black text-foreground truncate max-w-[200px] block">
@@ -231,9 +231,9 @@ export default function FundDetailPage() {
             </CardHeader>
             <CardContent>
               {chartIsSimulated && chartData.length > 0 && (
-                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-[11px] leading-relaxed text-amber-200/90">
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 val-warn shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed val-warn">
                     <strong className="font-bold">Bu grafik gerçek fiyat verisi değildir.</strong>{" "}
                     Fonun gerçek TEFAS fiyat geçmişi henüz yüklenmedi; aşağıdaki
                     eğri, endeks hareketinden türetilmiş geçici bir temsildir.
@@ -271,7 +271,7 @@ export default function FundDetailPage() {
           {/* Varlık Dağılımı */}
           <Card glass={true}>
             <CardHeader>
-              <CardTitle className="text-sm font-black uppercase tracking-wider text-purple-400">Varlık Kırılımı</CardTitle>
+              <CardTitle className="text-sm font-black uppercase tracking-wider text-primary">Varlık Kırılımı</CardTitle>
               <CardDescription className="text-[10px]">Fonda bulunan aktif varlık dağılım oranları</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-center">
@@ -316,7 +316,7 @@ export default function FundDetailPage() {
           {/* Performance Returns List */}
           <Card glass={true}>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-black uppercase tracking-wider text-purple-400">Dönemsel Getiriler</CardTitle>
+              <CardTitle className="text-sm font-black uppercase tracking-wider text-primary">Dönemsel Getiriler</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-xs font-semibold py-1.5 border-b border-border/20">

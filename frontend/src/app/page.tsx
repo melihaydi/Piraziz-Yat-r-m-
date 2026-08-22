@@ -43,6 +43,15 @@ const IndexAreaChart = dynamic(() => import("@/components/charts/IndexAreaChart"
 const tl = (n: number, digits = 2) =>
   `₺${n.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`
 
+// portfolio/page.tsx'teki aynı eşleme (hareket defteri tipleri) - "Son
+// İşlemler" mini listesinde aynı Türkçe etiketler görünsün diye.
+const TX_LABELS: Record<string, string> = {
+  BUY: "ALIŞ",
+  SELL: "SATIŞ",
+  DIVIDEND: "TEMETTÜ",
+  BONUS: "BEDELSİZ",
+}
+
 /**
  * Zaman dilimi kontrolü - iki gerçek veri kaynağından besleniyor, üçüncüsü
  * yok. Sunucudaki candle derinliğini SSH ile ölçtüm: XU100 için interval=1d
@@ -214,6 +223,11 @@ export default function Home() {
   const [myPortfolio, setMyPortfolio] = useState<any>(null)
   const [loadingMyPortfolio, setLoadingMyPortfolio] = useState(true)
   const [myLiveEstimate, setMyLiveEstimate] = useState<any>(null)
+  // Kartın altında kalan boş alanı doldurmak için: gerçek işlem geçmişinin
+  // (portfolio/page.tsx'in "İşlem Geçmişi" modalında kullandığı AYNI uç
+  // nokta) son birkaç satırı - "Az önce neler oldu" sorusuna gerçek veriyle
+  // cevap veriyor, uydurma bir "aktivite" değil.
+  const [recentTx, setRecentTx] = useState<any[]>([])
 
   useEffect(() => {
     const fetchPortfolio = () => {
@@ -229,9 +243,16 @@ export default function Home() {
         .then(data => { if (data) setMyLiveEstimate(data) })
         .catch(err => console.error("Failed to load portfolio live estimate:", err))
     }
+    const fetchRecentTx = () => {
+      authFetch("/portfolio/transactions?limit=3")
+        .then(res => (res.ok ? res.json() : []))
+        .then(data => { if (Array.isArray(data)) setRecentTx(data) })
+        .catch(err => console.error("Failed to load recent transactions:", err))
+    }
     fetchPortfolio()
     fetchLiveEstimate()
-    return pollWhileVisibleAndOpen(() => { fetchPortfolio(); fetchLiveEstimate() }, 15000)
+    fetchRecentTx()
+    return pollWhileVisibleAndOpen(() => { fetchPortfolio(); fetchLiveEstimate(); fetchRecentTx() }, 15000)
   }, [])
 
   // --- Frantic Algoritmik Sinyaller (premium) -----------------------------
@@ -563,6 +584,26 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                {recentTx.length > 0 && (
+                  <div>
+                    <div className="t-label mb-1.5">Son İşlemler</div>
+                    <div className="space-y-1.5">
+                      {recentTx.map((t: any) => (
+                        <div key={t.id} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Badge variant={t.transaction_type === "SELL" ? "danger" : "success"}>
+                              {TX_LABELS[t.transaction_type] || t.transaction_type}
+                            </Badge>
+                            <span className="font-bold text-foreground truncate">{t.ticker}</span>
+                          </div>
+                          <span className="font-mono text-muted-foreground shrink-0">
+                            {new Date(t.executed_at).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -816,9 +857,13 @@ export default function Home() {
                           .slice()
                           .sort((a: any, b: any) => b.weight - a.weight)
                           .map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between text-xs gap-2">
+                            <div
+                              key={h.ticker}
+                              onClick={(e) => { e.stopPropagation(); router.push(`/stock/${h.ticker}`) }}
+                              className="flex items-center justify-between text-xs gap-2 cursor-pointer hover:bg-secondary/40 rounded px-1 -mx-1 py-0.5"
+                            >
                               <div className="flex items-baseline gap-1.5 min-w-0">
-                                <span className="font-bold text-foreground truncate">{h.ticker}</span>
+                                <span className="font-bold text-primary truncate">{h.ticker}</span>
                                 <span className="text-muted-foreground/70 shrink-0">%{h.weight.toFixed(2)}</span>
                               </div>
                               {h.impact_pct != null ? (

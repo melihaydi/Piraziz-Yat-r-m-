@@ -123,17 +123,17 @@ function DirectionBadge({ direction }: { direction: Direction }) {
     )
   }
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800/60 text-muted-foreground border border-border/50">
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary/60 text-muted-foreground border border-border">
       YOK
     </span>
   )
 }
 
 function ConfidenceBar({ score, confidence }: { score: number; confidence: string }) {
-  const color = confidence === "Yüksek" ? "bg-emerald-500" : confidence === "Orta" ? "bg-amber-500" : "bg-zinc-600"
+  const color = confidence === "Yüksek" ? "bg-bull" : confidence === "Orta" ? "bg-warn" : "bg-muted-foreground/40"
   return (
     <div className="flex items-center gap-2 min-w-[90px]">
-      <div className="flex-1 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
         <div className={`h-full ${color} transition-all duration-300`} style={{ width: `${score}%` }} />
       </div>
       <span className="text-[10px] font-bold text-muted-foreground w-7 text-right">{score}</span>
@@ -166,7 +166,7 @@ function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; sto
             inputMode="decimal"
             value={accountSize}
             onChange={e => setAccountSize(e.target.value)}
-            className="w-28 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-amber-500/40"
+            className="w-28 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -176,7 +176,7 @@ function PositionSizeCalculator({ entry, stopLoss }: { entry: number | null; sto
             inputMode="decimal"
             value={riskPct}
             onChange={e => setRiskPct(e.target.value)}
-            className="w-16 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-amber-500/40"
+            className="w-16 h-7 px-2 rounded bg-secondary/40 border border-border text-[11px] text-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
       </div>
@@ -355,12 +355,12 @@ export default function StrategyPage() {
   if (accessDenied) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-32 text-center">
-        <ShieldAlert className="h-8 w-8 text-amber-400" />
+        <ShieldAlert className="h-8 w-8 text-primary" />
         <span className="text-sm font-bold text-foreground">Frantic Algoritmik Strateji Premium üyelik gerektirir</span>
         <span className="text-xs text-muted-foreground max-w-sm">
           Bu bölüm ücretsiz üyelikte kullanılamıyor. Üyeliğinizi yükseltmek için Ayarlar sayfasını ziyaret edin.
         </span>
-        <Link href="/settings" className="mt-2 text-xs font-bold text-amber-400 hover:text-amber-300 underline underline-offset-2">
+        <Link href="/settings" className="mt-2 text-xs font-bold text-primary hover:text-primary-hover underline underline-offset-2">
           Ayarlar&apos;a git
         </Link>
       </div>
@@ -371,13 +371,13 @@ export default function StrategyPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between flex-wrap gap-3 animate-rise">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center shrink-0">
-            <Bot className="h-5 w-5 text-amber-400" />
+          <div className="h-11 w-11 rounded-xl bg-primary/10 border border-primary/25 flex items-center justify-center shrink-0">
+            <Bot className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight text-foreground flex items-center gap-2">
               Frantic Algoritmik Strateji
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-amber-400 text-amber-400" />
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-primary text-primary" />
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               Piyasa yapısı, kırılım-retest dinamikleri, mum formasyonları ve momentum teyitlerini harmanlayan BIST30 tabanlı profesyonel sinyal motoru.
@@ -395,7 +395,7 @@ export default function StrategyPage() {
           <button
             onClick={() => fetchScan(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 transition-colors cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             Yenile
@@ -407,19 +407,19 @@ export default function StrategyPage() {
       <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold w-fit">
         <button
           onClick={() => setTab("live")}
-          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "live" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "live" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
           Canlı Tarama
         </button>
         <button
           onClick={() => setTab("history")}
-          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "history" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "history" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
           Sinyal Geçmişi{history.length > 0 ? ` (${history.length})` : ""}
         </button>
         <button
           onClick={() => setTab("backtest")}
-          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "backtest" ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+          className={`px-4 h-8 rounded-md transition-colors cursor-pointer press ${tab === "backtest" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
         >
           Backtest
         </button>
@@ -455,7 +455,7 @@ export default function StrategyPage() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Sembol veya şirket ara..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
         <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold">
@@ -463,7 +463,7 @@ export default function StrategyPage() {
             <button
               key={d}
               onClick={() => setDirectionFilter(d)}
-              className={`px-3 h-8 rounded-md transition-colors cursor-pointer ${directionFilter === d ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+              className={`px-3 h-8 rounded-md transition-colors cursor-pointer ${directionFilter === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               {d === "ALL" ? "Tümü" : d}
             </button>
@@ -472,7 +472,7 @@ export default function StrategyPage() {
         <select
           value={sortKey}
           onChange={e => setSortKey(e.target.value as SortKey)}
-          className="h-9 px-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground focus:outline-none focus:border-amber-500/40 cursor-pointer"
+          className="h-9 px-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground focus:outline-none focus:border-primary/40 cursor-pointer"
         >
           <option value="score">Sırala: Skor</option>
           <option value="ticker">Sırala: Sembol</option>
@@ -486,7 +486,7 @@ export default function StrategyPage() {
       <div className="border border-border rounded-xl overflow-hidden bg-card">
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+            <Loader2 className="h-6 w-6 text-primary animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -508,7 +508,7 @@ export default function StrategyPage() {
                   <th className="px-4 text-right">Hedef</th>
                   <th className="px-4 text-right">R:R</th>
                   <th
-                    className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${sortKey === "captured_pnl_pct" ? "text-amber-400" : ""}`}
+                    className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${sortKey === "captured_pnl_pct" ? "text-primary" : ""}`}
                     onClick={() => setSortKey("captured_pnl_pct")}
                     title="Yüksekten düşüğe sırala"
                   >
@@ -529,7 +529,7 @@ export default function StrategyPage() {
                     <React.Fragment key={s.ticker}>
                       <tr
                         onClick={() => setExpanded(isExpanded ? null : s.ticker)}
-                        className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-amber-500/5" : "hover:bg-secondary/30"}`}
+                        className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-primary/5" : "hover:bg-secondary/30"}`}
                       >
                         <td className="px-4">
                           <div className="flex items-center gap-1.5">
@@ -599,7 +599,7 @@ export default function StrategyPage() {
                                   ))}
                                 </ul>
                                 <div className="flex items-center gap-1.5 mt-2">
-                                  <ShieldAlert className="h-3 w-3 text-amber-400" />
+                                  <ShieldAlert className="h-3 w-3 text-primary" />
                                   <span className="text-[11px] font-bold text-foreground">Risk Seviyesi: {s.risk_level}</span>
                                 </div>
                               </div>
@@ -705,7 +705,7 @@ export default function StrategyPage() {
             value={historyQuery}
             onChange={e => setHistoryQuery(e.target.value)}
             placeholder="Sembol veya şirket ara..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
         <div className="flex items-center bg-secondary/40 border border-border rounded-lg p-0.5 text-[11px] font-bold">
@@ -713,7 +713,7 @@ export default function StrategyPage() {
             <button
               key={d}
               onClick={() => setHistoryDirFilter(d)}
-              className={`px-3 h-8 rounded-md transition-colors cursor-pointer ${historyDirFilter === d ? "bg-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}
+              className={`px-3 h-8 rounded-md transition-colors cursor-pointer ${historyDirFilter === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
               {d === "ALL" ? "Tümü" : d}
             </button>
@@ -721,7 +721,7 @@ export default function StrategyPage() {
         </div>
         <button
           onClick={fetchHistory}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Yenile
@@ -731,7 +731,7 @@ export default function StrategyPage() {
       <div className="border border-border rounded-xl overflow-hidden bg-card">
         {historyLoading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+            <Loader2 className="h-6 w-6 text-primary animate-spin" />
           </div>
         ) : filteredHistory.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -752,7 +752,7 @@ export default function StrategyPage() {
                   <th className="px-4 text-right">Stop</th>
                   <th className="px-4 text-right">Hedef</th>
                   <th
-                    className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${historySortKey === "captured_pnl_pct" ? "text-amber-400" : ""}`}
+                    className={`px-4 text-right cursor-pointer select-none hover:text-foreground transition-colors ${historySortKey === "captured_pnl_pct" ? "text-primary" : ""}`}
                     onClick={() => setHistorySortKey(prev => prev === "captured_pnl_pct" ? "timestamp" : "captured_pnl_pct")}
                     title="Yüksekten düşüğe sırala (tekrar tıkla: saate göre)"
                   >
@@ -804,7 +804,7 @@ export default function StrategyPage() {
 
       {tab === "backtest" && (
       <>
-      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-300/90 flex items-start gap-2">
+      <div className="rounded-lg border border-warn/20 bg-warn/5 px-3 py-2 text-[11px] val-warn flex items-start gap-2">
         <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
         <span>
           Son ~2 yıllık günlük mumlar üzerinde, canlı tarayıcıyla aynı piyasa yapısı/kırılım/retest/mum mantığı geriye dönük (bar bar, yalnızca o ana kadarki
@@ -820,13 +820,13 @@ export default function StrategyPage() {
             value={backtestQuery}
             onChange={e => setBacktestQuery(e.target.value)}
             placeholder="Sembol veya şirket ara..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/40"
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
         <select
           value={backtestSort}
           onChange={e => setBacktestSort(e.target.value as BacktestSortKey)}
-          className="h-9 px-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground focus:outline-none focus:border-amber-500/40 cursor-pointer"
+          className="h-9 px-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground focus:outline-none focus:border-primary/40 cursor-pointer"
         >
           <option value="excess_return_pct">Sırala: XU100 Farkı</option>
           <option value="total_return_pct">Sırala: Net Getiri</option>
@@ -836,7 +836,7 @@ export default function StrategyPage() {
         <button
           onClick={fetchBacktest}
           disabled={backtestLoading}
-          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 transition-colors cursor-pointer disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-xs font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${backtestLoading ? "animate-spin" : ""}`} />
           Yenile
@@ -851,7 +851,7 @@ export default function StrategyPage() {
       <div className="border border-border rounded-xl overflow-hidden bg-card">
         {(backtestLoading && !backtestLoaded) || backtestComputing ? (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-center px-6">
-            <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+            <Loader2 className="h-6 w-6 text-primary animate-spin" />
             <span className="text-[11px] text-muted-foreground">
               30 sembol için ~2 yıllık geriye dönük simülasyon sunucuda çalışıyor - birkaç dakika sürebilir, sonuçlar hazır olunca otomatik görünecek...
             </span>
@@ -883,7 +883,7 @@ export default function StrategyPage() {
                     <React.Fragment key={r.ticker}>
                       <tr
                         onClick={() => setExpandedBt(isExpanded ? null : r.ticker)}
-                        className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-amber-500/5" : "hover:bg-secondary/30"}`}
+                        className={`border-b border-border/60 h-12 cursor-pointer transition-colors ${isExpanded ? "bg-primary/5" : "hover:bg-secondary/30"}`}
                       >
                         <td className="px-4">
                           <div className="flex items-center gap-1.5">

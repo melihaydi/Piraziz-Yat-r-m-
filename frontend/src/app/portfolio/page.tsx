@@ -93,7 +93,7 @@ const pctSigned = (n: number, digits = 2) => `${n >= 0 ? "+" : ""}${n.toFixed(di
  *  tahmin hiçbir zaman kesinleşmiş bir rakamla karıştırılmasın. Yön yine
  *  +/- işaretinden okunuyor. */
 const dailyToneClass = (value: number, isEstimate: boolean) =>
-  isEstimate ? "text-orange-400" : value >= 0 ? "text-cyan-400" : "text-rose-400"
+  isEstimate ? "val-warn" : value >= 0 ? "val-up" : "val-down"
 
 function PortfolioStressTest({ beta, currentValue }: { beta: number | null; currentValue: number }) {
   const [scenario, setScenario] = useState(-10)
@@ -119,7 +119,7 @@ function PortfolioStressTest({ beta, currentValue }: { beta: number | null; curr
         step={1}
         value={scenario}
         onChange={e => setScenario(Number(e.target.value))}
-        className="w-full accent-purple-500 cursor-pointer"
+        className="w-full accent-primary cursor-pointer"
       />
       <div className="flex items-center justify-between text-xs pt-1">
         <span className="text-muted-foreground">Tahmini portföy etkisi</span>
@@ -882,7 +882,7 @@ export default function PortfolioPage() {
                 onClick={() => selectPortfolio(p.id)}
                 className={`px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition-colors ${
                   p.id === activePortfolio?.id
-                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                    ? "bg-primary/20 text-primary border border-primary/40"
                     : "bg-secondary/40 text-muted-foreground border border-border/40 hover:bg-secondary/70"
                 }`}
               >
@@ -912,7 +912,7 @@ export default function PortfolioPage() {
             className="cursor-pointer flex items-center"
             onClick={() => setIsOpenHistoryModal(true)}
           >
-            <History className="h-4 w-4 mr-2 text-cyan-400" />
+            <History className="h-4 w-4 mr-2 text-primary" />
             İşlem Geçmişi
           </Button>
           <Button
@@ -920,7 +920,7 @@ export default function PortfolioPage() {
             className="cursor-pointer flex items-center"
             onClick={() => setIsOpenDividendModal(true)}
           >
-            <Coins className="h-4 w-4 mr-2 text-amber-400" />
+            <Coins className="h-4 w-4 mr-2 text-primary" />
             Temettü Ekle
           </Button>
           <Button
@@ -1006,7 +1006,7 @@ export default function PortfolioPage() {
           <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
             <DialogTrigger asChild>
               <Button variant="outline" className="cursor-pointer flex items-center">
-                <Bell className="h-4 w-4 mr-2 text-purple-400" />
+                <Bell className="h-4 w-4 mr-2 text-primary" />
                 Alarm Kur
               </Button>
             </DialogTrigger>
@@ -1116,7 +1116,7 @@ export default function PortfolioPage() {
                     <button
                       type="button"
                       onClick={() => setAssetTicker("XAUTRYG")}
-                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 cursor-pointer"
+                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer"
                     >
                       Gram Altın
                     </button>
@@ -1395,7 +1395,7 @@ export default function PortfolioPage() {
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5 text-xs">
                     <span>
                       <span className="text-muted-foreground">Temettü geliri: </span>
-                      <span className="font-mono font-extrabold text-amber-400">
+                      <span className="font-mono font-extrabold val-warn">
                         ₺{annual.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </span>
@@ -1403,9 +1403,9 @@ export default function PortfolioPage() {
                   </div>
 
                   {annual.has_incomplete_basis && (
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                      <p className="text-[11px] leading-relaxed text-amber-200/90">
+                    <div className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2">
+                      <AlertTriangle className="h-4 w-4 val-warn shrink-0 mt-0.5" />
+                      <p className="text-[11px] leading-relaxed val-warn">
                         Bazı satışların alış kaydı defterde yok (işlem geçmişi
                         tutulmaya başlamadan önce alınmış pozisyonlar). FIFO rakamı
                         bu satışları hariç tutuyor, yani eksik.
@@ -1431,7 +1431,7 @@ export default function PortfolioPage() {
                               <td className={`py-2 text-right ${r.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
                                 {r.realized_pnl >= 0 ? "+" : ""}₺{r.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
-                              <td className="py-2 text-right text-amber-400">
+                              <td className="py-2 text-right val-warn">
                                 ₺{r.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className={`py-2 text-right font-bold ${r.total >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
@@ -1490,10 +1490,10 @@ export default function PortfolioPage() {
                           </td>
                           <td className="py-2">
                             <span className={`px-1.5 py-0.5 rounded font-sans font-bold text-[10px] ${
-                              t.transaction_type === "BUY" ? "bg-emerald-500/15 text-emerald-400"
-                              : t.transaction_type === "SELL" ? "bg-rose-500/15 text-rose-400"
-                              : t.transaction_type === "DIVIDEND" ? "bg-amber-500/15 text-amber-400"
-                              : "bg-cyan-500/15 text-cyan-400"
+                              t.transaction_type === "BUY" ? "bg-bull/15 val-up"
+                              : t.transaction_type === "SELL" ? "bg-bear/15 val-down"
+                              : t.transaction_type === "DIVIDEND" ? "bg-warn/15 val-warn"
+                              : "bg-primary/15 text-primary"
                             }`}>
                               {TX_LABELS[t.transaction_type] || t.transaction_type}
                             </span>
@@ -1530,7 +1530,7 @@ export default function PortfolioPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="t-label">PORTFÖY DEĞERİ</span>
-              <Briefcase className="h-4 w-4 text-purple-400" />
+              <Briefcase className="h-4 w-4 text-primary" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               <span className="t-metric font-mono text-foreground">
@@ -1564,7 +1564,7 @@ export default function PortfolioPage() {
             )}
             <button
               onClick={handleToggleLiveEstimate}
-              className="mt-2 flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+              className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-hover transition-colors cursor-pointer"
             >
               <Zap className="h-3 w-3" />
               Tahmini Getiri
@@ -1603,7 +1603,7 @@ export default function PortfolioPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="t-label">BETA / VOLATİLİTE</span>
-              <Activity className="h-4 w-4 text-cyan-400" />
+              <Activity className="h-4 w-4 text-primary" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
               {analyticsLoading ? (
@@ -1625,23 +1625,23 @@ export default function PortfolioPage() {
           </CardContent>
         </Card>
 
-        <Card glass={true} className="border-purple-500/15">
+        <Card className="bip-card">
           <CardContent className="pt-6 space-y-2">
             <div className="flex items-center justify-between">
               <span className="t-label">PORTFÖY SAĞLIĞI</span>
-              <Sparkles className="h-4 w-4 text-purple-400" />
+              <Sparkles className="h-4 w-4 text-primary" />
             </div>
             <div className="flex items-baseline justify-between">
               <span className="text-2xl font-black text-foreground">
                 {advancedMetrics.healthScore} <span className="text-xs text-muted-foreground font-bold">/100</span>
               </span>
-              <span className="text-xs font-bold text-purple-400 font-mono">
+              <span className="text-xs font-bold text-primary font-mono">
                 Sharpe: {analyticsLoading ? "…" : analytics?.sharpe != null ? analytics.sharpe.toFixed(2) : "—"}
               </span>
             </div>
             <div className="w-full bg-secondary/40 h-2.5 rounded-full overflow-hidden border border-border/30">
               <div 
-                className="bg-gradient-to-r from-purple-500 to-indigo-500 h-full rounded-full transition-all duration-500" 
+                className="bg-primary h-full rounded-full transition-all duration-500" 
                 style={{ width: `${advancedMetrics.healthScore}%` }}
               />
             </div>
@@ -1656,7 +1656,7 @@ export default function PortfolioPage() {
       {realized && (realized.sell_count > 0 || realized.dividend_count > 0) && (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
           <div className="flex items-center gap-2 shrink-0">
-            <History className="h-4 w-4 text-cyan-400" />
+            <History className="h-4 w-4 text-primary" />
             <span className="text-xs font-bold uppercase text-muted-foreground">Gerçekleşen</span>
           </div>
           <div className="flex items-baseline gap-1.5">
@@ -1668,7 +1668,7 @@ export default function PortfolioPage() {
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-muted-foreground font-semibold">Temettü:</span>
-            <span className="text-sm font-extrabold font-mono text-amber-400">
+            <span className="text-sm font-extrabold font-mono val-warn">
               ₺{realized.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -1680,7 +1680,7 @@ export default function PortfolioPage() {
           </div>
           <button
             onClick={() => setIsOpenHistoryModal(true)}
-            className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer ml-auto"
+            className="text-[11px] font-bold text-primary hover:text-primary-hover cursor-pointer ml-auto"
           >
             Tümünü gör →
           </button>
@@ -1688,10 +1688,10 @@ export default function PortfolioPage() {
       )}
 
       {showLiveEstimate && (
-        <Card glass={true} className="border-amber-500/20">
+        <Card className="bip-card">
           <CardHeader>
             <CardTitle className="t-section flex items-center gap-2">
-              <Zap className="h-5 w-5 text-amber-400" />
+              <Zap className="h-5 w-5 val-warn" />
               Tahmini Portföy Getirisi
             </CardTitle>
             <CardDescription>
@@ -1899,7 +1899,7 @@ export default function PortfolioPage() {
                             <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => { setSelectedAsset(item); setSellShares(""); setIsOpenSellModal(true) }}
-                                className="press h-8 px-2.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-pointer"
+                                className="press h-8 px-2.5 rounded-md text-xs font-bold bg-warn/10 val-warn border border-warn/20 cursor-pointer"
                               >
                                 Sat
                               </button>
@@ -2001,7 +2001,7 @@ export default function PortfolioPage() {
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
                                     onClick={() => { setSelectedAsset(item); setSellShares(""); setIsOpenSellModal(true) }}
-                                    className="press h-7 px-2.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                                    className="press h-7 px-2.5 rounded-md text-xs font-bold bg-warn/10 val-warn border border-warn/20 hover:bg-warn/20 transition-colors cursor-pointer"
                                   >
                                     Sat
                                   </button>
@@ -2097,8 +2097,8 @@ export default function PortfolioPage() {
           <Card glass={true}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-purple-400">
-                  <PieIcon className="h-4.5 w-4.5 text-purple-400 mr-2" />
+                <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-primary">
+                  <PieIcon className="h-4.5 w-4.5 text-primary mr-2" />
                   Dağılım Analizi
                 </CardTitle>
                 <div className="flex bg-secondary/40 p-0.5 rounded-lg border border-border/30">

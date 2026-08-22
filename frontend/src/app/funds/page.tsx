@@ -184,7 +184,7 @@ function FundsPageInner() {
   // cell, so the two always agree on what counts as accurate.
   function accuracyTier(absError: number): { label: string; className: string } {
     if (absError <= 0.5) return { label: "İsabetli", className: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" }
-    if (absError <= 1.5) return { label: "Orta", className: "text-amber-400 bg-amber-500/10 border-amber-500/20" }
+    if (absError <= 1.5) return { label: "Orta", className: "val-warn bg-warn/10 border-warn/20" }
     return { label: "Sapmalı", className: "text-rose-400 bg-rose-500/10 border-rose-500/20" }
   }
 
@@ -410,11 +410,11 @@ function FundsPageInner() {
       </div>
 
       {/* Popüler Fonlar - Anlık Getiri */}
-      <Card ref={popularFundsRef} glass={true} className="border-amber-500/20">
+      <Card ref={popularFundsRef} className="bip-card">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <CardTitle className="text-sm flex items-center">
-              <Zap className="h-4 w-4 mr-2 text-amber-400" />
+              <Zap className="h-4 w-4 mr-2 text-primary" />
               Popüler Fonlar - Anlık Getiri
             </CardTitle>
             {/* Tahmin doğruluğu geçmişi buradan açılıyor: sayfanın altında
@@ -424,9 +424,9 @@ function FundsPageInner() {
             <button
               type="button"
               onClick={openEstimateHistory}
-              className="shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/60 bg-secondary/30 text-[11px] font-bold text-muted-foreground hover:text-foreground hover:border-cyan-500/40 cursor-pointer transition-colors"
+              className="shrink-0 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/60 bg-secondary/30 text-[11px] font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer transition-colors"
             >
-              <History className="h-3.5 w-3.5 text-cyan-400" />
+              <History className="h-3.5 w-3.5 text-primary" />
               Tahmin Doğruluğu
             </button>
           </div>
@@ -439,7 +439,7 @@ function FundsPageInner() {
         <CardContent>
           {popularLoading ? (
             <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-6 w-6 text-amber-400 animate-spin" />
+              <Loader2 className="h-6 w-6 text-primary animate-spin" />
             </div>
           ) : popularFunds.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">Veri alınamadı.</div>
@@ -460,7 +460,7 @@ function FundsPageInner() {
                       className="w-full p-3 text-left cursor-pointer"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="bg-amber-500 text-amber-950 font-black px-2 py-0.5 rounded text-xs">
+                        <span className="bg-primary text-primary-foreground font-black px-2 py-0.5 rounded text-xs">
                           {f.code}
                         </span>
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
@@ -540,7 +540,7 @@ function FundsPageInner() {
         <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
             <DialogTitle className="flex items-center text-sm">
-              <History className="h-4 w-4 mr-2 text-cyan-400" />
+              <History className="h-4 w-4 mr-2 text-primary" />
               Tahmin Doğruluğu (Geçmiş)
             </DialogTitle>
             <DialogDescription className="text-xs">
@@ -551,7 +551,7 @@ function FundsPageInner() {
           <div className="max-h-[65vh] overflow-y-auto pr-1">
             {estimateHistoryLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 text-cyan-400 animate-spin" />
+                <Loader2 className="h-5 w-5 text-primary animate-spin" />
               </div>
             ) : estimateHistory.length === 0 ? (
               <div className="py-6 text-center text-xs text-muted-foreground">
@@ -666,7 +666,7 @@ function FundsPageInner() {
                     className="w-full h-8 rounded-md border border-input bg-secondary/30 px-2 text-xs focus-visible:outline-none"
                   >
                     {categoriesList.map(cat => (
-                      <option key={cat} value={cat} className="bg-zinc-900 text-foreground">
+                      <option key={cat} value={cat} className="bg-popover text-foreground">
                         {cat}
                       </option>
                     ))}
@@ -750,8 +750,8 @@ function FundsPageInner() {
                                 e.stopPropagation()
                                 toggleFavorite(fund.code)
                               }}>
-                                <button className="text-muted-foreground hover:text-amber-400 transition-colors">
-                                  <Star className={`h-4 w-4 ${isFav ? "text-amber-400 fill-amber-400" : ""}`} />
+                                <button className="text-muted-foreground hover:text-warn transition-colors">
+                                  <Star className={`h-4 w-4 ${isFav ? "text-warn fill-warn" : ""}`} />
                                 </button>
                               </td>
                               <td className="px-4 text-center" onClick={(e) => {
@@ -764,8 +764,8 @@ function FundsPageInner() {
                                   title={compareCodes.includes(fund.code) ? "Karşılaştırmadan çıkar" : "Karşılaştırmaya ekle"}
                                   className={`h-6 w-6 rounded-md border flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                                     compareCodes.includes(fund.code)
-                                      ? "bg-cyan-500 border-cyan-400 text-black shadow-[0_0_10px_rgba(34,211,238,0.3)]"
-                                      : "border-border/60 text-muted-foreground hover:border-cyan-500/50 hover:text-cyan-400"
+                                      ? "bg-primary border-primary text-primary-foreground shadow-[0_0_10px_hsl(var(--primary)/0.3)]"
+                                      : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
                                   }`}
                                 >
                                   <Scale className="h-3.5 w-3.5" />
@@ -821,9 +821,9 @@ function FundsPageInner() {
                   </div>
                   <button 
                     onClick={() => toggleFavorite(selectedCode)}
-                    className="text-muted-foreground hover:text-amber-400 transition-colors p-1"
+                    className="text-muted-foreground hover:text-warn transition-colors p-1"
                   >
-                    <Star className={`h-5 w-5 ${favorites.includes(selectedCode) ? "text-amber-400 fill-amber-400" : ""}`} />
+                    <Star className={`h-5 w-5 ${favorites.includes(selectedCode) ? "text-warn fill-warn" : ""}`} />
                   </button>
                 </div>
 
@@ -837,9 +837,9 @@ function FundsPageInner() {
 
               <CardContent className="space-y-4">
                 {/* Chart */}
-                <div className="relative border border-border/40 rounded-xl overflow-hidden bg-zinc-900/60 p-1">
+                <div className="relative border border-border rounded-xl overflow-hidden bg-secondary/40 p-1">
                   {chartLoading && (
-                    <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm flex items-center justify-center z-10">
+                    <div className="absolute inset-0 bg-background/70 backdrop-blur-sm flex items-center justify-center z-10">
                       <Loader2 className="h-6 w-6 text-primary animate-spin" />
                     </div>
                   )}
@@ -957,7 +957,7 @@ function FundsPageInner() {
                             // tablosunda bu ayrımın gözden kaçmaması gerek.
                             <span
                               title="Bu fonun gerçek TEFAS fiyat geçmişi henüz yüklenmedi. Bu satırdaki getiri ve volatilite rakamları geçici, türetilmiş veriye dayanıyor - gerçek performans değildir."
-                              className="ml-1.5 rounded border border-amber-500/40 bg-amber-500/15 px-1 py-0.5 text-[10px] font-bold text-amber-300 cursor-help"
+                              className="ml-1.5 rounded border border-warn/40 bg-warn/15 px-1 py-0.5 text-[10px] font-bold val-warn cursor-help"
                             >
                               GERÇEK DEĞİL
                             </span>
@@ -999,9 +999,9 @@ function FundsPageInner() {
           filter-row button combo). */}
       {compareCodes.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4">
-          <div className="bg-card/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl shadow-cyan-500/10 px-4 py-3 flex items-center gap-3">
+          <div className="bg-popover/95 backdrop-blur-xl border border-primary/30 rounded-2xl shadow-[var(--elev-3)] px-4 py-3 flex items-center gap-3">
             <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-              <Scale className="h-4 w-4 text-cyan-400 shrink-0" />
+              <Scale className="h-4 w-4 text-primary shrink-0" />
               {compareCodes.map((code) => (
                 <div
                   key={code}
@@ -1033,7 +1033,7 @@ function FundsPageInner() {
                 size="sm"
                 disabled={compareCodes.length < 2}
                 onClick={runCompare}
-                className="text-xs h-8 px-3.5 cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-black font-bold disabled:opacity-40"
+                className="text-xs h-8 px-3.5 cursor-pointer bg-primary hover:bg-primary-hover text-primary-foreground font-bold disabled:opacity-40"
               >
                 Karşılaştır
               </Button>
