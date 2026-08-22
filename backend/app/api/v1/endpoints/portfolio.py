@@ -13,6 +13,7 @@ from app.db.session import SessionLocal
 from app.models.user import User
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.models.portfolio_transaction import PortfolioTransaction
+from app.models.kap import KapNotification
 from app.schemas.portfolio import (
     PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse,
     AssetSell, DividendCreate, PortfolioTransactionResponse,
@@ -431,6 +432,33 @@ def get_portfolio_analytics(
         asset_values.append({"ticker": a.ticker.upper(), "total_value": a.shares * price})
 
     result = compute_portfolio_analytics(asset_values)
+
+    # "Yaklaşan Ödemeler" paneli için - backend'de ayrı bir temettü takvimi
+    # veri kaynağı yok, bu yüzden gerçek bir ÖDEME tarihi değil, kullanıcının
+    # elindeki hisselerle ilgili KAP'ın kâr payı dağıtım bildirimlerinin
+    # yayın tarihi kullanılıyor. Frontend bunu net biçimde "KAP Bildirimi"
+    # olarak etiketlemeli - kesinleşmiş bir ödeme takvimi gibi sunulmamalı.
+    dividend_notices = (
+        db.query(KapNotification)
+        .filter(
+            KapNotification.ticker.in_(tickers),
+            (KapNotification.title.ilike("%kar pay%"))
+            | (KapNotification.title.ilike("%kâr pay%"))
+            | (KapNotification.title.ilike("%temettü%")),
+        )
+        .order_by(KapNotification.publish_date.desc())
+        .limit(5)
+        .all()
+    )
+    result["dividend_notices"] = [
+        {
+            "ticker": n.ticker,
+            "title": n.title,
+            "publish_date": n.publish_date.isoformat() if n.publish_date else None,
+        }
+        for n in dividend_notices
+    ]
+
     cache_service.set_json(cache_key, result, expire_seconds=_ANALYTICS_CACHE_TTL_SECONDS)
     return result
 

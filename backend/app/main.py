@@ -10,6 +10,20 @@ from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.notify import send_telegram_alert
 
+# Without this, nothing configures the root logger: Python's default
+# "handler of last resort" only ever prints WARNING+ to stderr, with no
+# timestamp/module name. Every `logger.info(...)`/`logger.debug(...)` call
+# across ~20 services (tefas.py, strategy_engine.py, portfolio_snapshot.py,
+# the background schedulers started below, etc.) was silently dropped -
+# only real errors/warnings ever reached the container logs, unformatted.
+# That made after-the-fact diagnosis of a production issue ("sunucuda
+# problem oldu") nearly impossible: there was no INFO-level trail of what
+# each background job actually did before something broke.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 # Real error tracking - was unset (SENTRY_DSN=None) because no Sentry account

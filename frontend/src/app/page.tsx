@@ -26,7 +26,7 @@ import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
-import { fetchWatchlist } from "@/lib/watchlist"
+import { fetchWatchlist, migrateLegacyWatchlist } from "@/lib/watchlist"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
 // Endeks grafiği tembel yükleniyor - gerekçe IndexAreaChart'ın kendi
@@ -341,13 +341,10 @@ export default function Home() {
     const loadFavoriteKeys = async () => {
       const tickers = await fetchWatchlist()
       setFavStockTickers(tickers)
-      const favFundsStr = localStorage.getItem("favorites_funds")
-      try {
-        const parsed = favFundsStr ? JSON.parse(favFundsStr) : []
-        if (Array.isArray(parsed)) favFundCodesLocal = parsed
-      } catch {
-        // Bozuk yerel veri favori kartını çökertmesin.
-      }
+      // Fon favorileri artık hesaba bağlı (sunucuda) - bkz. lib/watchlist.ts.
+      // Cihazda kalmış eski localStorage listesi varsa önce hesaba taşınır.
+      await migrateLegacyWatchlist("favorites_funds", "fund")
+      favFundCodesLocal = await fetchWatchlist("fund")
       setFavFundCodes(favFundCodesLocal)
     }
 
@@ -436,7 +433,7 @@ export default function Home() {
               </CardDescription>
             </div>
             <div className="text-right shrink-0">
-              <div className="t-metric-lg text-foreground">
+              <div className="t-metric-index text-foreground">
                 {indexDetails.price ? Number(indexDetails.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
               </div>
               <span className={`text-sm font-bold font-mono flex items-center justify-end mt-0.5 ${(indexDetails.change ?? 0) >= 0 ? "val-up" : "val-down"}`}>
@@ -751,7 +748,7 @@ export default function Home() {
                 <Skeleton className="h-24 w-full rounded-lg" />
               ) : (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4 [&_.t-metric]:text-2xl">
                     <StatTile label="Taranan" value={String(signalsSummary.scanned)} />
                     <StatTile label="LONG" value={String(signalsSummary.long)} className="[&_.t-metric]:text-bull" />
                     <StatTile label="SHORT" value={String(signalsSummary.short)} className="[&_.t-metric]:text-bear" />

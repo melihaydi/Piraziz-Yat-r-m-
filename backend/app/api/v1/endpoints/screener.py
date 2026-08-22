@@ -475,6 +475,22 @@ def get_market_summary(
     delay: int = Depends(deps.get_data_delay_minutes),
 ):
     """Calculate and return dynamic Bloomberg-style market tickers, sentiment, and sector performances using live quotes."""
+    # Piyasa Takip ekranı bu uç noktayı her 2 saniyede bir sorguluyor (bkz.
+    # frontend/src/app/page.tsx'in pollWhileVisibleAndOpen çağrısı) - her
+    # açık sekme için ayrı ayrı. Önbelleksiz haliyle her istek 12+ sembol
+    # için get_quote/get_delayed_quote çağırıyor, sentiment/sektör/pulse
+    # hesaplıyor VE get_current_user'la bir DB sorgusu tetikliyordu; onlarca
+    # kullanıcı aynı anda açık sekmeyle otururken bu iş tamamen tekrar
+    # ediyordu. 2 saniyelik bir Redis önbelleği - anket aralığıyla aynı -
+    # algılanan tazeliği değiştirmeden bu hesaplamayı pencere başına bir kere
+    # indiriyor. delay (free/premium) cache key'e dahil, aksi halde ücretsiz
+    # kullanıcıya premium'un canlı verisi (veya tam tersi) sızabilirdi.
+    from app.core.redis import cache_service
+    cache_key = f"market_summary:{delay}"
+    cached_response = cache_service.get_json(cache_key)
+    if cached_response is not None:
+        return cached_response
+
     cached_quotes = market_data_service.get_all_quotes()
 
     # Unified helper to get live index/parity/commodity prices with defaults
@@ -579,7 +595,7 @@ def get_market_summary(
     else:
         pulse = ScoringService.calculate_market_pulse({}, [])
 
-    return {
+    result = {
         "sentiment": sentiment,
         "sectors": cleaned_sectors,
         "pulse": pulse,        # Piyasa Nabzı - bkz. ScoringService.calculate_market_pulse
@@ -596,6 +612,8 @@ def get_market_summary(
         "btcusdt": btcusdt,   # Bitcoin USDT
         "us100": us100        # NASDAQ 100 (US100)
     }
+    cache_service.set_json(cache_key, result, expire_seconds=2)
+    return result
 
 @router.get("/score-details/{symbol}")
 def get_stock_score_details(symbol: str, current_user: User = Depends(deps.get_current_user)):

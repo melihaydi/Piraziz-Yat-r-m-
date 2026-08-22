@@ -23,7 +23,9 @@ import {
   History,
   Coins,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Calendar,
+  Download
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -608,6 +610,57 @@ export default function PortfolioPage() {
 
     return { winners, losers, healthScore }
   }, [assetsList, profitPercentage])
+
+  // Sektör yoğunlaşmasından (Herfindahl-Hirschman endeksi) türetilen basit
+  // bir çeşitlendirme skoru - "Varlık Dağılımı" panelinde gösteriliyor. HHI,
+  // ağırlıkların karelerinin toplamıdır (tek sektöre yığılmışsa 1'e, eşit
+  // dağılmışsa 1/N'e yakınsar); (1-HHI)*100 bunu sezgisel bir 0-100 skora çevirir.
+  const diversification = React.useMemo(() => {
+    const rows = analytics?.sector_breakdown || []
+    if (rows.length === 0 || currentValue <= 0) return null
+    const hhi = rows.reduce((sum: number, r: any) => sum + Math.pow((r.value || 0) / currentValue, 2), 0)
+    const score = Math.max(0, Math.min(100, Math.round((1 - hhi) * 100)))
+    const status = score >= 70 ? "İyi" : score >= 40 ? "Orta" : "Düşük"
+    return { score, status }
+  }, [analytics, currentValue])
+
+  // "Son Alarmlar" paneli - en son tetiklenmiş 5 alarm.
+  const recentAlerts = React.useMemo(() => {
+    return [...alerts]
+      .filter((a: any) => a.is_triggered && a.triggered_at)
+      .sort((a: any, b: any) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime())
+      .slice(0, 5)
+  }, [alerts])
+
+  // "Yaklaşan Ödemeler" paneli - bkz. backend'in /portfolio/analytics
+  // dividend_notices alanı: KAP'ın kâr payı dağıtım bildirimleri, gerçek bir
+  // ödeme takvimi değil (backend'de öyle bir veri kaynağı yok).
+  const dividendNotices = analytics?.dividend_notices || []
+
+  // "Hızlı İşlemler" > Rapor İndir - sunucu tarafı bir rapor motoru yok,
+  // mevcut pozisyon verisinden tarayıcıda basit bir CSV üretilip indiriliyor.
+  // ";" ayraç + BOM: Türkçe Excel virgülü ondalık ayracı olarak kullanıyor.
+  const handleDownloadReport = () => {
+    if (assetsList.length === 0) return
+    const header = ["Varlık", "Adet", "Ort. Maliyet", "Güncel Fiyat", "Değer", "Toplam K/Z", "K/Z %"]
+    const rows = assetsList.map((item: any) => [
+      item.ticker,
+      item.shares,
+      item.average_cost,
+      item.current_price || item.average_cost,
+      item.total_value || 0,
+      item.total_profit || 0,
+      item.profit_percentage || 0,
+    ])
+    const csv = [header, ...rows].map(r => r.join(";")).join("\n")
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `portfoy-${activePortfolio?.name || "rapor"}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   // Add Asset Handler
   const handleAddAsset = async (e: React.FormEvent) => {
@@ -2039,53 +2092,235 @@ export default function PortfolioPage() {
             </CardContent>
           </Card>
 
-          {/* Öne Çıkanlar - eskiden iki ayrı kart (her biri kendi kenarlığı,
-              kendi büyük-harf başlığı, kendi boşluğu) yan yana duruyordu;
-              toplam 6 satır veri için iki kutu fazlaydı ve telefonda alt
-              alta düşüp sayfayı uzatıyordu. Tek kart, içeride ince bir
-              ayraçla ikiye bölünmüş hâli aynı bilgiyi çok daha az çerçeveyle
-              veriyor. */}
-          {(advancedMetrics.winners.length > 0 || advancedMetrics.losers.length > 0) && (
-            <Card glass={true}>
-              <CardHeader>
-                <CardTitle className="t-section">Öne Çıkanlar</CardTitle>
-                <CardDescription>Toplam kâr/zarara en çok katkı veren pozisyonlar</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x divide-border/40 gap-y-6">
-                  {[
-                    { key: "winners", label: "Kazandıranlar", rows: advancedMetrics.winners, tone: "text-bull", Icon: TrendingUp, empty: "Kârda pozisyon yok." },
-                    { key: "losers", label: "Kaybettirenler", rows: advancedMetrics.losers, tone: "text-bear", Icon: TrendingDown, empty: "Zararda pozisyon yok." },
-                  ].map(({ key, label, rows, tone, Icon, empty }, i) => (
-                    <div key={key} className={i === 1 ? "md:pl-6" : "md:pr-6"}>
-                      <div className={`flex items-center gap-1.5 mb-2.5 ${tone}`}>
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className="t-label" style={{ color: "inherit" }}>{label}</span>
+          {/* Öne Çıkanlar + Varlık Dağılımı + Sektör Dağılımı - portföyün nasıl
+              kurulduğunu ve kimin kâr/zarar getirdiğini tek şeritte gösteren
+              3 kolonlu analitik bölüm. Sol kolon daha geniş: kazandıran/
+              kaybettiren listesi tek başına iki alt sütuna bölünüyor. */}
+          {assetsList.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr] gap-6 items-stretch">
+              <Card glass={true}>
+                <CardHeader>
+                  <CardTitle className="t-section">Öne Çıkanlar</CardTitle>
+                  <CardDescription>Toplam kâr/zarara en çok katkı veren pozisyonlar</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-border/40 gap-y-6">
+                    {[
+                      { key: "winners", label: "Kazandıranlar", rows: advancedMetrics.winners, tone: "text-bull", Icon: TrendingUp, empty: "Henüz kazandıran pozisyon yok." },
+                      { key: "losers", label: "Kaybettirenler", rows: advancedMetrics.losers, tone: "text-bear", Icon: TrendingDown, empty: "Henüz kaybettiren pozisyon yok." },
+                    ].map(({ key, label, rows, tone, Icon, empty }, i) => (
+                      <div key={key} className={i === 1 ? "sm:pl-6" : "sm:pr-6"}>
+                        <div className={`flex items-center gap-1.5 mb-2.5 ${tone}`}>
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="t-label" style={{ color: "inherit" }}>{label}</span>
+                        </div>
+                        {rows.length === 0 ? (
+                          <p className="t-caption py-3">{empty}</p>
+                        ) : (
+                          <ul className="divide-y divide-border/25">
+                            {rows.slice(0, 3).map((item: any) => (
+                              <li key={item.ticker} className="flex items-center justify-between gap-3 py-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <TickerLogo ticker={item.ticker} size={20} />
+                                  <span className="font-bold text-foreground truncate">{item.ticker}</span>
+                                </div>
+                                <div className="text-right shrink-0 font-mono">
+                                  <div className={`font-bold ${tone}`}>{tlSigned(item.total_profit)}</div>
+                                  <div className="t-caption">{pctSigned(item.profit_percentage, 1)}</div>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
-                      {rows.length === 0 ? (
-                        <p className="t-caption py-3">{empty}</p>
-                      ) : (
-                        <ul className="divide-y divide-border/25">
-                          {rows.slice(0, 3).map((item: any) => (
-                            <li key={item.ticker} className="flex items-center justify-between gap-3 py-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <TickerLogo ticker={item.ticker} size={20} />
-                                <span className="font-bold text-foreground truncate">{item.ticker}</span>
-                              </div>
-                              <div className="text-right shrink-0 font-mono">
-                                <div className={`font-bold ${tone}`}>{tlSigned(item.total_profit)}</div>
-                                <div className="t-caption">{pctSigned(item.profit_percentage, 1)}</div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card glass={true}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="t-section flex items-center gap-2">
+                    <PieIcon className="h-4 w-4 text-primary" />
+                    Varlık Dağılımı
+                  </CardTitle>
+                  <CardDescription>Toplam portföy dağılımı</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center">
+                  <div className="h-36 w-full">
+                    {analyticsLoading ? (
+                      <div className="h-full flex items-center justify-center">
+                        <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+                      </div>
+                    ) : assetTypePieData.length > 0 ? (
+                      <PortfolioDistributionChart data={assetTypePieData} />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Veri yok</div>
+                    )}
+                  </div>
+                  <div className="w-full space-y-1.5 mt-3">
+                    {assetTypePieData.map((entry: any) => {
+                      const pct = currentValue > 0 ? ((entry.value / currentValue) * 100).toFixed(1) : "0.0"
+                      return (
+                        <div key={entry.name} className="flex items-center justify-between text-xs font-semibold">
+                          <div className="flex items-center text-muted-foreground min-w-0">
+                            <span className="h-2.5 w-2.5 rounded-full mr-2 shrink-0" style={{ backgroundColor: entry.color }} />
+                            <span className="truncate">{entry.name}</span>
+                          </div>
+                          <span className="font-mono text-foreground shrink-0">{pct}%</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {diversification && (
+                    <div className="w-full mt-4 pt-3 border-t border-border/40 flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground font-semibold">Çeşitlendirme Skoru</span>
+                      <span className="font-mono font-bold text-foreground">
+                        {diversification.score}/100 · <span className="text-primary">{diversification.status}</span>
+                      </span>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card glass={true}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="t-section flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-primary" />
+                    Sektör Dağılımı
+                  </CardTitle>
+                  <CardDescription>BIST sektör ağırlıkları</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {analyticsLoading ? (
+                    <div className="h-36 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+                    </div>
+                  ) : sectorPieData.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-8 text-center">Sektör verisi bulunamadı</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {sectorPieData.map((entry: any) => {
+                        const pct = currentValue > 0 ? (entry.value / currentValue) * 100 : 0
+                        return (
+                          <div key={entry.name}>
+                            <div className="flex items-center justify-between text-xs font-semibold mb-1">
+                              <span className="text-muted-foreground truncate">{entry.name}</span>
+                              <span className="font-mono text-foreground shrink-0">{pct.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-secondary/40 h-2 rounded-full overflow-hidden border border-border/30">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(100, pct)}%`, backgroundColor: entry.color }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Son Alarmlar / Yaklaşan Ödemeler / Hızlı İşlemler - ana tabloya
+              göre ikincil bilgiler, bu yüzden daha kompakt 3 panel halinde altta. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="bip-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-primary" />
+                  Son Alarmlar
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {recentAlerts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">Henüz tetiklenmiş bir alarm yok.</p>
+                ) : (
+                  recentAlerts.map((alert: any) => (
+                    <div key={alert.id} className="flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-extrabold bg-secondary px-1.5 py-0.5 rounded text-foreground shrink-0">
+                          {alert.ticker}
+                        </span>
+                        <span className="text-muted-foreground truncate">
+                          {alert.alert_type === "price" ? "Fiyat" : alert.alert_type.toUpperCase()} {alert.trigger_condition?.operator ?? ""} {alert.trigger_condition?.value ?? ""}
+                        </span>
+                      </div>
+                      <span className="text-muted-foreground font-mono shrink-0">
+                        {new Date(alert.triggered_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
-          )}
+
+            <Card className="bip-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  Yaklaşan Ödemeler
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {dividendNotices.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">Yaklaşan ödeme bildirimi yok.</p>
+                ) : (
+                  dividendNotices.map((n: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-extrabold bg-secondary px-1.5 py-0.5 rounded text-foreground shrink-0">
+                          {n.ticker}
+                        </span>
+                        <span className="text-muted-foreground truncate">Temettü Ödemesi (KAP)</span>
+                      </div>
+                      <span className="text-muted-foreground font-mono shrink-0">
+                        {n.publish_date ? new Date(n.publish_date).toLocaleDateString("tr-TR") : "—"}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bip-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  Hızlı İşlemler
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setIsOpenAssetModal(true)}
+                  className="press flex items-center justify-center gap-1.5 h-9 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/25 hover:bg-primary/20 transition-colors cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Varlık Ekle
+                </button>
+                <button
+                  onClick={() => setIsOpenUsdCashModal(true)}
+                  className="press flex items-center justify-center gap-1.5 h-9 rounded-md text-xs font-bold bg-secondary/40 text-foreground border border-border/40 hover:bg-secondary/60 transition-colors cursor-pointer"
+                >
+                  <DollarSign className="h-3.5 w-3.5" /> Nakit Ekle
+                </button>
+                <button
+                  onClick={() => setIsOpenAlertModal(true)}
+                  className="press flex items-center justify-center gap-1.5 h-9 rounded-md text-xs font-bold bg-secondary/40 text-foreground border border-border/40 hover:bg-secondary/60 transition-colors cursor-pointer"
+                >
+                  <Bell className="h-3.5 w-3.5" /> Alarm Kur
+                </button>
+                <button
+                  onClick={handleDownloadReport}
+                  disabled={assetsList.length === 0}
+                  className="press flex items-center justify-center gap-1.5 h-9 rounded-md text-xs font-bold bg-secondary/40 text-foreground border border-border/40 hover:bg-secondary/60 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Download className="h-3.5 w-3.5" /> Rapor İndir
+                </button>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Analiz: dağılım + risk. İkisi de "portföyüm nasıl kurulmuş"

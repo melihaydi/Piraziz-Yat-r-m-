@@ -2,6 +2,8 @@
 
 Bu rehber, BIST Intelligence Platform (BIP) uygulamasının bir Linux VPS (Ubuntu 22.04+) sunucusu üzerinde Docker Compose ve Nginx Reverse Proxy kullanılarak canlı ortama (production) nasıl kurulacağını açıklar.
 
+> **Not:** Gerçek prod dağıtımı bu rehberden sapmış durumda - reverse proxy olarak repo kökündeki `Caddyfile` (Nginx değil) kullanılıyor, backend tek uvicorn worker ile çalışıyor (bkz. `docker-compose.prod.yml`) ve ayrı bir `celery_worker` konteyneri şu an ÇALIŞTIRILMIYOR. Sunucu, tek bir 1GB RAM'lik VM olduğu için aşağıdaki `--workers 4` + ayrı celery worker kombinasyonu OOM'a yol açar - bu rehberi harfiyen izlemeden önce gerçek `docker-compose.prod.yml`/`Caddyfile` ile karşılaştırın.
+
 ---
 
 ## 1. Sunucu Hazırlığı ve Docker Kurulumu
@@ -43,7 +45,12 @@ REDIS_URL=redis://redis:6379/0
 
 # JWT Security
 SECRET_KEY=GENERATE_A_VERY_LONG_SECURE_RANDOM_JWT_SECRET_KEY
-ACCESS_TOKEN_EXPIRE_MINUTES=60
+# 1440 (24h) matches the app's own default (see backend/app/core/config.py).
+# A short value here (this used to say 60) forces every user to re-log-in
+# every hour once idle for that long - the frontend silently renews an
+# ACTIVE session's token in the background (lib/auth.ts), but that only
+# helps while the app is actually open/polling.
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
 # API Keys
 GEMINI_API_KEY=YOUR_PRODUCTION_GOOGLE_GEMINI_API_KEY

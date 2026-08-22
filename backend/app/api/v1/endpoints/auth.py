@@ -195,6 +195,28 @@ def login_verify_2fa(request: Request, body: TwoFactorLoginRequest, db: Session 
         "token_type": "bearer",
     }
 
+@router.post("/refresh", response_model=Token)
+@limiter.limit("120/minute")
+def refresh_access_token(request: Request, current_user: User = Depends(deps.get_current_user)):
+    """Issues a brand-new access token (fresh ACCESS_TOKEN_EXPIRE_MINUTES
+    expiry) for whoever's bearer token is still valid right now.
+
+    Requires the CURRENT token to still be valid - this is a sliding-session
+    renewal, not a real refresh-token grant. It exists so a user who keeps
+    the app open/active never actually hits the hard token lifetime: the
+    frontend (see lib/auth.ts's authFetch) calls this in the background
+    once a token gets within a few hours of expiring, silently swapping in
+    a fresh one. Previously the only way tokens ever got old was to expire
+    outright, at which point the very next request 401'd and authFetch
+    logged the user out immediately and without warning - reported as
+    "randomly logged out". A genuinely idle user (no request for the whole
+    token lifetime) still has to log back in, which is expected."""
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return {
+        "access_token": security.create_access_token(current_user.id, expires_delta=access_token_expires),
+        "token_type": "bearer",
+    }
+
 @router.get("/me", response_model=UserOut)
 @limiter.limit("120/minute")
 def read_user_me(request: Request, current_user: User = Depends(deps.get_current_user)):

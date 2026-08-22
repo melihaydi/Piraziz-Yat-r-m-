@@ -22,12 +22,16 @@ class WatchlistItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
     ticker = Column(String(20), nullable=False)
+    # "stock" (varsayılan, geriye dönük uyumluluk için) veya "fund" - aynı
+    # tablo artık fon favorilerini de tutuyor (bkz. bu dosyanın altındaki
+    # not), tür ayrımı olmadan bir hisse kodu bir fon koduyla çakışabilirdi.
+    asset_type = Column(String(10), nullable=False, server_default="stock")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", backref="watchlist_items")
 
     __table_args__ = (
-        # Aynı hisseyi iki kez eklemek anlamsız; üstelik istemci tarafındaki
+        # Aynı varlığı iki kez eklemek anlamsız; üstelik istemci tarafındaki
         # localStorage göçü aynı listeyi birden fazla cihazdan gönderebilir.
-        UniqueConstraint("user_id", "ticker", name="uq_watchlist_user_ticker"),
+        UniqueConstraint("user_id", "ticker", "asset_type", name="uq_watchlist_user_ticker_type"),
     )

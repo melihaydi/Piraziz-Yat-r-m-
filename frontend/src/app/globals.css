@@ -305,6 +305,9 @@ h1, h2, h3 {
    toplamı gibi. t-metric'ten bir kademe yukarısı; her sayfada en fazla bir
    kez kullanılmalı, yoksa hiyerarşi kurmak yerine gürültü üretir. */
 .t-metric-lg { font-size: clamp(2rem, 1.6rem + 1.6vw, 2.5rem); line-height: 1.05; font-weight: 800; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+/* Piyasa kokpitindeki endeks fiyatı (BIST100 vb.) - t-metric-lg kullanıcı
+   geri bildirimine göre burada aşırı büyük duruyordu, bir kademe küçüğü. */
+.t-metric-index { font-size: clamp(1.5rem, 1.2rem + 1.2vw, 1.875rem); line-height: 1.08; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 /* İkincil rakam - kart içi destekleyici değer */
 .t-metric-sm { font-size: 1.125rem; line-height: 1.3; font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Bölüm başlığı - 16px'ten 19px'e (spec: 18-22px). Bölüm başlığıyla gövde
@@ -337,6 +340,7 @@ h1, h2, h3 {
 @media (max-width: 640px) {
   .t-display   { font-size: 1.25rem; }
   .t-metric-lg { font-size: 1.75rem; }
+  .t-metric-index { font-size: 1.375rem; }
   .t-metric    { font-size: 1.5rem; }
   .t-metric-sm { font-size: 1rem; }
   .t-section   { font-size: 1rem; }

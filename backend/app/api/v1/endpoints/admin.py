@@ -757,9 +757,13 @@ def list_fund_compositions(
     """Every fund with a known holdings composition (hardcoded default or
     admin override) - superuser only."""
     overrides = {row.fund_code: row for row in db.query(FundCompositionOverride).all()}
-    codes = sorted(
-        {c for c, d in FUND_DETAILS_MAP.items() if "assets_distribution" in d} | set(overrides.keys())
-    )
+    all_codes = {c for c, d in FUND_DETAILS_MAP.items() if "assets_distribution" in d} | set(overrides.keys())
+    # En çok izlenen fonlar (bkz. funds.py POPULAR_LIVE_FUNDS) listenin
+    # başında sabit sırayla görünsün diye - kalanı alfabetik.
+    pinned_order = ["TMV", "THF", "DOH", "TLY"]
+    pinned = [c for c in pinned_order if c in all_codes]
+    rest = sorted(all_codes - set(pinned))
+    codes = pinned + rest
     return [_fund_composition_dict(code, overrides.get(code)) for code in codes]
 
 

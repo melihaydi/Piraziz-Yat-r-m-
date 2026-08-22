@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import TradingViewChart from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { fetchWatchlist, setWatchlistEntry, migrateLegacyWatchlist } from "@/lib/watchlist"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
@@ -228,33 +229,36 @@ function FundsPageInner() {
 
   const compareChartData = useMemo(() => buildComparisonChartData(compareResult), [compareResult])
 
-  // Load favorites from localStorage on mount
+  // Favoriler artık hesaba bağlı (sunucuda) - önceden yalnızca
+  // localStorage'daydı ("favorites_funds"), bu yüzden başka bir cihazda/
+  // tarayıcıda oturum açınca liste boş görünüyordu. Cihazda kalmış eski
+  // liste varsa bir kereliğine hesaba taşınır (yalnızca ekler, sunucudaki
+  // listeyi ezmez), sonra sunucudaki liste tek doğruluk kaynağı olur.
   useEffect(() => {
-    // try/catch + Array.isArray: JSON.parse burada KORUMASIZDI. Bozuk ya da
-    // beklenmedik bicimde bir deger (eski surumden kalma, elle duzenlenmis,
-    // yarim yazilmis) sayfayi acilista tamamen cokertirdi - ustelik
-    // kullanicinin kendi kendine duzeltemeyecegi bir sekilde, cunku hata her
-    // yuklemede tekrarlanirdi. Dizi olmayan bir deger de `.includes`
-    // cagrilarinda patlardi.
-    try {
-      const saved = localStorage.getItem("favorites_funds")
-      const parsed = saved ? JSON.parse(saved) : []
-      if (Array.isArray(parsed)) setFavorites(parsed)
-    } catch {
-      // Bozuk yerel veri sayfayi engellemesin - favorisiz devam edilir.
+    let active = true
+    const load = async () => {
+      await migrateLegacyWatchlist("favorites_funds", "fund")
+      const tickers = await fetchWatchlist("fund")
+      if (active) setFavorites(tickers)
     }
+    load()
+    return () => { active = false }
   }, [])
 
-  // Toggle favorite helper
+  // Toggle favorite helper - iyimser güncelleme: yıldız anında dolar/boşalır,
+  // sunucu isteği arkada tamamlanır, başarısız olursa geri alınır.
   const toggleFavorite = (code: string) => {
-    let updated = [...favorites]
-    if (updated.includes(code)) {
-      updated = updated.filter(c => c !== code)
-    } else {
-      updated.push(code)
-    }
-    setFavorites(updated)
-    localStorage.setItem("favorites_funds", JSON.stringify(updated))
+    setFavorites(prev => {
+      const isRemoving = prev.includes(code)
+      setWatchlistEntry(code, !isRemoving, "fund").then(ok => {
+        if (!ok) {
+          setFavorites(current =>
+            isRemoving ? [...current, code] : current.filter(c => c !== code),
+          )
+        }
+      })
+      return isRemoving ? prev.filter(c => c !== code) : [...prev, code]
+    })
   }
 
 

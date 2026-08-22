@@ -216,15 +216,75 @@ export function logout() {
   window.dispatchEvent(new Event("bip:session-expired"))
 }
 
+// De-dupes concurrent refresh calls - authFetch runs every few seconds while
+// polling is active (see usePolling.ts), so without this every one of those
+// calls would independently notice "token is getting old" at once.
+let refreshInFlight: Promise<string | null> | null = null
+// Throttles how often a background refresh is even attempted. Without this,
+// a deployment with a short ACCESS_TOKEN_EXPIRE_MINUTES (some environments'
+// example .env sets 60 minutes, well under the 3h lookahead below) would
+// have every single authFetch call - i.e. every poll tick - kick off a
+// refresh, since "less than 3h remaining" would be permanently true.
+let lastRefreshAttemptAt = 0
+const REFRESH_COOLDOWN_MS = 5 * 60 * 1000
+
+/** Renews the stored token in the background well before it actually
+ *  expires, using POST /auth/refresh (valid while the CURRENT token still
+ *  is). Previously a token was only ever replaced by a fresh login: once the
+ *  24h lifetime (ACCESS_TOKEN_EXPIRE_MINUTES) ran out, the next request
+ *  simply 401'd and authFetch logged the session out immediately, with no
+ *  warning - reported as being logged out "randomly" even during active use.
+ *  As long as the user keeps the app open/polling, this keeps sliding the
+ *  expiry forward so that hard wall is never actually reached; a genuinely
+ *  idle session still expires and requires a real login, same as before. */
+async function maybeRefreshToken(token: string): Promise<string> {
+  const payload = decodeJwtPayload(token)
+  const exp = typeof payload?.exp === "number" ? payload.exp : null
+  if (exp === null) return token
+
+  const msRemaining = exp * 1000 - Date.now()
+  const REFRESH_BEFORE_MS = 3 * 60 * 60 * 1000 // 3 saat kala arka planda yenile
+  const MUST_AWAIT_MS = 30 * 1000 // bu kadar az kaldıysa isteği eski token'la göndermeye değmez
+
+  if (msRemaining > REFRESH_BEFORE_MS) return token
+
+  const imminent = msRemaining < MUST_AWAIT_MS
+  if (!refreshInFlight && (imminent || Date.now() - lastRefreshAttemptAt > REFRESH_COOLDOWN_MS)) {
+    lastRefreshAttemptAt = Date.now()
+    refreshInFlight = fetchWithRetry(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }, 1)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!data?.access_token) return null
+        localStorage.setItem("token", data.access_token)
+        return data.access_token as string
+      })
+      .catch(() => null)
+      .finally(() => { refreshInFlight = null })
+  }
+
+  if (msRemaining < MUST_AWAIT_MS) {
+    return (await refreshInFlight) || token
+  }
+  // Süresi hâlâ rahat - yenileme arka planda sürsün, bu isteği mevcut
+  // (henüz geçerli) token'la hemen gönder.
+  return token
+}
+
 /**
  * fetch() wrapper against the API that attaches the stored bearer token.
  * On a 401 (expired/invalid token), logs the session out instead of
  * silently trying to re-authenticate - there's no password kept client-side
- * to do that with anymore, and a real auth system re-prompting for
- * credentials once a day (tokens last 24h) is expected behavior, not a bug.
+ * to do that with anymore. A 401 should now only happen for a session that
+ * was truly idle for the whole token lifetime (maybeRefreshToken above
+ * keeps an active session's token perpetually fresh), so re-prompting for
+ * credentials at that point is expected behavior, not a bug.
  */
 export async function authFetch(path: string, options: RequestInit = {}, retries = 3): Promise<Response> {
-  const token = localStorage.getItem("token")
+  let token = localStorage.getItem("token")
+  if (token) token = await maybeRefreshToken(token)
 
   const doFetch = (t: string | null) =>
     fetchWithRetry(`${API_BASE_URL}${path}`, {

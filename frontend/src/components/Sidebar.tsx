@@ -147,7 +147,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       ],
     },
     {
-      label: "İstihbarat",
+      label: "Haberler",
       items: [
         { name: "Ekonomi Haberleri", href: "/news", icon: Newspaper },
       ],
