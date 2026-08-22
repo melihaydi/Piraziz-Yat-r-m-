@@ -564,6 +564,11 @@ def get_market_summary(
             })
             
         sectors_list = sorted(sectors_list, key=lambda x: x["raw_val"], reverse=True)
+        # Pulse, TÜM sektörlerin (kırpılmadan önceki sectors_list) ortalama
+        # yönünü kullanıyor - cleaned_sectors'ın ilk 6'sı değil, aksi halde
+        # trend bileşeni yalnızca en iyi/en kötü performans gösteren
+        # sektörlere bakıp geri kalanını görmezden gelirdi.
+        pulse = ScoringService.calculate_market_pulse(cached_quotes, sectors_list)
         cleaned_sectors = []
         for s in sectors_list[:6]:
             cleaned_sectors.append({
@@ -571,10 +576,13 @@ def get_market_summary(
                 "change": s["change"],
                 "up": s["up"]
             })
-        
+    else:
+        pulse = ScoringService.calculate_market_pulse({}, [])
+
     return {
         "sentiment": sentiment,
         "sectors": cleaned_sectors,
+        "pulse": pulse,        # Piyasa Nabzı - bkz. ScoringService.calculate_market_pulse
         "index": xu100,       # XU100 Index details
         "xu030": xu030,       # XU030 Index details
         "xbank": xbank,       # XBANK Index details

@@ -51,3 +51,16 @@ def test_login_rate_limit_kicks_in_after_five_attempts(client):
         data={"username": "nobody@example.com", "password": "wrong"},
     )
     assert res.status_code == 429
+
+
+def test_market_summary_includes_pulse_with_expected_shape(client, auth_headers):
+    """/market-summary artık ScoringService.calculate_market_pulse'un
+    çıktısını `pulse` altında taşıyor - anasayfanın "Piyasa Nabzı" widget'ı
+    bu alana bağlı, boş/eksik gelirse widget sessizce kırılırdı."""
+    res = client.get("/api/v1/screener/market-summary", headers=auth_headers)
+    assert res.status_code == 200
+    pulse = res.json()["pulse"]
+    for key in ("score", "label", "sentiment", "trend", "momentum", "participation", "risk"):
+        assert key in pulse
+    assert pulse["label"] in ("BULLISH", "BEARISH", "NÖTR")
+    assert 0 <= pulse["score"] <= 100

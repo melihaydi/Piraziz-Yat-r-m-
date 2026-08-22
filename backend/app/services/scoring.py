@@ -1,9 +1,82 @@
 import logging
-from typing import Any, Dict
+import statistics
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
 class ScoringService:
+    @staticmethod
+    def calculate_market_pulse(cached_quotes: Dict[str, Dict[str, Any]], sectors_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Piyasa geneli için tek bir sağlık skoru (0-100) + 5 alt bileşen.
+
+        Hiçbir alt bileşen bir model/LLM çıktısı DEĞİL - hepsi anlık canlı
+        kotasyon önbelleğinden (cached_quotes, get_market_summary'nin zaten
+        okuduğu aynı veri) ve zaten hesaplanmış sektör ortalamalarından
+        (sectors_list) türetiliyor; ek istek veya aday geçmişi gerekmiyor.
+        "AI" adı bilerek taşımıyor - bu şeffaf bir piyasa genişliği
+        (breadth) bileşimi, üretken bir model tahmini değil.
+
+          sentiment     yükselen/düşen hisse oranı (get_market_summary'nin
+                        kendi sentiment hesabıyla AYNI eşik: |değişim|>0.3)
+          trend         pozitif ortalama değişime sahip sektör oranı
+          momentum      tüm izlenen sembollerin ortalama % değişimi, 50
+                        merkezli bir 0-100 ölçeğe sıkıştırılmış
+          participation |değişim| > 0.3 olan sembol oranı - piyasanın ne
+                        kadarının fiilen hareket ettiği (yön değil, hacim/
+                        işlem verisi olmadığı için gerçek "hacim" yerine bu
+                        kullanılıyor - var olmayan bir veriyi uydurmak yerine)
+          risk          sembol değişimlerinin standart sapması - dağılım ne
+                        kadar genişse piyasa o kadar oynak/belirsiz sayılır
+
+        Genel skor SADECE yön taşıyan üç bileşenin (sentiment/trend/momentum)
+        ortalaması, üstüne risk bir CEZA olarak uygulanıyor (skor -
+        risk*0.2). participation ve risk kasıtlı olarak ortalamaya EŞİT
+        girmiyor: ikisi de yöne duyarsız, ve düz bir ortalamada olsalardı
+        - örneğin bütün piyasa aynı oranda, düşük dağılımla düşerken -
+        yüksek "katılım" ve düşük "risk" (dağılım az) genel skoru yukarı
+        çekip net bir düşüş piyasasını yanlışlıkla NÖTR gösterebilirdi
+        (ilk sürümde tam olarak bu oldu, bkz. test_market_pulse_all_bearish).
+        """
+        total = len(cached_quotes)
+        if total == 0:
+            return {
+                "score": 50, "label": "NÖTR",
+                "sentiment": 50, "trend": 50, "momentum": 50,
+                "participation": 50, "risk": 50,
+            }
+
+        changes = [float(q.get("change_percent") or 0.0) for q in cached_quotes.values()]
+        bullish = sum(1 for c in changes if c > 0.3)
+        bearish = sum(1 for c in changes if c < -0.3)
+        moved = bullish + bearish
+
+        sentiment_score = round(max(5, bullish / total * 100))
+
+        positive_sectors = sum(1 for s in sectors_list if s.get("raw_val", 0) >= 0)
+        trend_score = round(positive_sectors / len(sectors_list) * 100) if sectors_list else 50
+
+        avg_change = sum(changes) / total
+        momentum_score = round(min(100, max(0, 50 + avg_change * 10)))
+
+        participation_score = round(moved / total * 100)
+
+        dispersion = statistics.pstdev(changes) if total > 1 else 0.0
+        risk_score = round(min(100, max(0, dispersion * 18)))
+
+        directional = (sentiment_score + trend_score + momentum_score) / 3
+        overall = round(min(100, max(0, directional - risk_score * 0.2)))
+        label = "BULLISH" if overall >= 60 else "BEARISH" if overall <= 40 else "NÖTR"
+
+        return {
+            "score": overall,
+            "label": label,
+            "sentiment": sentiment_score,
+            "trend": trend_score,
+            "momentum": momentum_score,
+            "participation": participation_score,
+            "risk": risk_score,
+        }
+
     @staticmethod
     def score_profitability(roe: float, ebitda_margin: float, net_margin: float) -> float:
         """Score Profitability out of 10 points."""

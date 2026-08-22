@@ -74,3 +74,68 @@ def test_scoring_default_fallbacks():
     assert "total_score" in result
     assert isinstance(result["total_score"], float)
     assert len(result["breakdown"]) == 10
+
+
+# --- calculate_market_pulse ------------------------------------------------
+# Piyasa geneli "Piyasa Nabzı" bileşimi - hiçbir alt bileşen bir model
+# çıktısı değil, hepsi canlı kotasyon önbelleğinden ve zaten hesaplanmış
+# sektör ortalamalarından türetiliyor. Bu testler formülün gerçekten
+# belgelendiği gibi davrandığını (yön, sınırlar, boş girdi) doğruluyor.
+
+def test_market_pulse_empty_quotes_returns_neutral_defaults():
+    result = ScoringService.calculate_market_pulse({}, [])
+    assert result["score"] == 50
+    assert result["label"] == "NÖTR"
+
+
+def test_market_pulse_all_bullish_scores_high_and_labels_bullish():
+    quotes = {f"S{i}": {"change_percent": 2.0} for i in range(20)}
+    sectors = [{"name": "Bankacılık", "raw_val": 2.0}, {"name": "Enerji", "raw_val": 1.5}]
+    result = ScoringService.calculate_market_pulse(quotes, sectors)
+    assert result["label"] == "BULLISH"
+    assert result["sentiment"] == 100
+    assert result["trend"] == 100
+    # Uniform +2% değişim -> hiç dağılım yok -> risk minimum.
+    assert result["risk"] == 0
+
+
+def test_market_pulse_all_bearish_scores_low_and_labels_bearish():
+    quotes = {f"S{i}": {"change_percent": -2.0} for i in range(20)}
+    sectors = [{"name": "Bankacılık", "raw_val": -2.0}, {"name": "Enerji", "raw_val": -1.5}]
+    result = ScoringService.calculate_market_pulse(quotes, sectors)
+    assert result["label"] == "BEARISH"
+    assert result["sentiment"] == 5  # max(5, ...) tabanı - sıfıra hiç düşmüyor
+    assert result["trend"] == 0
+
+
+def test_market_pulse_high_dispersion_raises_risk_and_lowers_overall():
+    """Aynı ortalama değişime sahip ama dağılımı farklı iki piyasa - daha
+    geniş dağılımlı olan daha yüksek risk, dolayısıyla daha düşük genel
+    skor almalı (risk tersten katkı veriyor)."""
+    calm = {f"S{i}": {"change_percent": 0.5} for i in range(10)}
+    volatile_changes = [5.0, -4.0, 5.0, -4.0, 5.0, -4.0, 5.0, -4.0, 5.0, -4.0]
+    volatile = {f"S{i}": {"change_percent": c} for i, c in enumerate(volatile_changes)}
+    sectors = [{"name": "X", "raw_val": 0.5}]
+
+    calm_result = ScoringService.calculate_market_pulse(calm, sectors)
+    volatile_result = ScoringService.calculate_market_pulse(volatile, sectors)
+
+    assert volatile_result["risk"] > calm_result["risk"]
+    assert volatile_result["score"] < calm_result["score"]
+
+
+def test_market_pulse_participation_counts_moved_symbols_regardless_of_direction():
+    # 3 tanesi esikte (>0.3 mutlak deger), 2 tanesi hareketsiz sayilir.
+    quotes = {
+        "A": {"change_percent": 1.0}, "B": {"change_percent": -1.0},
+        "C": {"change_percent": 0.5}, "D": {"change_percent": 0.1}, "E": {"change_percent": -0.1},
+    }
+    result = ScoringService.calculate_market_pulse(quotes, [{"name": "X", "raw_val": 0.1}])
+    assert result["participation"] == 60  # 3/5
+
+
+def test_market_pulse_score_and_subscores_stay_within_bounds():
+    quotes = {f"S{i}": {"change_percent": v} for i, v in enumerate([50, -50, 30, -30, 0, 12, -12, 8])}
+    result = ScoringService.calculate_market_pulse(quotes, [{"name": "X", "raw_val": 10}])
+    for key in ("score", "sentiment", "trend", "momentum", "participation", "risk"):
+        assert 0 <= result[key] <= 100, f"{key} sinirlarin disinda: {result[key]}"
