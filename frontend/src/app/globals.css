@@ -318,11 +318,14 @@ h1, h2, h3 {
    ediyor - aynı punto boyutları "her şey çok büyük" hissi veriyordu. Değerler
    burada küçültülüyor, .t-display/.t-metric-lg'nin clamp() alt sınırı DEĞİL,
    çünkü clamp zaten masaüstü için ayarlanmış; 640px altı tamamen ayrı bir
-   ölçek olarak ele alınıyor. */
+   ölçek olarak ele alınıyor. Aralıklar mobil responsive revizyonundaki
+   talebe göre kalibre edildi: sayfa başlığı 18-20px, kart başlığı 15-17px,
+   ana fiyat/değer 24-30px - fiyat ve yüzde değişimleri okunamayacak kadar
+   küçülmesin diye t-metric alt sınırı 24px'in altına inmiyor. */
 @media (max-width: 640px) {
-  .t-display   { font-size: 1.5rem; }
+  .t-display   { font-size: 1.25rem; }
   .t-metric-lg { font-size: 1.75rem; }
-  .t-metric    { font-size: 1.375rem; }
+  .t-metric    { font-size: 1.5rem; }
   .t-metric-sm { font-size: 1rem; }
   .t-section   { font-size: 1rem; }
 }

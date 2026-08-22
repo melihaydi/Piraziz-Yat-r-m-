@@ -487,7 +487,7 @@ export default function Home() {
               </div>
             )}
 
-            <div className="h-48 w-full">
+            <div className="h-56 sm:h-48 w-full">
               {indexChartError ? (
                 <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-center px-4">
                   <p className="text-sm font-bold text-foreground">Endeks grafiği şu anda yüklenemedi</p>
@@ -738,7 +738,7 @@ export default function Home() {
                 <Skeleton className="h-24 w-full rounded-lg" />
               ) : (
                 <>
-                  <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
                     <StatTile label="Taranan" value={String(signalsSummary.scanned)} />
                     <StatTile label="LONG" value={String(signalsSummary.long)} className="[&_.t-metric]:text-bull" />
                     <StatTile label="SHORT" value={String(signalsSummary.short)} className="[&_.t-metric]:text-bear" />
@@ -747,18 +747,23 @@ export default function Home() {
                   {/* max-h + sticky başlık: 30'a kadar BIST30 sembolü tek
                       seferde kaydırmadan görünsün diye satırlar sıkı
                       (h-7), tablo kendi içinde kayıyor - sayfa değil.
-                      Hepsi gösteriliyor, 8'e kırpma kaldırıldı. */}
+                      Hepsi gösteriliyor, 8'e kırpma kaldırıldı.
+                      Stop/Hedef/R:R mobilde gizli - 7 sütun 375px'te ya
+                      taşıyordu ya da tabloyu kendi içinde yatay kaydırmaya
+                      zorluyordu; "Tümü" zaten /strategy'e tüm sütunlarla
+                      götürüyor, burada dört sütun (Sembol/Yön/Güven/Giriş)
+                      karar vermek için yeterli. */}
                   <div className="bip-table-scroll max-h-72 overflow-y-auto">
                     <table className="bip-table [&_thead_tr]:sticky [&_thead_tr]:top-0 [&_tbody_td]:!py-1 [&_tbody_tr]:!h-7">
                       <thead>
                         <tr>
                           <th>Sembol</th>
                           <th>Yön</th>
-                          <th>Güven</th>
+                          <th className="hidden sm:table-cell">Güven</th>
                           <th className="num">Giriş</th>
-                          <th className="num">Stop</th>
-                          <th className="num">Hedef</th>
-                          <th className="num">R:R</th>
+                          <th className="num hidden sm:table-cell">Stop</th>
+                          <th className="num hidden sm:table-cell">Hedef</th>
+                          <th className="num hidden sm:table-cell">R:R</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -766,11 +771,11 @@ export default function Home() {
                           <tr key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="cursor-pointer">
                             <td className="font-bold text-foreground">{s.ticker}</td>
                             <td><Badge variant={s.direction === "LONG" ? "success" : "danger"}>{s.direction}</Badge></td>
-                            <td className="text-xs text-muted-foreground">{s.confidence}</td>
+                            <td className="text-xs text-muted-foreground hidden sm:table-cell">{s.confidence}</td>
                             <td className="num">{s.entry != null ? s.entry.toFixed(2) : "—"}</td>
-                            <td className="num">{s.stop_loss != null ? s.stop_loss.toFixed(2) : "—"}</td>
-                            <td className="num">{s.take_profit != null ? s.take_profit.toFixed(2) : "—"}</td>
-                            <td className="num">{s.risk_reward != null ? s.risk_reward.toFixed(2) : "—"}</td>
+                            <td className="num hidden sm:table-cell">{s.stop_loss != null ? s.stop_loss.toFixed(2) : "—"}</td>
+                            <td className="num hidden sm:table-cell">{s.take_profit != null ? s.take_profit.toFixed(2) : "—"}</td>
+                            <td className="num hidden sm:table-cell">{s.risk_reward != null ? s.risk_reward.toFixed(2) : "—"}</td>
                           </tr>
                         ))}
                         {signals.filter(s => s.direction !== "NONE").length === 0 && (
@@ -973,9 +978,9 @@ export default function Home() {
             ) : gainers.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-4">Veri alınamadı.</p>
             ) : gainers.map((s, i) => (
-              <div key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
+              <div key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="flex items-center justify-between py-3 sm:py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-muted-foreground w-3">{i + 1}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground w-6 sm:w-3">{i + 1}</span>
                   <span className="text-xs font-bold text-foreground">{s.ticker}</span>
                 </div>
                 <div className="text-right">
@@ -998,9 +1003,9 @@ export default function Home() {
             ) : losers.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-4">Veri alınamadı.</p>
             ) : losers.map((s, i) => (
-              <div key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
+              <div key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="flex items-center justify-between py-3 sm:py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-muted-foreground w-3">{i + 1}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground w-6 sm:w-3">{i + 1}</span>
                   <span className="text-xs font-bold text-foreground">{s.ticker}</span>
                 </div>
                 <div className="text-right">
