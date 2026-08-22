@@ -24,14 +24,21 @@ def upgrade() -> None:
         'watchlist_item',
         sa.Column('asset_type', sa.String(length=10), nullable=False, server_default='stock'),
     )
-    op.drop_constraint('uq_watchlist_user_ticker', 'watchlist_item', type_='unique')
-    op.create_unique_constraint(
-        'uq_watchlist_user_ticker_type', 'watchlist_item', ['user_id', 'ticker', 'asset_type']
-    )
+    # batch mode: SQLite cannot ALTER constraints at all ("No support for
+    # ALTER of constraints in SQLite dialect"), which made the whole
+    # migration chain unreplayable on SQLite and so untestable in CI (see
+    # a3f9c1d02b4e for the same fix applied earlier). On Postgres
+    # (production) batch mode emits the same plain ALTER as before.
+    with op.batch_alter_table('watchlist_item') as batch_op:
+        batch_op.drop_constraint('uq_watchlist_user_ticker', type_='unique')
+        batch_op.create_unique_constraint(
+            'uq_watchlist_user_ticker_type', ['user_id', 'ticker', 'asset_type']
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_constraint('uq_watchlist_user_ticker_type', 'watchlist_item', type_='unique')
-    op.create_unique_constraint('uq_watchlist_user_ticker', 'watchlist_item', ['user_id', 'ticker'])
-    op.drop_column('watchlist_item', 'asset_type')
+    with op.batch_alter_table('watchlist_item') as batch_op:
+        batch_op.drop_constraint('uq_watchlist_user_ticker_type', type_='unique')
+        batch_op.create_unique_constraint('uq_watchlist_user_ticker', ['user_id', 'ticker'])
+        batch_op.drop_column('asset_type')
