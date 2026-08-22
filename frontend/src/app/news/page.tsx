@@ -165,7 +165,7 @@ export default function EconomyNewsPage() {
           </div>
 
           {tab === "news" && (
-            <Card glass={true} className="border-primary/20 bg-gradient-to-br from-card via-card to-purple-950/5">
+            <Card glass={true} className="border-primary/20 bg-gradient-to-br from-card via-card to-primary/5">
               <CardContent className="p-0">
                 {newsLoading ? (
                   <div className="flex items-center justify-center py-20">
@@ -223,7 +223,7 @@ export default function EconomyNewsPage() {
               </div>
 
               {!kapLoading && kapIsSample && (
-                <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-300/90 flex items-start gap-2">
+                <div className="rounded-lg border border-warn/25 bg-warn/5 px-3 py-2 text-[11px] text-warn/90 flex items-start gap-2">
                   <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>
                     KAP&apos;ın canlı bildirim akışına şu anda ulaşılamıyor (kap.org.tr yanıt vermiyor) - aşağıdakiler
@@ -258,7 +258,7 @@ export default function EconomyNewsPage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-black text-foreground bg-secondary px-2 py-0.5 rounded">{k.ticker}</span>
                                   {k.is_dividend && (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-purple-500/10 text-purple-400 border-purple-500/25 flex items-center gap-1">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-primary/10 text-primary border-primary/25 flex items-center gap-1">
                                       <Gift className="h-2.5 w-2.5" /> Temettü
                                     </span>
                                   )}
@@ -296,7 +296,7 @@ export default function EconomyNewsPage() {
 
         {/* Right Column: Economic Calendar + Favorite-ticker News */}
         <div className="space-y-8">
-          <Card glass={true} className="border-zinc-800 bg-zinc-950/10">
+          <Card glass={true} className="border-border bg-background/10">
             <CardHeader>
               <CardTitle className="t-section uppercase tracking-wider text-muted-foreground font-black">
                 Ekonomi Takvimi
@@ -308,10 +308,10 @@ export default function EconomyNewsPage() {
             </CardContent>
           </Card>
 
-          <Card glass={true} className="bg-gradient-to-br from-card to-purple-950/5 border-purple-500/20">
+          <Card glass={true} className="bg-gradient-to-br from-card to-primary/5 border-primary/20">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm uppercase tracking-wider text-purple-400 font-black flex items-center">
-                <Sparkles className="h-4 w-4 text-purple-400 mr-1.5 animate-pulse" />
+              <CardTitle className="text-sm uppercase tracking-wider text-primary font-black flex items-center">
+                <Sparkles className="h-4 w-4 text-primary mr-1.5 animate-pulse" />
                 Favori Hisse Haberleri
               </CardTitle>
               <CardDescription className="text-[10px] mt-0.5">

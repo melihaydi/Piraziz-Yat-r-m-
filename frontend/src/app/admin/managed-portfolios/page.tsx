@@ -382,7 +382,7 @@ export default function ManagedPortfoliosPage() {
   if (forbidden) {
     return (
       <div className="flex flex-col items-center justify-center py-48 space-y-4 text-center">
-        <ShieldAlert className="h-10 w-10 text-rose-500" />
+        <ShieldAlert className="h-10 w-10 text-bear" />
         <span className="text-sm text-muted-foreground font-semibold">Bu sayfaya erişim yetkiniz yok.</span>
       </div>
     )
@@ -409,9 +409,9 @@ export default function ManagedPortfoliosPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {managedError && (
-            <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-3 py-2 text-xs font-semibold text-rose-400 flex items-center justify-between gap-3">
+            <div className="rounded-lg border border-bear/30 bg-bear/10 px-3 py-2 text-xs font-semibold text-bear flex items-center justify-between gap-3">
               <span>{managedError}</span>
-              <button onClick={() => setManagedError(null)} className="text-rose-400/70 hover:text-rose-300 cursor-pointer shrink-0">✕</button>
+              <button onClick={() => setManagedError(null)} className="text-bear/70 hover:text-bear cursor-pointer shrink-0">✕</button>
             </div>
           )}
 
@@ -442,7 +442,7 @@ export default function ManagedPortfoliosPage() {
                       tabIndex={-1}
                       onClick={e => { e.stopPropagation(); togglePinned(u.id) }}
                       title="Kayıtlılardan kaldır"
-                      className="text-muted-foreground/60 hover:text-rose-400 ml-0.5 cursor-pointer"
+                      className="text-muted-foreground/60 hover:text-bear ml-0.5 cursor-pointer"
                     >
                       ✕
                     </span>
@@ -481,7 +481,7 @@ export default function ManagedPortfoliosPage() {
                 title={pinnedIds.includes(managedUserId as number) ? "Kayıtlılardan kaldır" : "Hızlı erişime ekle"}
                 className={`inline-flex items-center justify-center h-9 w-9 rounded-md border cursor-pointer transition-colors shrink-0 ${
                   pinnedIds.includes(managedUserId as number)
-                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                    ? "border-warn/30 bg-warn/10 text-warn"
                     : "border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -508,13 +508,13 @@ export default function ManagedPortfoliosPage() {
                   </div>
                   <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
                     <span className="text-[10px] font-bold uppercase text-muted-foreground">Kâr / Zarar</span>
-                    <p className={`text-base font-extrabold font-mono ${managedPortfolio.total_profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                    <p className={`text-base font-extrabold font-mono ${managedPortfolio.total_profit >= 0 ? "text-bull" : "text-bear"}`}>
                       {managedPortfolio.total_profit >= 0 ? "+" : ""}{tl(managedPortfolio.total_profit)}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
                     <span className="text-[10px] font-bold uppercase text-muted-foreground">Getiri</span>
-                    <p className={`text-base font-extrabold font-mono ${managedPortfolio.profit_percentage >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                    <p className={`text-base font-extrabold font-mono ${managedPortfolio.profit_percentage >= 0 ? "text-bull" : "text-bear"}`}>
                       {managedPortfolio.profit_percentage >= 0 ? "+" : ""}{managedPortfolio.profit_percentage.toFixed(2)}%
                     </p>
                   </div>
@@ -527,7 +527,7 @@ export default function ManagedPortfoliosPage() {
                   table). Ekle deposits, Çıkar withdraws/corrects; both take
                   the same positive amount typed above them. */}
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
-                <Wallet className="h-4 w-4 text-emerald-400 shrink-0" />
+                <Wallet className="h-4 w-4 text-foreground shrink-0" />
                 <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Nakit</span>
                 <span className="text-sm font-extrabold font-mono text-foreground mr-1">{tl(managedPortfolio.cash_balance)}</span>
                 <input
@@ -536,14 +536,14 @@ export default function ManagedPortfoliosPage() {
                   value={cashAmount}
                   onChange={e => setCashAmount(e.target.value)}
                   placeholder="Tutar (₺) örn. 1.500,50"
-                  className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
+                  className="h-8 w-28 rounded-md border border-input bg-secondary/60 px-2 text-xs focus-visible:outline-none"
                 />
                 <Button
                   type="button"
                   onClick={() => adjustCash(1)}
                   disabled={cashBusy || !cashAmount}
                   title="Nakit ekle"
-                  className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+                  className="h-8 cursor-pointer bg-bull/15 hover:bg-bull/25 text-bull text-[11px] font-bold px-2.5"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
                   Ekle
@@ -553,7 +553,7 @@ export default function ManagedPortfoliosPage() {
                   onClick={() => adjustCash(-1)}
                   disabled={cashBusy || !cashAmount}
                   title="Nakit çıkar"
-                  className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+                  className="h-8 cursor-pointer bg-bear/10 hover:bg-bear/20 text-bear text-[11px] font-bold px-2.5"
                 >
                   <Minus className="h-3.5 w-3.5 mr-1" />
                   Çıkar
@@ -565,7 +565,7 @@ export default function ManagedPortfoliosPage() {
                   why it's a separate balance rather than another cash
                   deposit or a priced asset row). */}
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
-                <Landmark className="h-4 w-4 text-amber-400 shrink-0" />
+                <Landmark className="h-4 w-4 text-foreground shrink-0" />
                 <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">VİOP Teminatı</span>
                 <span className="text-sm font-extrabold font-mono text-foreground mr-1">{tl(managedPortfolio.viop_margin)}</span>
                 <input
@@ -574,14 +574,14 @@ export default function ManagedPortfoliosPage() {
                   value={viopAmount}
                   onChange={e => setViopAmount(e.target.value)}
                   placeholder="Tutar (₺) örn. 1.500,50"
-                  className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
+                  className="h-8 w-28 rounded-md border border-input bg-secondary/60 px-2 text-xs focus-visible:outline-none"
                 />
                 <Button
                   type="button"
                   onClick={() => adjustViopMargin(1)}
                   disabled={viopBusy || !viopAmount}
                   title="Teminat ekle"
-                  className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+                  className="h-8 cursor-pointer bg-bull/15 hover:bg-bull/25 text-bull text-[11px] font-bold px-2.5"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
                   Ekle
@@ -591,7 +591,7 @@ export default function ManagedPortfoliosPage() {
                   onClick={() => adjustViopMargin(-1)}
                   disabled={viopBusy || !viopAmount}
                   title="Teminat çıkar"
-                  className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+                  className="h-8 cursor-pointer bg-bear/10 hover:bg-bear/20 text-bear text-[11px] font-bold px-2.5"
                 >
                   <Minus className="h-3.5 w-3.5 mr-1" />
                   Çıkar
@@ -604,7 +604,7 @@ export default function ManagedPortfoliosPage() {
                   backend on every load, not a fixed snapshot from deposit
                   time - it'll change on refresh as USD/TRY moves. */}
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2.5">
-                <DollarSign className="h-4 w-4 text-sky-400 shrink-0" />
+                <DollarSign className="h-4 w-4 text-foreground shrink-0" />
                 <span className="text-[10px] font-bold uppercase text-muted-foreground shrink-0">Döviz Nakit (USD)</span>
                 <span className="text-sm font-extrabold font-mono text-foreground mr-1">
                   ${managedPortfolio.usd_cash_balance.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -616,14 +616,14 @@ export default function ManagedPortfoliosPage() {
                   value={usdCashAmount}
                   onChange={e => setUsdCashAmount(e.target.value)}
                   placeholder="Tutar ($) örn. 220"
-                  className="h-8 w-28 rounded-md border border-input bg-zinc-900/60 px-2 text-xs focus-visible:outline-none"
+                  className="h-8 w-28 rounded-md border border-input bg-secondary/60 px-2 text-xs focus-visible:outline-none"
                 />
                 <Button
                   type="button"
                   onClick={() => adjustUsdCash(1)}
                   disabled={usdCashBusy || !usdCashAmount}
                   title="Döviz nakti ekle"
-                  className="h-8 cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 text-[11px] font-bold px-2.5"
+                  className="h-8 cursor-pointer bg-bull/15 hover:bg-bull/25 text-bull text-[11px] font-bold px-2.5"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
                   Ekle
@@ -633,7 +633,7 @@ export default function ManagedPortfoliosPage() {
                   onClick={() => adjustUsdCash(-1)}
                   disabled={usdCashBusy || !usdCashAmount}
                   title="Döviz nakti çıkar"
-                  className="h-8 cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-bold px-2.5"
+                  className="h-8 cursor-pointer bg-bear/10 hover:bg-bear/20 text-bear text-[11px] font-bold px-2.5"
                 >
                   <Minus className="h-3.5 w-3.5 mr-1" />
                   Çıkar
@@ -669,7 +669,7 @@ export default function ManagedPortfoliosPage() {
                                 value={editShares}
                                 onChange={e => setEditShares(e.target.value)}
                                 placeholder="12,5"
-                                className="w-20 h-7 rounded border border-input bg-zinc-900/60 px-1.5 text-right text-xs"
+                                className="w-20 h-7 rounded border border-input bg-secondary/60 px-1.5 text-right text-xs"
                               />
                             </td>
                             <td className="px-2 text-right">
@@ -679,14 +679,14 @@ export default function ManagedPortfoliosPage() {
                                 value={editCost}
                                 onChange={e => setEditCost(e.target.value)}
                                 placeholder="1.500,50"
-                                className="w-20 h-7 rounded border border-input bg-zinc-900/60 px-1.5 text-right text-xs"
+                                className="w-20 h-7 rounded border border-input bg-secondary/60 px-1.5 text-right text-xs"
                               />
                             </td>
                             <td colSpan={3} className="px-2 text-right space-x-1.5">
                               <button
                                 onClick={() => saveEditAsset(asset)}
                                 disabled={managedBusy}
-                                className="text-[10px] font-bold px-2 py-1 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer disabled:opacity-50"
+                                className="text-[10px] font-bold px-2 py-1 rounded border bg-bull/10 text-bull border-bull/20 hover:bg-bull/20 cursor-pointer disabled:opacity-50"
                               >
                                 Kaydet
                               </button>
@@ -708,8 +708,8 @@ export default function ManagedPortfoliosPage() {
                                 {asset.daily_change_pct != null && (
                                   <span className={`text-[10px] font-bold ${
                                     asset.daily_change_is_estimate
-                                      ? "text-orange-400"
-                                      : asset.daily_change_pct >= 0 ? "text-cyan-400" : "text-rose-400"
+                                      ? "text-warn"
+                                      : asset.daily_change_pct >= 0 ? "text-bull" : "text-bear"
                                   }`}>
                                     {asset.daily_change_is_estimate ? "~" : ""}
                                     {asset.daily_change_pct >= 0 ? "+" : ""}{asset.daily_change_pct.toFixed(2)}%
@@ -728,14 +728,14 @@ export default function ManagedPortfoliosPage() {
                             </td>
                             <td className="px-2 text-right font-mono font-bold">
                               <div className="flex flex-col items-end">
-                                <span className={asset.total_profit >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                                <span className={asset.total_profit >= 0 ? "text-bull" : "text-bear"}>
                                   {asset.total_profit >= 0 ? "+" : ""}{tl(asset.total_profit)}
                                 </span>
-                                <span className={`text-[10px] ${asset.total_profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                <span className={`text-[10px] ${asset.total_profit >= 0 ? "text-bull" : "text-bear"}`}>
                                   {asset.profit_percentage >= 0 ? "+" : ""}{asset.profit_percentage.toFixed(2)}%
                                 </span>
                                 {asset.daily_gain_value != null && asset.daily_change_is_estimate && (
-                                  <span className="text-[10px] font-bold text-orange-400">
+                                  <span className="text-[10px] font-bold text-warn">
                                     bugün ~{asset.daily_gain_value >= 0 ? "+" : ""}{tl(asset.daily_gain_value)}
                                   </span>
                                 )}
@@ -754,7 +754,7 @@ export default function ManagedPortfoliosPage() {
                                 onClick={() => deleteManagedAsset(asset.id)}
                                 disabled={managedBusy}
                                 title="Kaldır"
-                                className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-rose-400 hover:border-rose-500/30 cursor-pointer disabled:opacity-50"
+                                className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-bear hover:border-bear/30 cursor-pointer disabled:opacity-50"
                               >
                                 <Trash2 className="h-3 w-3" />
                               </button>
@@ -787,14 +787,14 @@ export default function ManagedPortfoliosPage() {
                     <button
                       type="button"
                       onClick={() => setNewAssetTicker("USDTRY")}
-                      className="h-8 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-emerald-500/40 cursor-pointer"
+                      className="h-8 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer"
                     >
                       USD/TRY
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewAssetTicker("XAUTRYG")}
-                      className="h-8 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-amber-500/40 cursor-pointer"
+                      className="h-8 px-2 rounded-md border border-input bg-secondary/40 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 cursor-pointer"
                     >
                       Gram Altın
                     </button>

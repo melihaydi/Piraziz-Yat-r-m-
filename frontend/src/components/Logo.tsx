@@ -10,7 +10,7 @@ export default function Logo() {
         <span className="font-black text-sm tracking-widest text-foreground uppercase leading-none">
           BIP
         </span>
-        <span className="text-[9px] font-bold text-emerald-400 tracking-[0.22em] uppercase leading-none mt-1">
+        <span className="text-[9px] font-bold text-primary tracking-[0.22em] uppercase leading-none mt-1">
           TERMINAL
         </span>
       </div>

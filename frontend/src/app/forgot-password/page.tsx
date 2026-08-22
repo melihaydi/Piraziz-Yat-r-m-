@@ -32,12 +32,12 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl p-4">
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-xl p-4">
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
 
       <div className="w-full max-w-md relative z-10">
-        <Card glass={true} className="border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-2xl">
+        <Card glass={true} className="border-primary/20 bg-gradient-to-br from-background via-card to-primary/20 shadow-2xl">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto h-12 w-12 rounded-2xl overflow-hidden mb-4">
               <img src="/logo.png" alt="BIP Terminal" className="h-full w-full object-cover" />
@@ -52,16 +52,16 @@ export default function ForgotPasswordPage() {
 
           <CardContent className="space-y-4">
             {sent ? (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center space-y-2">
-                <CheckCircle2 className="h-6 w-6 text-emerald-400 mx-auto" />
-                <p className="text-xs text-emerald-300/90 leading-relaxed">
+              <div className="p-4 bg-bull/10 border border-bull/20 rounded-xl text-center space-y-2">
+                <CheckCircle2 className="h-6 w-6 text-bull mx-auto" />
+                <p className="text-xs text-bull/90 leading-relaxed">
                   E-posta adresine kayıtlıysa birkaç dakika içinde bir şifre sıfırlama bağlantısı alacaksın.
                 </p>
               </div>
             ) : (
               <>
                 {error && (
-                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-semibold text-center">
+                  <div className="p-3 bg-bear/10 border border-bear/20 rounded-xl text-bear text-xs font-semibold text-center">
                     {error}
                   </div>
                 )}
@@ -75,7 +75,7 @@ export default function ForgotPasswordPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="bip@yatirim.com"
-                        className="pl-10 bg-zinc-900/60 border-zinc-800"
+                        className="pl-10 bg-secondary/60 border-border"
                         required
                         autoFocus
                       />
@@ -84,7 +84,7 @@ export default function ForgotPasswordPage() {
                   <Button
                     type="submit"
                     disabled={loading}
-                    className="w-full mt-2 cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-foreground font-black text-sm py-2.5 flex items-center justify-center gap-1.5 border-0 shadow-lg shadow-purple-500/10"
+                    className="w-full mt-2 cursor-pointer bg-primary hover:bg-primary-hover text-background font-black text-sm py-2.5 flex items-center justify-center gap-1.5 border-0 shadow-lg shadow-primary/10"
                   >
                     {loading ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : "Sıfırlama Bağlantısı Gönder"}
                   </Button>
@@ -95,7 +95,7 @@ export default function ForgotPasswordPage() {
             <div className="pt-4 border-t border-border/40 text-center">
               <Link
                 href="/"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-purple-400 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Girişe dön
               </Link>

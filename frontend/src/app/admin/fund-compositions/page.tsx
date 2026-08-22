@@ -183,7 +183,7 @@ export default function FundCompositionsPage() {
   if (forbidden) {
     return (
       <div className="flex flex-col items-center justify-center py-48 space-y-4 text-center">
-        <ShieldAlert className="h-10 w-10 text-rose-500" />
+        <ShieldAlert className="h-10 w-10 text-bear" />
         <span className="text-sm text-muted-foreground font-semibold">Bu sayfaya erişim yetkiniz yok.</span>
       </div>
     )
@@ -193,7 +193,7 @@ export default function FundCompositionsPage() {
     <div className="space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-          <PieChart className="h-7 w-7 text-emerald-400" />
+          <PieChart className="h-7 w-7 text-primary" />
           Fon Ağırlık Ayarlamaları
         </h1>
         <p className="t-caption mt-1.5">
@@ -203,15 +203,15 @@ export default function FundCompositionsPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-sm font-semibold text-rose-400 flex items-center justify-between gap-3">
+        <div className="rounded-lg border border-bear/30 bg-bear/10 px-4 py-3 text-sm font-semibold text-bear flex items-center justify-between gap-3">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-rose-400/70 hover:text-rose-300 cursor-pointer shrink-0">✕</button>
+          <button onClick={() => setError(null)} className="text-bear/70 hover:text-bear cursor-pointer shrink-0">✕</button>
         </div>
       )}
       {notice && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm font-semibold text-emerald-400 flex items-center justify-between gap-3">
+        <div className="rounded-lg border border-bull/30 bg-bull/10 px-4 py-3 text-sm font-semibold text-bull flex items-center justify-between gap-3">
           <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-emerald-400/70 hover:text-emerald-300 cursor-pointer shrink-0">✕</button>
+          <button onClick={() => setNotice(null)} className="text-bull/70 hover:text-bull cursor-pointer shrink-0">✕</button>
         </div>
       )}
 
@@ -240,7 +240,7 @@ export default function FundCompositionsPage() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-black">{f.fund_code}</span>
                     {f.is_override && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase shrink-0">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-warn/10 text-warn border border-warn/20 uppercase shrink-0">
                         Özel
                       </span>
                     )}
@@ -265,7 +265,7 @@ export default function FundCompositionsPage() {
                       <CardTitle className="t-section flex items-center gap-2">
                         {selected.fund_code}
                         {selected.is_override ? (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-warn/10 text-warn border border-warn/20 uppercase">
                             Özel Ayarlanmış
                           </span>
                         ) : (
@@ -279,8 +279,8 @@ export default function FundCompositionsPage() {
                     <div
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border ${
                         totalIsOff
-                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                          ? "bg-bear/10 text-bear border-bear/30"
+                          : "bg-bull/10 text-bull border-bull/30"
                       }`}
                     >
                       {totalIsOff ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
@@ -290,7 +290,7 @@ export default function FundCompositionsPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {totalIsOff && (
-                    <p className="text-[11px] text-rose-400/90 bg-rose-500/5 border border-rose-500/20 rounded-lg px-3 py-2">
+                    <p className="text-[11px] text-bear/90 bg-bear/5 border border-bear/20 rounded-lg px-3 py-2">
                       Toplam %100&apos;den belirgin şekilde sapmış - gerçek bir TEFAS kompozisyonu da tam %100 olmayabilir
                       (nakit/tahvil gibi sayılmayan pay yüzünden), ama büyük bir sapma genelde bir yazım hatasıdır.
                       Yine de kaydedebilirsiniz, engellenmiyor.
@@ -320,7 +320,7 @@ export default function FundCompositionsPage() {
                         <button
                           onClick={() => removeRow(idx)}
                           title="Satırı kaldır"
-                          className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-md border border-border/40 bg-secondary/30 text-muted-foreground hover:text-rose-400 hover:border-rose-500/30 cursor-pointer transition-colors"
+                          className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-md border border-border/40 bg-secondary/30 text-muted-foreground hover:text-bear hover:border-bear/30 cursor-pointer transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -366,7 +366,7 @@ export default function FundCompositionsPage() {
                         variant="ghost"
                         onClick={resetToDefault}
                         disabled={saving}
-                        className="cursor-pointer text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 text-xs font-bold"
+                        className="cursor-pointer bg-bear hover:bg-bear/90 text-white hover:text-white text-xs font-bold"
                       >
                         <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
                         Varsayılana Döndür

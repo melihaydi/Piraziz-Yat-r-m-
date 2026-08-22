@@ -147,7 +147,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
             İki Adımlı Doğrulama (2FA)
           </span>
           <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase ${
-            totpEnabled ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+            totpEnabled ? "bg-bull/10 text-bull border-bull/20" : "bg-secondary text-muted-foreground border-border"
           }`}>
             {totpEnabled ? "Aktif" : "Kapalı"}
           </span>
@@ -158,7 +158,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
       </CardHeader>
       <CardContent className="space-y-4">
         {error && (
-          <div className="flex items-center space-x-2 text-rose-400 text-xs font-semibold bg-rose-500/10 p-3 rounded-lg border border-rose-500/15">
+          <div className="flex items-center space-x-2 text-bear text-xs font-semibold bg-bear/10 p-3 rounded-lg border border-bear/15">
             <span>{error}</span>
           </div>
         )}
@@ -192,7 +192,7 @@ function TwoFactorSection({ totpEnabled, onChanged }: { totpEnabled: boolean; on
 
         {step === "codes" && (
           <div className="space-y-3">
-            <div className="p-3 rounded-lg border border-amber-500/25 bg-amber-500/5 text-[11px] text-amber-300/90 leading-relaxed">
+            <div className="p-3 rounded-lg border border-warn/25 bg-warn/5 text-[11px] text-warn/90 leading-relaxed">
               <strong>Bu kodları şimdi kaydedin.</strong> Bir daha gösterilmeyecek. Telefonunuzu
               kaybederseniz hesabınıza girmenin tek yolu bunlar. Her kod yalnızca bir kez kullanılabilir.
             </div>
@@ -374,11 +374,11 @@ const SECURITY_ITEMS = [
 ]
 
 const BADGE_STYLES: Record<string, string> = {
-  emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  purple: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  amber: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  zinc: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+  emerald: "bg-bull/10 text-bull border-bull/20",
+  blue: "bg-secondary text-muted-foreground border-border",
+  purple: "bg-secondary text-muted-foreground border-border",
+  amber: "bg-secondary text-muted-foreground border-border",
+  zinc: "bg-secondary text-muted-foreground border-border"
 }
 
 export default function SettingsPage() {
@@ -657,8 +657,8 @@ export default function SettingsPage() {
       {paymentResult && (
         <div className={`animate-pop rounded-xl border px-4 py-3 flex items-center gap-2.5 text-xs font-semibold ${
           paymentResult === "success"
-            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-            : "border-rose-500/30 bg-rose-500/10 text-rose-400"
+            ? "border-bull/30 bg-bull/10 text-bull"
+            : "border-bear/30 bg-bear/10 text-bear"
         }`}>
           {paymentResult === "success" ? (
             <>Ödemeniz alındı, üyeliğiniz güncellendi.</>
@@ -674,19 +674,19 @@ export default function SettingsPage() {
           mail silently no-ops, so the banner just nagged permanently with
           no way to clear it - hiding it there is the honest behavior. */}
       {!isEmailVerified && emailDeliveryEnabled && (
-        <div className="animate-pop flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
-          <div className="flex items-center gap-2 text-amber-300">
+        <div className="animate-pop flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warn/25 bg-warn/5 px-4 py-3">
+          <div className="flex items-center gap-2 text-warn">
             <Mail className="h-4 w-4 shrink-0" />
             <span className="text-sm font-semibold">
               E-posta adresiniz henüz doğrulanmadı.{" "}
-              <span className="font-normal text-amber-300/80">Hesabınızı kurtarabilmek için doğrulamanız önerilir.</span>
+              <span className="font-normal text-warn/80">Hesabınızı kurtarabilmek için doğrulamanız önerilir.</span>
             </span>
           </div>
           <Button
             type="button"
             onClick={handleResendVerification}
             disabled={resendState !== "idle"}
-            className="cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 text-xs font-bold px-3 py-1.5 h-auto"
+            className="cursor-pointer bg-warn/10 hover:bg-warn/20 text-warn border border-warn/25 text-xs font-bold px-3 py-1.5 h-auto"
           >
             {resendState === "sending" ? "Gönderiliyor..." : resendState === "sent" ? "Gönderildi" : "Doğrulama E-postasını Gönder"}
           </Button>
@@ -794,7 +794,7 @@ export default function SettingsPage() {
                 </div>
 
                 {saveSuccess && (
-                  <div className="flex items-center space-x-2 text-emerald-400 text-xs font-semibold bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/15">
+                  <div className="flex items-center space-x-2 text-bull text-xs font-semibold bg-bull/10 p-3 rounded-lg border border-bull/15">
                     <CheckCircle2 className="h-4 w-4" />
                     <span>Profil ayarlarınız başarıyla kaydedildi!</span>
                   </div>
@@ -838,13 +838,13 @@ export default function SettingsPage() {
                 </div>
 
                 {authError && (
-                  <div className="flex items-center space-x-2 text-rose-400 text-xs font-semibold bg-rose-500/10 p-3 rounded-lg border border-rose-500/15">
+                  <div className="flex items-center space-x-2 text-bear text-xs font-semibold bg-bear/10 p-3 rounded-lg border border-bear/15">
                     <span>{authError}</span>
                   </div>
                 )}
 
                 {authSuccess && (
-                  <div className="flex items-center space-x-2 text-emerald-400 text-xs font-semibold bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/15">
+                  <div className="flex items-center space-x-2 text-bull text-xs font-semibold bg-bull/10 p-3 rounded-lg border border-bull/15">
                     <CheckCircle2 className="h-4 w-4" />
                     <span>Hesap bilgileriniz güncellendi!</span>
                   </div>
@@ -859,7 +859,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={logout}
-                  className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-rose-400 border border-rose-500/25 bg-rose-500/5 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-bear border border-bear/25 bg-bear/5 hover:bg-bear/15 transition-colors cursor-pointer"
                 >
                   <LogOut className="h-4 w-4" />
                   Çıkış Yap
@@ -875,7 +875,7 @@ export default function SettingsPage() {
           <Card glass={true}>
             <CardHeader>
               <CardTitle className="t-section flex items-center">
-                <Monitor className="h-4.5 w-4.5 mr-2 text-cyan-400" />
+                <Monitor className="h-4.5 w-4.5 mr-2 text-primary" />
                 Masaüstü ve Mobil Uygulamalar
               </CardTitle>
               <CardDescription>Windows masaüstü uygulamasını veya Android APK'sını indirin.</CardDescription>
@@ -883,14 +883,14 @@ export default function SettingsPage() {
             <CardContent className="space-y-2">
               <a
                 href={`${API_BASE_URL}/download/BIPTerminal-Setup.exe`}
-                className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-cyan-300 border border-cyan-500/25 bg-cyan-500/5 hover:bg-cyan-500/15 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-primary border border-primary/25 bg-primary/5 hover:bg-primary/15 transition-colors cursor-pointer"
               >
                 <Download className="h-4 w-4" />
                 İndir (.exe, Windows)
               </a>
               <a
                 href={`${API_BASE_URL}/download/BIPTerminal.apk`}
-                className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-emerald-300 border border-emerald-500/25 bg-emerald-500/5 hover:bg-emerald-500/15 transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-md text-xs font-bold text-bull border border-bull/25 bg-bull/5 hover:bg-bull/15 transition-colors cursor-pointer"
               >
                 <Smartphone className="h-4 w-4" />
                 İndir (.apk, Android)
@@ -958,7 +958,7 @@ export default function SettingsPage() {
                       <p className="text-[11px] text-muted-foreground">
                         {pushEnabled ? "Etkin - alarmlarınız bu cihaza da bildirim olarak düşer." : "Kapalı"}
                       </p>
-                      {pushError && <p className="text-[11px] text-rose-400 font-semibold mt-1">{pushError}</p>}
+                      {pushError && <p className="text-[11px] text-bear font-semibold mt-1">{pushError}</p>}
                     </div>
                   </div>
                   <Button
@@ -1010,9 +1010,9 @@ export default function SettingsPage() {
                 </Button>
               </div>
 
-              <div className="p-4 bg-rose-500/5 rounded-lg border border-rose-500/20 space-y-3">
+              <div className="p-4 bg-bear/5 rounded-lg border border-bear/20 space-y-3">
                 <div>
-                  <p className="text-sm font-bold text-rose-300">Hesabımı Sil</p>
+                  <p className="text-sm font-bold text-bear">Hesabımı Sil</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     Hesabınız devre dışı bırakılır ve kişisel verileriniz (e-posta, isim) anonimleştirilir. Bu işlem geri alınamaz.
                   </p>
@@ -1021,28 +1021,28 @@ export default function SettingsPage() {
                   <Button
                     type="button"
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/25 text-xs font-bold px-4 py-2 h-auto"
+                    className="cursor-pointer bg-bear/10 hover:bg-bear/20 text-bear border border-bear/25 text-xs font-bold px-4 py-2 h-auto"
                   >
                     Hesabımı Sil
                   </Button>
                 ) : (
                   <div className="space-y-2.5">
                     {deleteError && (
-                      <p className="text-[11px] text-rose-400 font-semibold">{deleteError}</p>
+                      <p className="text-[11px] text-bear font-semibold">{deleteError}</p>
                     )}
                     <Input
                       type="password"
                       value={deletePassword}
                       onChange={(e) => setDeletePassword(e.target.value)}
                       placeholder="Şifrenizi girerek onaylayın"
-                      className="bg-zinc-900/60 border-zinc-800 max-w-xs"
+                      className="bg-secondary/60 border-border max-w-xs"
                     />
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         onClick={handleDeleteAccount}
                         disabled={deleteLoading || !deletePassword}
-                        className="cursor-pointer bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold px-4 py-2 h-auto"
+                        className="cursor-pointer bg-bear hover:bg-bear/90 text-white text-xs font-bold px-4 py-2 h-auto"
                       >
                         {deleteLoading ? "Siliniyor..." : "Kalıcı Olarak Sil"}
                       </Button>
@@ -1106,21 +1106,21 @@ export default function SettingsPage() {
                   <p className="text-[11px] text-muted-foreground mt-0.5">Talebiniz kaydedilir ve yanıt geldiğinde e-posta ile bilgilendirilirsiniz.</p>
                 </div>
                 {ticketError && (
-                  <p className="text-[11px] text-rose-400 font-semibold">{ticketError}</p>
+                  <p className="text-[11px] text-bear font-semibold">{ticketError}</p>
                 )}
                 <form onSubmit={handleSubmitTicket} className="space-y-2.5">
                   <Input
                     value={ticketSubject}
                     onChange={(e) => setTicketSubject(e.target.value)}
                     placeholder="Konu"
-                    className="bg-zinc-900/60 border-zinc-800"
+                    className="bg-secondary/60 border-border"
                   />
                   <textarea
                     value={ticketMessage}
                     onChange={(e) => setTicketMessage(e.target.value)}
                     placeholder="Mesajınız..."
                     rows={3}
-                    className="w-full text-sm rounded-md bg-zinc-900/60 border border-zinc-800 px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    className="w-full text-sm rounded-md bg-secondary/60 border border-border px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                   />
                   <Button
                     type="submit"
@@ -1139,7 +1139,7 @@ export default function SettingsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-bold text-foreground">{t.subject}</span>
                           <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase shrink-0 ${
-                            t.status === "open" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            t.status === "open" ? "bg-warn/10 text-warn border-warn/20" : "bg-bull/10 text-bull border-bull/20"
                           }`}>
                             {t.status === "open" ? "Açık" : "Kapalı"}
                           </span>

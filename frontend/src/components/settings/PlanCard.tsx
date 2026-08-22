@@ -98,10 +98,10 @@ export default function PlanCard({ currentRole, onUpgraded }: { currentRole: str
   }
 
   return (
-    <Card glass={true} className="bg-gradient-to-br from-card to-emerald-950/10 border-emerald-500/20">
+    <Card glass={true} className="bg-gradient-to-br from-card to-primary/10 border-primary/20">
       <CardHeader>
         <CardTitle className="text-base flex items-center">
-          <Sparkles className="h-4.5 w-4.5 mr-2 text-emerald-400" />
+          <Sparkles className="h-4.5 w-4.5 mr-2 text-primary" />
           Üyelik Planı
         </CardTitle>
         <CardDescription>
@@ -110,7 +110,7 @@ export default function PlanCard({ currentRole, onUpgraded }: { currentRole: str
       </CardHeader>
       <CardContent className="space-y-3">
         {!configured && (
-          <p className="text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <p className="text-[11px] text-warn bg-warn/10 border border-warn/20 rounded-lg px-3 py-2">
             Ödeme sistemi şu anda devre dışı. Kısa süre sonra tekrar deneyin.
           </p>
         )}
@@ -121,7 +121,7 @@ export default function PlanCard({ currentRole, onUpgraded }: { currentRole: str
             variant="ghost"
             onClick={cancelPlan}
             disabled={canceling}
-            className="w-full h-8 text-[11px] font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer"
+            className="w-full h-8 text-[11px] font-bold text-bear hover:text-bear/80 hover:bg-bear/10 cursor-pointer"
           >
             {canceling ? "İptal ediliyor..." : "Üyeliği İptal Et (Ücretsiz Plana Dön)"}
           </Button>
@@ -145,10 +145,10 @@ export default function PlanCard({ currentRole, onUpgraded }: { currentRole: str
         </div>
 
         {checkoutRole && (
-          <div className="rounded-xl border border-emerald-500/25 bg-emerald-950/10 p-4 space-y-3">
+          <div className="rounded-xl border border-primary/25 bg-primary/10 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
-                <CreditCard className="h-3.5 w-3.5 text-emerald-400" />
+                <CreditCard className="h-3.5 w-3.5 text-primary" />
                 {ROLE_LABEL[checkoutRole]} - Ödeme Bilgileri
               </span>
               <button onClick={() => setCheckoutRole(null)} className="text-muted-foreground hover:text-foreground cursor-pointer">
@@ -171,7 +171,7 @@ export default function PlanCard({ currentRole, onUpgraded }: { currentRole: str
               <Input placeholder="Telefon (opsiyonel)" value={gsmNumber} onChange={e => setGsmNumber(e.target.value)} className="h-8 text-xs" />
             </div>
             <Input placeholder="Adres (opsiyonel)" value={address} onChange={e => setAddress(e.target.value)} className="h-8 text-xs" />
-            {error && <p className="text-[11px] text-rose-400">{error}</p>}
+            {error && <p className="text-[11px] text-bear">{error}</p>}
             <Button
               type="button"
               onClick={submitCheckout}

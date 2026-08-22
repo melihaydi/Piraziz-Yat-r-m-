@@ -246,7 +246,7 @@ export default function AdminPage() {
   if (forbidden) {
     return (
       <div className="flex flex-col items-center justify-center py-48 space-y-4 text-center">
-        <ShieldAlert className="h-10 w-10 text-rose-500" />
+        <ShieldAlert className="h-10 w-10 text-bear" />
         <span className="text-sm text-muted-foreground font-semibold">Bu sayfaya erişim yetkiniz yok.</span>
       </div>
     )
@@ -255,22 +255,22 @@ export default function AdminPage() {
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       {actionError && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-sm font-semibold text-rose-400 flex items-center justify-between gap-3">
+        <div className="rounded-lg border border-bear/30 bg-bear/10 px-4 py-3 text-sm font-semibold text-bear flex items-center justify-between gap-3">
           <span>{actionError}</span>
-          <button onClick={() => setActionError(null)} className="text-rose-400/70 hover:text-rose-300 cursor-pointer shrink-0">✕</button>
+          <button onClick={() => setActionError(null)} className="text-bear/70 hover:text-bear cursor-pointer shrink-0">✕</button>
         </div>
       )}
 
       {actionNotice && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm font-semibold text-emerald-400 flex items-center justify-between gap-3">
+        <div className="rounded-lg border border-bull/30 bg-bull/10 px-4 py-3 text-sm font-semibold text-bull flex items-center justify-between gap-3">
           <span>{actionNotice}</span>
-          <button onClick={() => setActionNotice(null)} className="text-emerald-400/70 hover:text-emerald-300 cursor-pointer shrink-0">✕</button>
+          <button onClick={() => setActionNotice(null)} className="text-bull/70 hover:text-bull cursor-pointer shrink-0">✕</button>
         </div>
       )}
 
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-          <ShieldCheck className="h-7 w-7 text-red-400" />
+          <ShieldCheck className="h-7 w-7 text-primary" />
           Yönetim Paneli
         </h1>
         <p className="t-caption mt-1.5">Kayıtlı kullanıcıların üyelik seviyesini ve hesap durumunu yönetin.</p>
@@ -355,8 +355,8 @@ export default function AdminPage() {
                         disabled={busyId === u.id}
                         className={`text-[10px] font-bold px-2 py-1 rounded border cursor-pointer disabled:opacity-50 ${
                           u.is_active
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                            : "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
+                            ? "bg-bull/10 text-bull border-bull/20 hover:bg-bull/20"
+                            : "bg-bear/10 text-bear border-bear/20 hover:bg-bear/20"
                         }`}
                       >
                         {u.is_active ? "Aktif" : "Pasif"}
@@ -371,7 +371,7 @@ export default function AdminPage() {
                           onClick={() => reset2FA(u.id, u.email)}
                           disabled={busyId === u.id}
                           title="Kullanıcının 2FA'sını sıfırla (hesap kurtarma)"
-                          className="text-[10px] font-bold px-2 py-1 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/25 cursor-pointer disabled:opacity-50 transition-colors"
+                          className="text-[10px] font-bold px-2 py-1 rounded border bg-bull/10 text-bull border-bull/20 hover:bg-bear/20 hover:text-bear hover:border-bear/25 cursor-pointer disabled:opacity-50 transition-colors"
                         >
                           Açık — Sıfırla
                         </button>
@@ -388,7 +388,7 @@ export default function AdminPage() {
                           onClick={() => triggerPasswordReset(u.id, u.email)}
                           disabled={busyId === u.id}
                           title="Şifre sıfırlama e-postası gönder"
-                          className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-amber-400 hover:border-amber-500/30 cursor-pointer disabled:opacity-50 transition-colors"
+                          className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-warn hover:border-warn/30 cursor-pointer disabled:opacity-50 transition-colors"
                         >
                           <KeyRound className="h-3.5 w-3.5" />
                         </button>
@@ -397,7 +397,7 @@ export default function AdminPage() {
                             onClick={() => deleteUser(u.id, u.email)}
                             disabled={busyId === u.id}
                             title="Hesabı sil"
-                            className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-rose-400 hover:border-rose-500/30 cursor-pointer disabled:opacity-50 transition-colors"
+                            className="inline-flex items-center justify-center h-7 w-7 rounded border bg-secondary/40 text-muted-foreground border-border/40 hover:text-bear hover:border-bear/30 cursor-pointer disabled:opacity-50 transition-colors"
                           >
                             <UserX className="h-3.5 w-3.5" />
                           </button>
@@ -454,7 +454,7 @@ export default function AdminPage() {
                         onChange={(e) => setReplyDrafts(prev => ({ ...prev, [t.id]: e.target.value }))}
                         placeholder="Yanıt yaz..."
                         rows={2}
-                        className="flex-1 text-xs rounded-md bg-zinc-900/60 border border-zinc-800 px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        className="flex-1 text-xs rounded-md bg-secondary/60 border border-border px-3 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                       />
                       <div className="flex flex-col gap-1.5 shrink-0">
                         <Button

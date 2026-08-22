@@ -23,7 +23,7 @@ export default function GlobalError({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#101015",
+          background: "#07090B",
           color: "#e5e5e5",
           fontFamily: "system-ui, -apple-system, sans-serif",
           padding: "1.5rem",

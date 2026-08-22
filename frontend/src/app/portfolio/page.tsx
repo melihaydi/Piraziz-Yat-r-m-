@@ -110,7 +110,7 @@ function PortfolioStressTest({ beta, currentValue }: { beta: number | null; curr
     <div className="space-y-3">
       <div className="flex items-center justify-between text-xs font-bold">
         <span className="text-muted-foreground">XU100 senaryosu</span>
-        <span className={scenario >= 0 ? "text-emerald-400" : "text-rose-500"}>{scenario >= 0 ? "+" : ""}{scenario}%</span>
+        <span className={scenario >= 0 ? "text-bull" : "text-bear"}>{scenario >= 0 ? "+" : ""}{scenario}%</span>
       </div>
       <input
         type="range"
@@ -123,7 +123,7 @@ function PortfolioStressTest({ beta, currentValue }: { beta: number | null; curr
       />
       <div className="flex items-center justify-between text-xs pt-1">
         <span className="text-muted-foreground">Tahmini portföy etkisi</span>
-        <span className={`font-mono font-bold ${estimatedChangePct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+        <span className={`font-mono font-bold ${estimatedChangePct >= 0 ? "text-bull" : "text-bear"}`}>
           {estimatedChangePct >= 0 ? "+" : ""}{estimatedChangePct.toFixed(1)}% (₺{estimatedDiff.toLocaleString("tr-TR", { maximumFractionDigits: 0 })})
         </span>
       </div>
@@ -862,9 +862,9 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {actionError && (
-        <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-sm font-semibold text-rose-400 flex items-center justify-between gap-3">
+        <div className="rounded-lg border border-bear/30 bg-bear/30 px-4 py-3 text-sm font-semibold text-bear flex items-center justify-between gap-3">
           <span>{actionError}</span>
-          <button onClick={() => setActionError(null)} className="text-rose-400/70 hover:text-rose-300 cursor-pointer shrink-0">✕</button>
+          <button onClick={() => setActionError(null)} className="text-bear/70 hover:text-bear cursor-pointer shrink-0">✕</button>
         </div>
       )}
       {/* Header */}
@@ -898,7 +898,7 @@ export default function PortfolioPage() {
             {portfolios.length > 1 && activePortfolio && (
               <button
                 onClick={() => handleDeletePortfolio(activePortfolio.id)}
-                className="px-2.5 py-1 rounded text-xs font-bold text-rose-400/80 hover:text-rose-300 cursor-pointer"
+                className="px-2.5 py-1 rounded text-xs font-bold text-bear/80 hover:text-bear cursor-pointer"
                 title={`"${activePortfolio.name}" portföyünü sil`}
               >
                 Sil
@@ -928,7 +928,7 @@ export default function PortfolioPage() {
             className="cursor-pointer flex items-center"
             onClick={() => { setIsOpenAnnualModal(true); loadAnnual(annualYear) }}
           >
-            <FileText className="h-4 w-4 mr-2 text-emerald-400" />
+            <FileText className="h-4 w-4 mr-2 text-bull" />
             Yıllık Özet
           </Button>
 
@@ -942,7 +942,7 @@ export default function PortfolioPage() {
           <Dialog open={isOpenUsdCashModal} onOpenChange={setIsOpenUsdCashModal}>
             <DialogTrigger asChild>
               <Button variant="outline" className="cursor-pointer flex items-center">
-                <DollarSign className="h-4 w-4 mr-2 text-sky-400" />
+                <DollarSign className="h-4 w-4 mr-2 text-primary" />
                 Döviz Nakit
               </Button>
             </DialogTrigger>
@@ -984,7 +984,7 @@ export default function PortfolioPage() {
                     type="button"
                     onClick={() => adjustUsdCash(1)}
                     disabled={usdCashBusy || !usdCashAmount}
-                    className="cursor-pointer bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold"
+                    className="cursor-pointer bg-bull/15 hover:bg-bull/25 text-bull font-bold"
                   >
                     <Plus className="h-4 w-4 mr-1.5" />
                     Ekle
@@ -993,7 +993,7 @@ export default function PortfolioPage() {
                     type="button"
                     onClick={() => adjustUsdCash(-1)}
                     disabled={usdCashBusy || !usdCashAmount}
-                    className="cursor-pointer bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold"
+                    className="cursor-pointer bg-bear/10 hover:bg-bear/20 text-bear font-bold"
                   >
                     <Minus className="h-4 w-4 mr-1.5" />
                     Çıkar
@@ -1109,7 +1109,7 @@ export default function PortfolioPage() {
                     <button
                       type="button"
                       onClick={() => setAssetTicker("USDTRY")}
-                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-emerald-500/40 cursor-pointer"
+                      className="h-7 px-2 rounded-md border border-input bg-secondary/40 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-bull/40 cursor-pointer"
                     >
                       USD/TRY
                     </button>
@@ -1234,7 +1234,7 @@ export default function PortfolioPage() {
                   if (!Number.isFinite(s) || !Number.isFinite(p)) return null
                   const pnl = (p - (selectedAsset.average_cost || 0)) * s
                   return (
-                    <p className={`text-xs font-bold text-center ${pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                    <p className={`text-xs font-bold text-center ${pnl >= 0 ? "text-bull" : "text-bear"}`}>
                       Tahmini gerçekleşen K/Z: {pnl >= 0 ? "+" : ""}₺
                       {pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
@@ -1353,7 +1353,7 @@ export default function PortfolioPage() {
                           onClick={() => loadAnnual(y)}
                           className={`px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition-colors ${
                             y === annual.year
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                              ? "bg-bull/20 text-bull border border-bull/40"
                               : "bg-secondary/40 text-muted-foreground border border-border/40 hover:bg-secondary/70"
                           }`}
                         >
@@ -1369,7 +1369,7 @@ export default function PortfolioPage() {
                     <div className="rounded-lg border border-border/50 bg-secondary/20 p-3">
                       <p className="text-[11px] font-bold uppercase text-muted-foreground">Ortalama Maliyet</p>
                       <p className={`text-xl font-extrabold font-mono mt-1 ${
-                        annual.average_cost.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"
+                        annual.average_cost.realized_pnl >= 0 ? "text-bull" : "text-bear"
                       }`}>
                         {annual.average_cost.realized_pnl >= 0 ? "+" : ""}₺
                         {annual.average_cost.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1381,7 +1381,7 @@ export default function PortfolioPage() {
                     <div className="rounded-lg border border-border/50 bg-secondary/20 p-3">
                       <p className="text-[11px] font-bold uppercase text-muted-foreground">FIFO (İlk Giren İlk Çıkar)</p>
                       <p className={`text-xl font-extrabold font-mono mt-1 ${
-                        annual.fifo.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"
+                        annual.fifo.realized_pnl >= 0 ? "text-bull" : "text-bear"
                       }`}>
                         {annual.fifo.realized_pnl >= 0 ? "+" : ""}₺
                         {annual.fifo.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1428,13 +1428,13 @@ export default function PortfolioPage() {
                           {annual.by_ticker.map((r: any) => (
                             <tr key={r.ticker} className="border-b border-border/20">
                               <td className="py-2 font-bold font-sans">{r.ticker}</td>
-                              <td className={`py-2 text-right ${r.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                              <td className={`py-2 text-right ${r.realized_pnl >= 0 ? "text-bull" : "text-bear"}`}>
                                 {r.realized_pnl >= 0 ? "+" : ""}₺{r.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                               <td className="py-2 text-right val-warn">
                                 ₺{r.dividend_income.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
-                              <td className={`py-2 text-right font-bold ${r.total >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                              <td className={`py-2 text-right font-bold ${r.total >= 0 ? "text-bull" : "text-bear"}`}>
                                 {r.total >= 0 ? "+" : ""}₺{r.total.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                             </tr>
@@ -1508,7 +1508,7 @@ export default function PortfolioPage() {
                           </td>
                           <td className={`py-2 text-right font-bold ${
                             t.realized_pnl == null ? "text-muted-foreground"
-                            : t.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"
+                            : t.realized_pnl >= 0 ? "text-bull" : "text-bear"
                           }`}>
                             {t.realized_pnl == null ? "-"
                               : `${t.realized_pnl >= 0 ? "+" : ""}₺${t.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -1538,7 +1538,7 @@ export default function PortfolioPage() {
               </span>
             </div>
             {dailyGain && (
-              <p className={`text-xs font-bold mt-1 flex items-center gap-1 ${dailyGain.value >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+              <p className={`text-xs font-bold mt-1 flex items-center gap-1 ${dailyGain.value >= 0 ? "text-bull" : "text-bear"}`}>
                 {dailyGain.value >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                 Bugün: {dailyGain.value >= 0 ? "+" : ""}₺{dailyGain.value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 {" "}({dailyGain.value >= 0 ? "+" : ""}{dailyGain.pct.toFixed(2)}%)
@@ -1577,17 +1577,17 @@ export default function PortfolioPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <span className="t-label">TOPLAM KÂR / ZARAR</span>
-              <TrendingUp className="h-4 w-4 text-emerald-400" />
+              <TrendingUp className="h-4 w-4 text-bull" />
             </div>
             <div className="mt-2 flex items-baseline space-x-2">
-              <span className={`text-3xl font-extrabold font-mono ${totalProfit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+              <span className={`text-3xl font-extrabold font-mono ${totalProfit >= 0 ? "text-bull" : "text-bear"}`}>
                 {totalProfit >= 0 ? "+" : ""}₺{totalProfit.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
-              <span className={`text-sm font-semibold ${totalProfit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+              <span className={`text-sm font-semibold ${totalProfit >= 0 ? "text-bull" : "text-bear"}`}>
                 ({profitPercentage.toFixed(2)}%)
               </span>
             </div>
-            <p className="text-xs text-emerald-500/80 mt-1 font-semibold">Tüm zamanların en yüksek seviyesinde</p>
+            <p className="text-xs text-bull/80 mt-1 font-semibold">Tüm zamanların en yüksek seviyesinde</p>
             {liveEstimate?.estimated_daily_gain_value != null && (
               <p className="inline-flex items-center gap-1 text-xs font-bold mt-2 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/25 text-orange-400">
                 <Zap className="h-3 w-3 shrink-0" />
@@ -1661,7 +1661,7 @@ export default function PortfolioPage() {
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-muted-foreground font-semibold">Satışlardan:</span>
-            <span className={`text-sm font-extrabold font-mono ${realized.realized_pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+            <span className={`text-sm font-extrabold font-mono ${realized.realized_pnl >= 0 ? "text-bull" : "text-bear"}`}>
               {realized.realized_pnl >= 0 ? "+" : ""}₺{realized.realized_pnl.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
             <span className="text-[11px] text-muted-foreground">({realized.sell_count} satış)</span>
@@ -1674,7 +1674,7 @@ export default function PortfolioPage() {
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] text-muted-foreground font-semibold">Toplam:</span>
-            <span className={`text-sm font-extrabold font-mono ${realized.total_realized >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+            <span className={`text-sm font-extrabold font-mono ${realized.total_realized >= 0 ? "text-bull" : "text-bear"}`}>
               {realized.total_realized >= 0 ? "+" : ""}₺{realized.total_realized.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -1723,7 +1723,7 @@ export default function PortfolioPage() {
                     <div key={h.ticker} className="flex items-center justify-between text-xs py-1.5 px-2 rounded-md bg-secondary/30">
                       <span className="font-semibold text-foreground">{h.ticker}</span>
                       <span className="text-muted-foreground">₺{h.value.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</span>
-                      <span className={h.change_pct == null ? "text-muted-foreground" : h.change_pct >= 0 ? "text-emerald-400 font-semibold" : "text-rose-500 font-semibold"}>
+                      <span className={h.change_pct == null ? "text-muted-foreground" : h.change_pct >= 0 ? "text-bull font-semibold" : "text-bear font-semibold"}>
                         {h.change_pct == null ? "—" : `${h.change_pct >= 0 ? "+" : ""}${h.change_pct.toFixed(2)}%`}
                       </span>
                     </div>
@@ -1781,10 +1781,10 @@ export default function PortfolioPage() {
                   {benchmarkVerdict && (
                     <div className={`mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-3 py-2 ${
                       benchmarkVerdict.diff >= 0
-                        ? "border-emerald-500/30 bg-emerald-500/10"
-                        : "border-rose-500/30 bg-rose-500/10"
+                        ? "border-bull/30 bg-bull/10"
+                        : "border-bear/30 bg-bear/10"
                     }`}>
-                      <span className={`text-sm font-extrabold ${benchmarkVerdict.diff >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                      <span className={`text-sm font-extrabold ${benchmarkVerdict.diff >= 0 ? "text-bull" : "text-bear"}`}>
                         {benchmarkVerdict.diff >= 0 ? "Endeksin önündesiniz" : "Endeksin gerisindesiniz"}
                         {": "}
                         {benchmarkVerdict.diff >= 0 ? "+" : ""}{benchmarkVerdict.diff.toFixed(2)} puan
@@ -1879,7 +1879,7 @@ export default function PortfolioPage() {
                             </div>
                             <div className="text-right shrink-0">
                               <div className="t-metric-sm text-foreground">{tl(value)}</div>
-                              <div className={`text-xs font-bold font-mono ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                              <div className={`text-xs font-bold font-mono ${profit >= 0 ? "text-bull" : "text-bear"}`}>
                                 {tlSigned(profit)} · {pctSigned(profitPct, 1)}
                               </div>
                             </div>
@@ -1975,10 +1975,10 @@ export default function PortfolioPage() {
                                 {tl(value)}
                               </td>
                               <td className="px-5 py-3 text-right font-mono">
-                                <div className={`font-bold ${profit >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                                <div className={`font-bold ${profit >= 0 ? "text-bull" : "text-bear"}`}>
                                   {tlSigned(profit)}
                                 </div>
-                                <div className={`t-caption ${profit >= 0 ? "text-emerald-400/80" : "text-rose-500/80"}`}>
+                                <div className={`t-caption ${profit >= 0 ? "text-bull/80" : "text-bear/80"}`}>
                                   {pctSigned(profitPct, 1)}
                                 </div>
                               </td>
@@ -2022,7 +2022,7 @@ export default function PortfolioPage() {
                                     onClick={() => handleDeleteAsset(item.id)}
                                     title="Tamamen sil"
                                     aria-label={`${item.ticker} pozisyonunu sil`}
-                                    className="press inline-flex items-center justify-center h-7 w-7 rounded-md bg-secondary/40 text-muted-foreground border border-border/40 hover:text-rose-400 hover:border-rose-500/30 transition-colors cursor-pointer"
+                                    className="press inline-flex items-center justify-center h-7 w-7 rounded-md bg-secondary/40 text-muted-foreground border border-border/40 hover:text-bear hover:border-bear/30 transition-colors cursor-pointer"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </button>
@@ -2054,8 +2054,8 @@ export default function PortfolioPage() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x divide-border/40 gap-y-6">
                   {[
-                    { key: "winners", label: "Kazandıranlar", rows: advancedMetrics.winners, tone: "text-emerald-400", Icon: TrendingUp, empty: "Kârda pozisyon yok." },
-                    { key: "losers", label: "Kaybettirenler", rows: advancedMetrics.losers, tone: "text-rose-500", Icon: TrendingDown, empty: "Zararda pozisyon yok." },
+                    { key: "winners", label: "Kazandıranlar", rows: advancedMetrics.winners, tone: "text-bull", Icon: TrendingUp, empty: "Kârda pozisyon yok." },
+                    { key: "losers", label: "Kaybettirenler", rows: advancedMetrics.losers, tone: "text-bear", Icon: TrendingDown, empty: "Zararda pozisyon yok." },
                   ].map(({ key, label, rows, tone, Icon, empty }, i) => (
                     <div key={key} className={i === 1 ? "md:pl-6" : "md:pr-6"}>
                       <div className={`flex items-center gap-1.5 mb-2.5 ${tone}`}>
@@ -2161,8 +2161,8 @@ export default function PortfolioPage() {
           {/* Portfolio Stress Test */}
           <Card glass={true}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-rose-400">
-                <Activity className="h-4.5 w-4.5 text-rose-400 mr-2" />
+              <CardTitle className="text-sm font-black flex items-center uppercase tracking-wider text-bear">
+                <Activity className="h-4.5 w-4.5 text-bear mr-2" />
                 Portföy Stres Testi
               </CardTitle>
               <CardDescription className="text-xs">Beta&apos;ya dayalı yaklaşık senaryo simülasyonu</CardDescription>
@@ -2189,7 +2189,7 @@ export default function PortfolioPage() {
                 alerts.map((alert: any) => (
                   <div key={alert.id} className={`flex items-center justify-between p-3 rounded-lg border text-xs transition-colors ${
                     alert.is_triggered 
-                      ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400" 
+                      ? "border-bull/20 bg-bull/5 text-bull" 
                       : "border-border bg-secondary/20 text-muted-foreground"
                   }`}>
                     <div className="space-y-1">
@@ -2212,7 +2212,7 @@ export default function PortfolioPage() {
                         disabled={alert.is_triggered}
                       >
                         {alert.is_triggered ? (
-                          <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/15 text-xs font-bold">
+                          <span className="bg-bull/10 text-bull px-1.5 py-0.5 rounded border border-bull/15 text-xs font-bold">
                             Tetiklendi
                           </span>
                         ) : alert.is_active ? (
@@ -2223,7 +2223,7 @@ export default function PortfolioPage() {
                       </button>
                       <button 
                         onClick={() => handleDeleteAlert(alert.id)}
-                        className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
+                        className="text-muted-foreground hover:text-bear transition-colors cursor-pointer"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

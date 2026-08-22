@@ -32,14 +32,16 @@ const CATEGORIES = [
   { value: "genel", label: "Genel" },
 ]
 
-const COLORS: Record<string, { dot: string; border: string; wash: string; text: string; label: string }> = {
-  amber: { dot: "bg-amber-400", border: "border-amber-500/30", wash: "bg-amber-500/[0.06]", text: "text-amber-300", label: "Kehribar" },
-  blue: { dot: "bg-blue-400", border: "border-blue-500/30", wash: "bg-blue-500/[0.06]", text: "text-blue-300", label: "Mavi" },
-  emerald: { dot: "bg-emerald-400", border: "border-emerald-500/30", wash: "bg-emerald-500/[0.06]", text: "text-emerald-300", label: "Yeşil" },
-  rose: { dot: "bg-rose-400", border: "border-rose-500/30", wash: "bg-rose-500/[0.06]", text: "text-rose-300", label: "Gül" },
-  violet: { dot: "bg-violet-400", border: "border-violet-500/30", wash: "bg-violet-500/[0.06]", text: "text-violet-300", label: "Mor" },
-  slate: { dot: "bg-slate-400", border: "border-slate-500/30", wash: "bg-slate-500/[0.06]", text: "text-slate-300", label: "Gri" },
-}
+// V2 not: notlar artik kullanicinin sectigi renge (eski COLORS haritasindaki
+// amber/blue/emerald/rose/violet/slate coklu-renk etiket sistemi) gore degil,
+// sadece sabitlenme durumuna gore renklendirilir. `color` alani geriye donuk
+// uyumluluk icin Note/FormState uzerinde tasiniyor (backend semasi) ama
+// artik hicbir gorsel farka yol acmiyor - tum notlar notr grafit gorunumde,
+// tek istisna sabitlenmis notlar icin marka yesili (bull). "Onemli" alani
+// Note modelinde gercek bir veri olarak yok (yalnizca is_pinned var), bu
+// yuzden warn/onemli esleme burada eklenmedi.
+const NEUTRAL_STYLE = { dot: "bg-muted-foreground", border: "border-border", wash: "bg-secondary/20", text: "text-muted-foreground" }
+const PINNED_STYLE = { dot: "bg-bull", border: "border-bull/30", wash: "bg-bull/[0.06]", text: "text-bull" }
 
 const CATEGORY_LABEL: Record<string, string> = { hisse: "Hisse", fon: "Fon", genel: "Genel" }
 
@@ -160,14 +162,14 @@ export default function NotesPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap animate-rise">
         <div>
           <h1 className="t-display flex items-center">
-            <StickyNote className="h-7 w-7 text-pink-400 mr-3" />
+            <StickyNote className="h-7 w-7 text-primary mr-3" />
             Notlarım
           </h1>
           <p className="t-caption mt-1.5">
             Hisseler, fonlar veya aklınıza takılan her şey hakkında kişisel notlarınızı burada tutun.
           </p>
         </div>
-        <Button onClick={openNewNote} className="bg-pink-500 hover:bg-pink-500/90 text-white shrink-0">
+        <Button onClick={openNewNote} className="bg-primary hover:bg-primary/90 text-background shrink-0">
           <Plus className="h-4 w-4 mr-1.5" /> Yeni Not
         </Button>
       </div>
@@ -179,7 +181,7 @@ export default function NotesPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Notlarda ara..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-pink-500/40"
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-secondary/40 border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
         <div className="flex items-center gap-1 rounded-lg bg-secondary/30 p-1 border border-border">
@@ -188,7 +190,7 @@ export default function NotesPage() {
               key={c.value}
               onClick={() => setCategory(c.value)}
               className={`h-7 px-3 rounded-md text-xs font-bold transition-colors cursor-pointer ${
-                category === c.value ? "bg-pink-500/15 text-pink-300 border border-pink-500/30" : "text-muted-foreground hover:text-foreground"
+                category === c.value ? "bg-primary/15 text-primary border border-primary/30" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {c.label}
@@ -199,7 +201,7 @@ export default function NotesPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-6 w-6 text-pink-400 animate-spin" />
+          <Loader2 className="h-6 w-6 text-primary animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <Card glass={true} className="border-dashed border-border/60">
@@ -218,7 +220,7 @@ export default function NotesPage() {
       ) : (
         <div className="columns-1 sm:columns-2 xl:columns-3 gap-4 [column-fill:_balance] stagger-list">
           {filtered.map(n => {
-            const c = COLORS[n.color] || COLORS.amber
+            const c = n.is_pinned ? PINNED_STYLE : NEUTRAL_STYLE
             return (
               <div
                 key={n.id}
@@ -248,7 +250,7 @@ export default function NotesPage() {
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteNote(n.id) }}
                       title="Sil"
-                      className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                      className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-bear hover:bg-bear/10 cursor-pointer"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -273,7 +275,7 @@ export default function NotesPage() {
                   {n.ticker ? (
                     <button
                       onClick={(e) => goToTicker(n.ticker!, e)}
-                      className="flex items-center gap-1.5 text-xs font-bold text-foreground hover:text-pink-300 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs font-bold text-foreground hover:text-primary transition-colors cursor-pointer"
                     >
                       <TickerLogo ticker={n.ticker} size={14} />
                       {n.ticker}
@@ -294,7 +296,7 @@ export default function NotesPage() {
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <StickyNote className="h-4 w-4 text-pink-400" />
+              <StickyNote className="h-4 w-4 text-primary" />
               {editingId ? "Notu Düzenle" : "Yeni Not"}
             </DialogTitle>
           </DialogHeader>
@@ -325,7 +327,7 @@ export default function NotesPage() {
                 <select
                   value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  className="w-full h-9 px-3 rounded-md bg-secondary/40 border border-border text-sm text-foreground focus:outline-none focus:border-pink-500/40 cursor-pointer"
+                  className="w-full h-9 px-3 rounded-md bg-secondary/40 border border-border text-sm text-foreground focus:outline-none focus:border-primary/40 cursor-pointer"
                 >
                   <option value="genel">Genel</option>
                   <option value="hisse">Hisse</option>
@@ -334,22 +336,11 @@ export default function NotesPage() {
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-muted-foreground mb-1.5 block">Renk</label>
-              <div className="flex items-center gap-2">
-                {Object.entries(COLORS).map(([key, c]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, color: key }))}
-                    title={c.label}
-                    className={`h-7 w-7 rounded-full ${c.dot} flex items-center justify-center ring-offset-2 ring-offset-card cursor-pointer transition-all ${
-                      form.color === key ? "ring-2 ring-foreground scale-110" : "opacity-60 hover:opacity-100"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
+            {/* V2 not: notlar artik renklere gore degil sabitlenme durumuna
+                gore ayirt ediliyor (bkz. PINNED_STYLE yukarida), bu yuzden
+                kullaniciya kategori/etiket rengi secen bu form artik
+                gosterilmiyor. `color` alani geriye donuk uyumluluk icin
+                formda (EMPTY_FORM) sessizce tasiniyor. */}
 
             <div>
               <label className="text-xs font-bold text-muted-foreground mb-1.5 block">Not</label>
@@ -358,7 +349,7 @@ export default function NotesPage() {
                 onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
                 placeholder="Aklınızdakileri buraya yazın..."
                 rows={8}
-                className="w-full px-3 py-2.5 rounded-md bg-secondary/40 border border-border text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-pink-500/40 resize-none"
+                className="w-full px-3 py-2.5 rounded-md bg-secondary/40 border border-border text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 resize-none"
               />
             </div>
 
@@ -367,7 +358,7 @@ export default function NotesPage() {
                 <Button
                   variant="ghost"
                   onClick={() => { deleteNote(editingId); setDialogOpen(false) }}
-                  className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                  className="text-bear hover:text-bear/80 hover:bg-bear/10"
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Sil
                 </Button>
@@ -379,7 +370,7 @@ export default function NotesPage() {
                 <Button
                   onClick={saveNote}
                   disabled={saving || !form.title.trim()}
-                  className="bg-pink-500 hover:bg-pink-500/90 text-white"
+                  className="bg-primary hover:bg-primary/90 text-background"
                 >
                   {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
                   Kaydet

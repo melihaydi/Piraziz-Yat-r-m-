@@ -16,7 +16,7 @@ import { useBistSessionOpen } from "@/lib/bistSession"
 // tier - a free-tier user saw the same badge as a paying one.
 const ROLE_DISPLAY: Record<string, { label: string; className: string }> = {
   free: { label: "Ücretsiz Üye", className: "text-muted-foreground" },
-  premium: { label: "Premium Üye", className: "text-amber-400" },
+  premium: { label: "Premium Üye", className: "text-bull" },
 }
 
 const HEADER_TICKERS_CACHE_KEY = "bip_header_tickers"
@@ -441,8 +441,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
       {/* Ticker Feed Container (Bloomberg Terminal Marquee Style) */}
       <div className="relative flex-1 max-w-[450px] xl:max-w-[650px] overflow-hidden mx-4 hidden md:block surface-workspace border border-border rounded-lg py-1.5 px-3">
         {/* Fade masks */}
-        <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-zinc-950/60 to-transparent z-10 pointer-events-none" />
-        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-zinc-950/60 to-transparent z-10 pointer-events-none" />
+        <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-background/60 to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-background/60 to-transparent z-10 pointer-events-none" />
 
         <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
           <div className="animate-ticker flex space-x-8 items-center pr-8">
@@ -450,7 +450,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               <div key={`${idx.name}-${i}`} className="flex items-center space-x-2 text-[10px] font-bold">
                 <span className="text-muted-foreground/95">{idx.name}</span>
                 <span className="text-foreground font-mono font-medium">{idx.value}</span>
-                <span className={idx.up ? "text-emerald-500 flex items-center" : "text-rose-500 flex items-center"}>
+                <span className={idx.up ? "text-bull flex items-center" : "text-bear flex items-center"}>
                   {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
                   {idx.change}
                 </span>
@@ -497,7 +497,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                     <span className="font-bold text-foreground flex items-center">
                       {t.code}
                       {t.isFund && (
-                        <span className="ml-1 text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1 rounded">
+                        <span className="ml-1 text-[8px] bg-secondary text-muted-foreground border border-border px-1 rounded">
                           FON
                         </span>
                       )}
@@ -523,8 +523,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             top-level items there) into the global Header instead, since
             Trade is reachable from every page. Free tier can't use the
             module at all (trade.py's router requires get_current_premium_user),
-            so the link is hidden rather than shown greyed-out/dead. Keeps
-            Trade's own distinct cyan identity (see trade/page.tsx's chrome). */}
+            so the link is hidden rather than shown greyed-out/dead. */}
         {role !== "free" && (
           <Link
             href="/trade"
@@ -551,11 +550,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
             onClick={() => setShowNotifications(!showNotifications)}
             className="relative cursor-pointer group"
           >
-            <Bell className="h-4.5 w-4.5 text-amber-400 group-hover:text-amber-300 transition-transform duration-200 group-hover:rotate-12" />
+            <Bell className="h-4.5 w-4.5 text-warn group-hover:text-warn/80 transition-transform duration-200 group-hover:rotate-12" />
             {(activeSignals.length + alertsList.length) > 0 && (
               <>
-                <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-card animate-ping" />
-                <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-rose-500 rounded-full ring-2 ring-card" />
+                <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-bear rounded-full ring-2 ring-card animate-ping" />
+                <span className="absolute top-2.5 right-2.5 h-2 w-2 bg-bear rounded-full ring-2 ring-card" />
               </>
             )}
           </Button>
@@ -566,7 +565,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                 <span className="font-extrabold text-foreground">Sinyaller & Alarmlar</span>
                 <div className="flex items-center gap-2">
                   {(activeSignals.length + alertsList.length) > 0 && (
-                    <span className="bg-rose-500/10 text-rose-400 font-mono font-bold px-1.5 py-0.5 rounded text-[10px]">
+                    <span className="bg-bear/10 text-bear font-mono font-bold px-1.5 py-0.5 rounded text-[10px]">
                       {activeSignals.length + alertsList.length} Aktif
                     </span>
                   )}
@@ -616,15 +615,15 @@ export default function Header({ onMenuClick }: HeaderProps) {
                       setShowNotifications(false)
                     }}
                     className={`p-2.5 rounded-lg border cursor-pointer transition-colors text-left ${
-                      sig.signal.includes("AL") 
-                        ? "bg-emerald-950/10 border-emerald-500/20 hover:bg-emerald-950/20" 
-                        : "bg-rose-950/10 border-rose-500/20 hover:bg-rose-950/20"
+                      sig.signal.includes("AL")
+                        ? "bg-bull/10 border-bull/20 hover:bg-bull/15"
+                        : "bg-bear/10 border-bear/20 hover:bg-bear/15"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-foreground">{sig.ticker}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[8px] font-black border uppercase ${
-                        sig.signal.includes("AL") ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                        sig.signal.includes("AL") ? "bg-bull/10 text-bull border-bull/20" : "bg-bear/10 text-bear border-bear/20"
                       }`}>
                         {sig.signal}
                       </span>
@@ -652,11 +651,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
             : "Fiyatlar ve grafikler 15 dakika gecikmeli gösteriliyor. Anlık veri için Premium'a yükseltin."}
           className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border ${
             role === "premium"
-              ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
-              : "text-amber-400 border-amber-500/30 bg-amber-500/10"
+              ? "text-bull border-bull/30 bg-bull/10"
+              : "text-warn border-warn/30 bg-warn/10"
           }`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${role === "premium" ? "bg-emerald-400 text-emerald-400 live-dot" : "bg-amber-400"}`} />
+          <span className={`h-1.5 w-1.5 rounded-full ${role === "premium" ? "bg-bull text-bull live-dot" : "bg-warn"}`} />
           {role === "premium" ? "Canlı Veri" : "15 Dk Gecikmeli"}
         </span>
 
@@ -689,16 +688,16 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
       {/* Mobile ticker row - the marquee above is `hidden md:block`, so
           phones never saw the live index feed at all otherwise. */}
-      <div className="md:hidden relative overflow-hidden border-t border-border/30 bg-zinc-950/40 py-1.5 px-3">
-        <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-zinc-950/60 to-transparent z-10 pointer-events-none" />
-        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-zinc-950/60 to-transparent z-10 pointer-events-none" />
+      <div className="md:hidden relative overflow-hidden border-t border-border/30 bg-background/40 py-1.5 px-3">
+        <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-background/60 to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-background/60 to-transparent z-10 pointer-events-none" />
         <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
           <div className="animate-ticker flex space-x-6 items-center pr-6">
             {[...indexData, ...indexData].map((idx, i) => (
               <div key={`m-${idx.name}-${i}`} className="flex items-center space-x-1.5 text-[10px] font-bold">
                 <span className="text-muted-foreground/95">{idx.name}</span>
                 <span className="text-foreground font-mono font-medium">{idx.value}</span>
-                <span className={idx.up ? "text-emerald-500 flex items-center" : "text-rose-500 flex items-center"}>
+                <span className={idx.up ? "text-bull flex items-center" : "text-bear flex items-center"}>
                   {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
                   {idx.change}
                 </span>

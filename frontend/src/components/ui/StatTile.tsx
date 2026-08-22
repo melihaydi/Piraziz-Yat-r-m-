@@ -32,9 +32,9 @@ export interface StatTileProps {
 }
 
 function toneClass(delta: StatTileDelta): string {
-  if (delta.isEstimate) return "text-orange-400"
-  if (delta.value > 0) return "text-emerald-400"
-  if (delta.value < 0) return "text-rose-500"
+  if (delta.isEstimate) return "text-warn"
+  if (delta.value > 0) return "text-bull"
+  if (delta.value < 0) return "text-bear"
   return "text-muted-foreground"
 }
 

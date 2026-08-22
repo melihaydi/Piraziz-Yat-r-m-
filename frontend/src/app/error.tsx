@@ -29,8 +29,8 @@ export default function Error({
 
   return (
     <div className="flex flex-col items-center justify-center py-24 px-4 text-center space-y-5">
-      <div className="h-14 w-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-        <AlertTriangle className="h-7 w-7 text-rose-400" />
+      <div className="h-14 w-14 rounded-2xl bg-bear/10 border border-bear/20 flex items-center justify-center">
+        <AlertTriangle className="h-7 w-7 text-bear" />
       </div>
 
       <div className="space-y-1.5 max-w-md">

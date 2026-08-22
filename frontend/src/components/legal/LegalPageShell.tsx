@@ -19,14 +19,14 @@ export default function LegalPageShell({
       <div className="max-w-3xl mx-auto space-y-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-purple-400 transition-colors"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Uygulamaya dön
         </Link>
 
-        <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 flex items-start gap-2.5">
-          <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-300/90 leading-relaxed">
+        <div className="rounded-xl border border-warn/25 bg-warn/5 px-4 py-3 flex items-start gap-2.5">
+          <AlertTriangle className="h-4 w-4 text-warn shrink-0 mt-0.5" />
+          <p className="text-xs text-warn/90 leading-relaxed">
             Bu bir <strong>taslak</strong> metindir; BIP Terminal ekibi tarafından hazırlanmıştır ancak
             bir avukat tarafından incelenip onaylanmamıştır. Gerçek kullanıcılara sunulmadan önce
             hukuki inceleme yapılmalıdır.
