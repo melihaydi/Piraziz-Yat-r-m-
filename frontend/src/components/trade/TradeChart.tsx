@@ -105,15 +105,15 @@ export default function TradeChart({ symbol, displayLabel }: TradeChartProps) {
 
   if (failed) {
     return (
-      <div className="flex flex-col items-center justify-center text-center py-16 space-y-3 h-full bg-[#101015]">
-        <p className="text-xs text-slate-500 leading-relaxed px-2">
+      <div className="flex flex-col items-center justify-center text-center py-16 space-y-3 h-full bg-background">
+        <p className="text-xs text-muted-foreground leading-relaxed px-2">
           Grafik şu anda yüklenemedi.
         </p>
         <a
           href={`https://www.tradingview.com/symbols/${toTradingViewSymbol(symbol).replace(":", "-")}/`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs font-bold text-white hover:underline flex items-center"
+          className="text-xs font-bold text-primary hover:underline flex items-center"
         >
           TradingView&apos;de Aç <ExternalLink className="h-3 w-3 ml-1" />
         </a>
@@ -122,9 +122,9 @@ export default function TradeChart({ symbol, displayLabel }: TradeChartProps) {
   }
 
   return (
-    <div className="relative h-full w-full bg-[#101015]">
+    <div className="relative h-full w-full bg-background">
       {displayLabel && (
-        <div className="absolute top-2 left-2 z-10 text-[10px] font-bold text-slate-400 bg-[#1c1d26]/80 px-2 py-1 rounded pointer-events-none">
+        <div className="absolute top-2 left-2 z-10 text-[10px] font-bold text-muted-foreground bg-popover/80 px-2 py-1 rounded pointer-events-none">
           {displayLabel}
         </div>
       )}

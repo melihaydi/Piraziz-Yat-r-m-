@@ -270,15 +270,15 @@ export default function StockDetailPage() {
           {/* Dialog Alarm Setup */}
           <Dialog open={isOpenAlertModal} onOpenChange={setIsOpenAlertModal}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="cursor-pointer border-amber-500/20 hover:border-amber-500/40 text-amber-400 bg-amber-500/5 flex items-center gap-1.5 font-bold h-9">
-                <Bell className="h-4 w-4 text-amber-400 animate-pulse" />
+              <Button variant="outline" className="cursor-pointer border-primary/20 hover:border-primary/40 text-primary bg-primary/5 flex items-center gap-1.5 font-bold h-9">
+                <Bell className="h-4 w-4 text-primary animate-pulse" />
                 Alarm Kur
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-1.5">
-                  <Bell className="h-5 w-5 text-amber-400" />
+                  <Bell className="h-5 w-5 text-primary" />
                   {ticker} Hissesi İçin Alarm Kur
                 </DialogTitle>
                 <DialogDescription>
@@ -357,7 +357,7 @@ export default function StockDetailPage() {
                     </>
                   )}
                   <DialogFooter className="pt-4 border-t border-border/50">
-                    <Button type="submit" className="w-full cursor-pointer bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-black border-0 font-black">
+                    <Button type="submit" className="w-full font-black">
                       Alarmı Kaydet
                     </Button>
                   </DialogFooter>
@@ -402,7 +402,7 @@ export default function StockDetailPage() {
             </CardHeader>
             <CardContent>
               {chartLoading ? (
-                <div className="flex flex-col items-center justify-center h-[380px] space-y-3 bg-zinc-950/20 border border-border/30 rounded-xl">
+                <div className="flex flex-col items-center justify-center h-[380px] space-y-3 bg-background/40 border border-border/30 rounded-xl">
                   <Loader2 className="h-8 w-8 text-primary animate-spin" />
                   <span className="text-xs text-muted-foreground">Tarihsel Mum Verileri Derleniyor...</span>
                 </div>
@@ -413,8 +413,8 @@ export default function StockDetailPage() {
                       used to render indistinguishably from real candles -
                       invented prices on a stock detail page. Label them. */}
                   {chartSimulated && (
-                    <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                      <span className="text-[11px] font-bold text-amber-400">Geçici veri</span>
+                    <div className="mb-2 flex items-center gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2">
+                      <span className="text-[11px] font-bold val-warn">Geçici veri</span>
                       <span className="text-[11px] text-muted-foreground">
                         Canlı fiyat akışı henüz bağlanmadı - bu grafik gerçek piyasa verisi değildir.
                       </span>
@@ -423,7 +423,7 @@ export default function StockDetailPage() {
                   <TradingViewChart data={chartData} symbol={ticker} />
                 </>
               ) : (
-                <div className="flex items-center justify-center h-[380px] text-xs text-muted-foreground border border-border/30 rounded-xl bg-zinc-950/20">
+                <div className="flex items-center justify-center h-[380px] text-xs text-muted-foreground border border-border/30 rounded-xl bg-background/40">
                   Grafik verisi bulunamadı veya sunucu bağlantısı bekleniyor.
                 </div>
               )}
@@ -446,7 +446,7 @@ export default function StockDetailPage() {
             </Card>
             <Card glass={true} spotlight className="text-center py-4">
               <span className="text-xs text-muted-foreground font-semibold">Piyasa Değeri</span>
-              <p className="text-2xl font-black font-mono text-purple-400 mt-1">
+              <p className="text-2xl font-black font-mono text-primary mt-1">
                 {stockDetails.market_cap > 0 ? `₺${(stockDetails.market_cap / 1e9).toFixed(1)}B` : "-"}
               </p>
             </Card>
@@ -468,7 +468,7 @@ export default function StockDetailPage() {
                   <Sparkles className="h-4 w-4 mr-2 text-primary" />
                   BIP AI Skor Dökümü
                 </CardTitle>
-                <span className="bg-purple-500/10 text-purple-400 border border-purple-500/15 font-black text-2xl px-3 py-1 rounded">
+                <span className="bg-primary/10 text-primary border border-primary/15 font-black text-2xl px-3 py-1 rounded">
                   {stockDetails.ai_score}
                 </span>
               </div>
@@ -489,11 +489,11 @@ export default function StockDetailPage() {
                 <div key={item.label} className="space-y-1.5">
                   <div className="flex justify-between text-xs font-semibold">
                     <span className="text-foreground/80">{item.label}</span>
-                    <span className="text-purple-400 font-bold">{item.val} / 100</span>
+                    <span className="text-primary font-bold">{item.val} / 100</span>
                   </div>
                   <div className="w-full bg-secondary/40 rounded-full h-1.5">
                     <div 
-                      className="bg-gradient-to-r from-purple-500 to-indigo-500 h-1.5 rounded-full" 
+                      className="bg-primary h-1.5 rounded-full" 
                       style={{ width: `${item.val}%` }}
                     ></div>
                   </div>
@@ -502,8 +502,8 @@ export default function StockDetailPage() {
 
               {/* Dynamic Indicator-Based Reasons (Request 7!) */}
               <div className="border-t border-border/50 pt-4 space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-wider text-purple-400 flex items-center">
-                  <Sparkles className="h-3 w-3 mr-1.5 text-purple-400" />
+                <h4 className="text-xs font-black uppercase tracking-wider text-primary flex items-center">
+                  <Sparkles className="h-3 w-3 mr-1.5 text-primary" />
                   13 Teknik İndikatör Puan Ağırlığı
                 </h4>
                 {scoreLoading ? (
@@ -514,7 +514,7 @@ export default function StockDetailPage() {
                 ) : scoreDetails && scoreDetails.reasons ? (
                   <div className="grid grid-cols-1 gap-1.5 text-[10px] max-h-60 overflow-y-auto pr-1">
                     {scoreDetails.reasons.map((r: any, idx: number) => (
-                      <div key={idx} className="flex items-center justify-between bg-zinc-950/40 p-2 rounded-lg border border-border/25">
+                      <div key={idx} className="flex items-center justify-between bg-secondary/30 p-2 rounded-lg border border-border/25">
                         <span className="flex items-center text-muted-foreground">
                           <span className={`mr-1.5 font-bold ${r.icon === "✔" ? "text-emerald-400" : "text-rose-500"}`}>
                             {r.icon}
@@ -556,8 +556,8 @@ export default function StockDetailPage() {
           ) : aiReport ? (
             <div className="space-y-8">
               {/* Summary */}
-              <div className="bg-secondary/15 border-l-4 border-purple-500 p-4 rounded-r-md">
-                <span className="text-xs font-black uppercase text-purple-400 tracking-wider">Yönetici Özeti</span>
+              <div className="bg-secondary/15 border-l-4 border-primary p-4 rounded-r-md">
+                <span className="text-xs font-black uppercase text-primary tracking-wider">Yönetici Özeti</span>
                 <p className="text-foreground/90 font-medium text-sm mt-1">{aiReport.executive_summary}</p>
               </div>
 
@@ -574,13 +574,13 @@ export default function StockDetailPage() {
               {aiReport.trend && (
                 <div className="space-y-6 pt-4 border-t border-border/40">
                   <h3 className="text-xs font-black uppercase tracking-wider text-foreground flex items-center">
-                    <Sparkles className="h-4 w-4 mr-1.5 text-purple-400 animate-pulse" />
+                    <Sparkles className="h-4 w-4 mr-1.5 text-primary animate-pulse" />
                     Teknik Analiz Göstergeleri & Beklentiler
                   </h3>
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {/* Trend */}
-                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                    <div className="bg-secondary/25 p-3.5 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Trend Yönü</span>
                       <span className={`text-sm font-black mt-1 block ${
                         aiReport.trend === "Yükseliş" ? "text-emerald-400" :
@@ -589,7 +589,7 @@ export default function StockDetailPage() {
                     </div>
 
                     {/* Support / Resistance */}
-                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                    <div className="bg-secondary/25 p-3.5 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Destek / Direnç</span>
                       <span className="text-xs font-mono font-bold mt-1 block text-foreground">
                         {aiReport.support} / {aiReport.resistance}
@@ -597,16 +597,16 @@ export default function StockDetailPage() {
                     </div>
 
                     {/* Risk */}
-                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                    <div className="bg-secondary/25 p-3.5 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Risk Düzeyi</span>
                       <span className={`text-sm font-black mt-1 block ${
                         aiReport.risk_level === "Düşük" ? "text-emerald-400" :
-                        aiReport.risk_level === "Yüksek" ? "text-rose-500" : "text-amber-500"
+                        aiReport.risk_level === "Yüksek" ? "val-down" : "val-warn"
                       }`}>{aiReport.risk_level}</span>
                     </div>
 
                     {/* Momentum */}
-                    <div className="bg-zinc-900/40 p-3.5 border border-border/30 rounded-xl">
+                    <div className="bg-secondary/25 p-3.5 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Momentum & Güç</span>
                       <span className="text-xs font-bold mt-1 block text-foreground">
                         {aiReport.momentum} ({aiReport.trend_strength})
@@ -616,7 +616,7 @@ export default function StockDetailPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Short & Medium Term Expectations */}
-                    <div className="bg-zinc-900/40 p-4 border border-border/30 rounded-xl flex items-center justify-between">
+                    <div className="bg-secondary/25 p-4 border border-border/30 rounded-xl flex items-center justify-between">
                       <div>
                         <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Kısa Vadeli Beklenti</span>
                         <span className={`text-sm font-black mt-0.5 block ${
@@ -635,16 +635,16 @@ export default function StockDetailPage() {
                     </div>
 
                     {/* General Summary */}
-                    <div className="bg-zinc-900/40 p-4 border border-border/30 rounded-xl">
+                    <div className="bg-secondary/25 p-4 border border-border/30 rounded-xl">
                       <span className="block text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Genel Özet</span>
                       <p className="text-xs font-semibold mt-1 text-foreground/90">{aiReport.general_summary}</p>
                     </div>
                   </div>
 
                   {/* Technical Comment */}
-                  <div className="bg-purple-950/15 border border-purple-500/25 p-4 rounded-xl space-y-1.5">
-                    <span className="text-xs font-black uppercase text-purple-400 tracking-wider flex items-center">
-                      <Sparkles className="h-3.5 w-3.5 mr-1.5 text-purple-400" />
+                  <div className="bg-primary/[0.06] border border-primary/25 p-4 rounded-xl space-y-1.5">
+                    <span className="text-xs font-black uppercase text-primary tracking-wider flex items-center">
+                      <Sparkles className="h-3.5 w-3.5 mr-1.5 text-primary" />
                       Teknik Yapay Zekâ Yorumu
                     </span>
                     <p className="text-muted-foreground text-xs leading-relaxed">{aiReport.ai_comment}</p>
@@ -688,14 +688,14 @@ export default function StockDetailPage() {
               {/* Risks & Opportunities */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-border/40">
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase text-amber-500 tracking-wider flex items-center">
-                    <AlertTriangle className="h-4 w-4 mr-1.5 bg-amber-500/10 p-0.5 rounded-full" />
+                  <h4 className="text-xs font-black uppercase val-warn tracking-wider flex items-center">
+                    <AlertTriangle className="h-4 w-4 mr-1.5 bg-warn/10 p-0.5 rounded-full" />
                     Risk Faktörleri (Risks)
                   </h4>
                   <ul className="space-y-2">
                     {aiReport.risks && aiReport.risks.map((risk: string, idx: number) => (
                       <li key={idx} className="text-xs text-muted-foreground flex items-start leading-relaxed">
-                        <span className="text-amber-500 mr-2 font-bold">•</span>
+                        <span className="val-warn mr-2 font-bold">•</span>
                         {risk}
                       </li>
                     ))}
@@ -703,14 +703,14 @@ export default function StockDetailPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase text-purple-400 tracking-wider flex items-center">
-                    <Sparkles className="h-4 w-4 mr-1.5 bg-purple-500/10 p-0.5 rounded-full" />
+                  <h4 className="text-xs font-black uppercase text-primary tracking-wider flex items-center">
+                    <Sparkles className="h-4 w-4 mr-1.5 bg-primary/10 p-0.5 rounded-full" />
                     Büyüme Fırsatları (Opportunities)
                   </h4>
                   <ul className="space-y-2">
                     {aiReport.opportunities && aiReport.opportunities.map((opp: string, idx: number) => (
                       <li key={idx} className="text-xs text-muted-foreground flex items-start leading-relaxed">
-                        <span className="text-purple-400 mr-2 font-bold">•</span>
+                        <span className="text-primary mr-2 font-bold">•</span>
                         {opp}
                       </li>
                     ))}

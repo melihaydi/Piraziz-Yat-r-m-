@@ -34,12 +34,12 @@ export default function PositionsTable() {
   }
 
   return (
-    <div className="bg-[#16171E] border border-slate-800 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
-        <Layers className="h-3.5 w-3.5 text-white" />
-        <span className="text-xs font-black text-white uppercase tracking-wider">Açık Pozisyonlar</span>
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <Layers className="h-3.5 w-3.5 text-foreground" />
+        <span className="text-xs font-black text-foreground uppercase tracking-wider">Açık Pozisyonlar</span>
         {positions.length > 0 && (
-          <span className="ml-auto text-[10px] font-bold text-slate-300 bg-[#1c1d26] border border-slate-800 rounded-full px-2 py-0.5">
+          <span className="ml-auto text-[10px] font-bold text-foreground/80 bg-secondary border border-border rounded-full px-2 py-0.5">
             {positions.length}
           </span>
         )}
@@ -47,7 +47,7 @@ export default function PositionsTable() {
       <div className="overflow-x-auto">
         <table className="w-full text-xs text-left">
           <thead>
-            <tr className="text-slate-300 font-bold border-b border-slate-800 h-8">
+            <tr className="text-foreground/80 font-bold border-b border-border h-8">
               <th className="px-4">Hisse</th>
               {activeTab === "viop" && <th className="px-4">Yön</th>}
               <th className="px-4 text-right">Lot</th>
@@ -63,17 +63,17 @@ export default function PositionsTable() {
             {positions.length === 0 ? (
               <tr>
                 <td colSpan={activeTab === "viop" ? 9 : 8} className="py-10">
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Info className="h-5 w-5" />
-                    <span className="font-bold text-slate-300 text-[11px]">Yatırım pozisyonun bulunmuyor</span>
-                    <span className="text-[10px] text-slate-500">Yatırım yaptıkça varlıklarını burada görebilirsin.</span>
+                    <span className="font-bold text-foreground/80 text-[11px]">Yatırım pozisyonun bulunmuyor</span>
+                    <span className="text-[10px] text-muted-foreground">Yatırım yaptıkça varlıklarını burada görebilirsin.</span>
                   </div>
                 </td>
               </tr>
             ) : (
               positions.map(pos => (
-                <tr key={pos.id} className="border-b border-slate-900 h-11 hover:bg-[#1c1d26]/40">
-                  <td className="px-4 font-bold text-white">
+                <tr key={pos.id} className="border-b border-border/60 h-11 hover:bg-secondary/40">
+                  <td className="px-4 font-bold text-foreground">
                     <div className="flex items-center gap-1.5">
                       <TickerLogo ticker={underlyingBySymbol[pos.symbol] || pos.symbol} size={16} />
                       {pos.symbol}
@@ -84,29 +84,29 @@ export default function PositionsTable() {
                       <span
                         className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
                           pos.position_side === "SHORT"
-                            ? "bg-amber-500/15 text-amber-400"
-                            : "bg-white/10 text-white"
+                            ? "bg-warn/15 text-warn"
+                            : "bg-secondary text-foreground"
                         }`}
                       >
                         {pos.position_side}
                       </span>
                     </td>
                   )}
-                  <td className="px-4 text-right font-semibold text-white">{pos.lot}</td>
-                  <td className="px-4 text-right font-semibold text-white">{pos.avg_cost.toFixed(2)}</td>
-                  <td className="px-4 text-right font-semibold text-white">{pos.current_price.toFixed(2)}</td>
-                  <td className={`px-4 text-right font-bold ${pos.pnl >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <td className="px-4 text-right font-semibold text-foreground">{pos.lot}</td>
+                  <td className="px-4 text-right font-semibold text-foreground">{pos.avg_cost.toFixed(2)}</td>
+                  <td className="px-4 text-right font-semibold text-foreground">{pos.current_price.toFixed(2)}</td>
+                  <td className={`px-4 text-right font-bold ${pos.pnl >= 0 ? "text-bull" : "text-bear"}`}>
                     {pos.pnl >= 0 ? "+" : ""}{pos.pnl.toFixed(2)}
                   </td>
-                  <td className={`px-4 text-right font-bold ${pos.pnl_pct >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <td className={`px-4 text-right font-bold ${pos.pnl_pct >= 0 ? "text-bull" : "text-bear"}`}>
                     {pos.pnl_pct >= 0 ? "+" : ""}{pos.pnl_pct.toFixed(2)}%
                   </td>
-                  <td className="px-4 text-right font-semibold text-white">{pos.position_value.toFixed(2)}</td>
+                  <td className="px-4 text-right font-semibold text-foreground">{pos.position_value.toFixed(2)}</td>
                   <td className="px-4 text-center">
                     <button
                       onClick={() => handleClose(pos.symbol, pos.lot, pos.position_side)}
                       disabled={closingSymbol === pos.symbol}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 hover:text-rose-300 disabled:opacity-50 cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-bear hover:text-bear/80 disabled:opacity-50 cursor-pointer"
                     >
                       {closingSymbol === pos.symbol ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
                       Kapat

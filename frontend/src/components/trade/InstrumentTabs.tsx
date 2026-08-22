@@ -12,15 +12,15 @@ export default function InstrumentTabs() {
   ]
 
   return (
-    <div className="inline-flex items-center gap-1 bg-[#1c1d26]/80 border border-slate-800 rounded-lg p-1">
+    <div className="inline-flex items-center gap-1 bg-popover/80 border border-border rounded-lg p-1">
       {tabs.map(tab => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
           className={`press px-4 h-8 rounded-md text-xs font-bold transition-colors cursor-pointer ${
             activeTab === tab.id
-              ? "bg-white text-[#101015]"
-              : "text-slate-400 hover:text-white"
+              ? "bg-primary text-background"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {tab.label}

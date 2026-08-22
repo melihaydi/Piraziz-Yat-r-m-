@@ -516,28 +516,28 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setShowSMA(!showSMA)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showSMA ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showSMA ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
             {indicatorDot(INDICATOR_COLORS.sma)}
             SMA 20
           </button>
           <button
             onClick={() => setShowEMA(!showEMA)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showEMA ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showEMA ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
             {indicatorDot(INDICATOR_COLORS.ema)}
             EMA 20
           </button>
           <button
             onClick={() => setShowVWAP(!showVWAP)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showVWAP ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showVWAP ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
             {indicatorDot(INDICATOR_COLORS.vwap)}
             VWAP
           </button>
           <button
             onClick={() => setShowBB(!showBB)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showBB ? "bg-pink-500/20 text-pink-400 border border-pink-500/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-all cursor-pointer ${showBB ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
             {indicatorDot(INDICATOR_COLORS.bb)}
             Bollinger Bands
@@ -570,7 +570,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
         <button
           onClick={() => selectTool("none")}
           title="Seç / Sürükle"
-          className={`p-2 rounded transition-all cursor-pointer ${activeTool === "none" ? "bg-primary/20 text-primary border border-primary/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+          className={`p-2 rounded transition-all cursor-pointer ${activeTool === "none" ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
         >
           <MousePointer2 className="h-3.5 w-3.5" />
         </button>
@@ -579,7 +579,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
             key={tool}
             onClick={() => selectTool(tool)}
             title={label}
-            className={`p-2 rounded transition-all cursor-pointer ${activeTool === tool ? "bg-primary/20 text-primary border border-primary/30" : "bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
+            className={`p-2 rounded transition-all cursor-pointer ${activeTool === tool ? "bg-primary/20 text-primary border border-primary/30" : "bg-secondary/60 text-muted-foreground border border-border/45 hover:text-foreground"}`}
           >
             <Icon className="h-3.5 w-3.5" />
           </button>
@@ -589,7 +589,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
           onClick={handleClearAll}
           title="Tüm çizimleri temizle"
           disabled={drawingCount === 0}
-          className="p-2 rounded bg-zinc-900/60 text-muted-foreground border border-border/45 hover:text-rose-400 hover:border-rose-500/30 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          className="p-2 rounded bg-secondary/60 text-muted-foreground border border-border/45 hover:text-bear hover:border-bear/30 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -599,7 +599,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
       </div>
 
       {/* Synchronized Multi-Pane Charts */}
-      <div className="border border-border/50 rounded-xl overflow-hidden bg-zinc-900/40 p-4 space-y-2">
+      <div className="border border-border/50 rounded-xl overflow-hidden bg-secondary/25 p-4 space-y-2">
         {/* Main Price Pane - wrapped in its own relative container so the
             hover tooltip can overlay it without lightweight-charts (which
             takes ownership of chartContainerRef's children) ever seeing it. */}
@@ -611,7 +611,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
           />
 
           {hoverData && (showSMA || showEMA || showVWAP || showBB) && (
-            <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/50 bg-zinc-950/85 backdrop-blur-sm px-2.5 py-1.5 text-[10px] font-bold font-mono leading-tight">
+            <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/50 bg-popover/85 backdrop-blur-sm px-2.5 py-1.5 text-[10px] font-bold font-mono leading-tight">
               {showSMA && (
                 <span className="flex items-center gap-1">{indicatorDot(INDICATOR_COLORS.sma)} SMA {fmtChartNum(hoverData.sma20)}</span>
               )}
@@ -648,7 +648,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
             bottom bar (%, Log, "Grafiği ortala"), without the drawing
             toolbar/volume that go beyond what was asked for right now. */}
         <div className="flex items-center justify-end gap-2 pt-1">
-          <div className="flex items-center bg-zinc-950/60 border border-border/40 rounded-lg p-0.5 text-[10px] font-bold">
+          <div className="flex items-center bg-popover/60 border border-border/40 rounded-lg p-0.5 text-[10px] font-bold">
             <button
               onClick={() => setScaleMode("linear")}
               className={`px-2 py-1 rounded transition-colors cursor-pointer ${scaleMode === "linear" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
@@ -671,7 +671,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
           <button
             onClick={handleFitContent}
             title="Grafiği ortala"
-            className="flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-zinc-950/60 border border-border/40 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-popover/60 border border-border/40 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
             <Scan className="h-3.5 w-3.5" />
             <span>Ortala</span>
@@ -679,7 +679,7 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
           <button
             onClick={handleDownloadChart}
             title="Grafiği PNG olarak indir"
-            className="flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-zinc-950/60 border border-border/40 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-popover/60 border border-border/40 text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
             <Download className="h-3.5 w-3.5" />
             <span>İndir</span>

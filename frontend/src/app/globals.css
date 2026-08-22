@@ -487,15 +487,6 @@ h1, h2, h3 {
   background: hsl(var(--accent));
 }
 
-/* Trade terminal theme - dark near-black background, white Inter text
-   (same font as the rest of the app; an earlier JetBrains Mono experiment
-   here caused the ₺ glyph to visually crowd the following digit and was
-   reverted). Scoped to this module via app/trade/layout.tsx. */
-.trade-terminal {
-  --trade-bg: #101015;
-  --trade-panel: #16171E;
-}
-
 /* Bloomberg Ticker Marquee Animation */
 @keyframes ticker {
   0% {
