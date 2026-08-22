@@ -104,10 +104,11 @@ export default function MobileTabBar({ onMoreClick, drawerOpen }: MobileTabBarPr
         // env(safe-area-inset-bottom) bazı Android WebView'lerde gerçek
         // jest navigasyon çubuğundan çok daha büyük bir değer bildirebiliyor
         // - çubuk o zaman gerektiğinden fazla yukarı şişiyor, ikonlarla asıl
-        // ekran alt kenarı arasında büyük bir boş şerit bırakıyor. min() ile
-        // en fazla 16px'e sınırlanıyor; gerçek çentik/jest payı buna kadarsa
-        // yine tam saygı görüyor.
-        "pb-[min(env(safe-area-inset-bottom),16px)]"
+        // ekran alt kenarı arasında büyük bir boş şerit bırakıyor. 16px'lik
+        // ilk sınır yetersiz kaldı (hâlâ gözle görülür boşluk bırakıyordu),
+        // 6px'e düşürüldü - gerçek bir çentik/jest payı varsa yine kısmen
+        // saygı görüyor ama WebView'in şişirdiği değer artık baskın çıkmıyor.
+        "pb-[min(env(safe-area-inset-bottom),6px)]"
       )}
       aria-label="Birincil gezinme"
     >

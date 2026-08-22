@@ -111,7 +111,7 @@ export default function AppChrome({ children }: AppChromeProps) {
             kendiliğinden ayrılıyor - araya kenarlık koymaya gerek yok.
             bip-grid: çok düşük opaklıkta teknik ızgara, üstte belirgin,
             aşağı doğru soluyor (globals.css). */}
-        <main className="bip-grid surface-workspace flex-1 overflow-y-auto p-4 md:p-8 pb-[calc(4.5rem+min(env(safe-area-inset-bottom),16px))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
+        <main className="bip-grid surface-workspace flex-1 overflow-y-auto p-4 md:p-8 pb-[calc(4.5rem+min(env(safe-area-inset-bottom),6px))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
           {/* Every page except the homepage gets a back button - added here
               once, in the shared shell, rather than duplicated per-page. */}
           {pathname !== "/" && (
