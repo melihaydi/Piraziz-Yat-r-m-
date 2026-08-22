@@ -26,6 +26,20 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# borsapy's stream parser doesn't recognize a length-prefixed heartbeat frame
+# (TradingView sometimes sends the heartbeat as "~m~<n>~m~~h~<counter>"
+# instead of the bare "~h~<counter>" its regex expects - see
+# borsapy/stream.py's _parse_packets), so it falls through to json.loads()
+# on literal text like "~h~191", fails, and logs a WARNING - every ~10s,
+# forever, harmlessly (the connection and real quote/chart data are
+# unaffected). Confirmed live via a production log pull ("sunucu yavaş"
+# investigation): this was the single most frequent log line in the
+# container, purely cosmetic noise on a host where log volume itself has a
+# real (if small) CPU/disk-I/O cost. Only this one noisy sub-logger is
+# silenced - not all of borsapy - so a genuine borsapy.stream error/warning
+# (a different message, or WARNING+ from elsewhere in the package) still surfaces.
+logging.getLogger("borsapy.stream").setLevel(logging.ERROR)
+
 # Real error tracking - was unset (SENTRY_DSN=None) because no Sentry account
 # existed; unhandled_exception_handler below's log+Telegram alert was the
 # only fallback (see task list: "lightweight monitoring, no Sentry account").
