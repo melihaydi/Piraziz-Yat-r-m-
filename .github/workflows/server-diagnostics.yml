@@ -1,0 +1,33 @@
+name: Server Diagnostics
+
+# Salt-okunur teşhis - hiçbir şey build/deploy etmez, sunucuyu yeniden
+# başlatmaz. "Sunucu yavaş" şikayetlerinde ne olduğunu görmek için var:
+# uptime/RAM/disk/docker stats + backend'in son loglarını job log'una yazar.
+# Aynı DEPLOY_SSH_KEY secret'ını kullanıyor (ci.yml'deki deploy job'ıyla
+# aynı sunucu, aynı salt-okunur amaç).
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH diagnostics
+        env:
+          SERVER_HOST: 92.5.160.231
+          SERVER_USER: ubuntu
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" '
+            echo "=== uptime / load ===" && uptime
+            echo "=== memory ===" && free -h
+            echo "=== swap activity ===" && vmstat 1 3
+            echo "=== disk ===" && df -h /
+            echo "=== docker ps ===" && sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo "=== docker stats (snapshot) ===" && sudo docker stats --no-stream
+            echo "=== backend logs (last 200 lines) ===" && cd /home/ubuntu/bip && sudo docker compose logs --tail=200 backend
+            echo "=== backend health from inside server ===" && curl -sS -o /dev/null -w "http_code=%{http_code} time_total=%{time_total}s\n" https://api.bipterminal.com/health
+          '
