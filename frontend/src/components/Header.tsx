@@ -392,7 +392,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   }, [searchQuery, tickersList, fundsList])
 
   return (
-    <header className="border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-20 pt-[env(safe-area-inset-top)]">
+    <header className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-20 pt-[env(safe-area-inset-top)]">
     {/* iOS PWA/standalone mode (and some Android browsers) render content
         edge-to-edge under the status bar/notch because layout.tsx sets
         viewportFit: "cover" for a true full-screen app feel - without the
@@ -439,7 +439,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
       </button>
 
       {/* Ticker Feed Container (Bloomberg Terminal Marquee Style) */}
-      <div className="relative flex-1 max-w-[450px] xl:max-w-[650px] overflow-hidden mx-4 hidden md:block bg-zinc-950/40 border border-border/30 rounded-lg py-1.5 px-3">
+      <div className="relative flex-1 max-w-[450px] xl:max-w-[650px] overflow-hidden mx-4 hidden md:block surface-workspace border border-border rounded-lg py-1.5 px-3">
         {/* Fade masks */}
         <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-zinc-950/60 to-transparent z-10 pointer-events-none" />
         <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-zinc-950/60 to-transparent z-10 pointer-events-none" />
@@ -478,7 +478,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           />
           
           {showDropdown && filteredResults.length > 0 && (
-            <div className="absolute top-11 left-0 right-0 bg-zinc-900/95 backdrop-blur-md border border-border/80 rounded-lg shadow-[var(--elev-3)] overflow-hidden z-50 text-xs animate-pop origin-top">
+            <div className="absolute top-11 left-0 right-0 bg-popover/95 backdrop-blur-md border border-border rounded-lg shadow-[var(--elev-3)] overflow-hidden z-50 text-xs animate-pop origin-top">
               {filteredResults.map((t) => (
                 <button
                   key={t.code}
@@ -513,7 +513,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           )}
 
           {showDropdown && searchQuery && filteredResults.length === 0 && (
-            <div className="absolute top-11 left-0 right-0 bg-zinc-900/95 backdrop-blur-md border border-border/80 rounded-lg shadow-[var(--elev-3)] p-3 text-center text-[10px] text-muted-foreground z-50 animate-pop origin-top">
+            <div className="absolute top-11 left-0 right-0 bg-popover/95 backdrop-blur-md border border-border rounded-lg shadow-[var(--elev-3)] p-3 text-center text-[10px] text-muted-foreground z-50 animate-pop origin-top">
               Sonuç bulunamadı.
             </div>
           )}
@@ -536,7 +536,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             // phones (the Android app is a shell around this same web app,
             // so that took Trade away on mobile completely). Icon-only below
             // sm to keep the crowded mobile header from wrapping.
-            className="inline-flex shrink-0 items-center gap-1.5 h-9 w-9 sm:w-auto justify-center sm:px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-xs font-bold hover:bg-cyan-500/20 hover:border-cyan-400/50 transition-colors cursor-pointer press"
+            className="inline-flex shrink-0 items-center gap-1.5 h-9 w-9 sm:w-auto justify-center sm:px-3 rounded-lg border border-primary/30 bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 hover:border-primary/50 transition-colors cursor-pointer press"
           >
             <CandlestickChart className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
             <span className="hidden sm:inline">Trade</span>
@@ -561,7 +561,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </Button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-12 w-[min(85vw,340px)] bg-zinc-950/95 backdrop-blur-md border border-border/85 rounded-xl shadow-[var(--elev-3)] overflow-hidden z-50 text-xs p-4 space-y-3 animate-pop origin-top-right">
+            <div className="absolute right-0 top-12 w-[min(85vw,340px)] bg-popover/95 backdrop-blur-md border border-border rounded-xl shadow-[var(--elev-3)] overflow-hidden z-50 text-xs p-4 space-y-3 animate-pop origin-top-right">
               <div className="flex items-center justify-between border-b border-border/30 pb-2">
                 <span className="font-extrabold text-foreground">Sinyaller & Alarmlar</span>
                 <div className="flex items-center gap-2">
@@ -586,7 +586,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                 {alertsList.map((alert, idx) => (
                   <div
                     key={`alert-${idx}`}
-                    className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-950/10 text-left relative group"
+                    className="p-2.5 rounded-lg border border-warn/25 bg-warn/[0.06] text-left relative group"
                   >
                     <button
                       onClick={() => setAlertsList(prev => prev.filter((_, i) => i !== idx))}
@@ -597,7 +597,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
                     </button>
                     <div className="flex items-center justify-between pr-3">
                       <span className="font-bold text-foreground">{alert.ticker}</span>
-                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black border uppercase bg-purple-500/10 text-purple-400 border-purple-500/20">
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black border uppercase bg-warn/10 text-warn border-warn/25">
                         {alert.alert_type}
                       </span>
                     </div>

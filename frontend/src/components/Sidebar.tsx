@@ -10,7 +10,6 @@ import {
   Settings,
   Coins,
   Newspaper,
-  CandlestickChart,
   X,
   ChevronsLeft,
   ChevronsRight,
@@ -18,7 +17,8 @@ import {
   ShieldCheck,
   StickyNote,
   Users,
-  PieChart
+  PieChart,
+  Star,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
@@ -29,6 +29,18 @@ interface SidebarProps {
   onClose?: () => void
   collapsed?: boolean
   onToggleCollapse?: () => void
+}
+
+interface NavItem {
+  name: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+}
+
+interface NavGroup {
+  /** Grup başlığı - daraltılmış masaüstünde gizlenir. */
+  label: string
+  items: NavItem[]
 }
 
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapse }: SidebarProps) {
@@ -100,109 +112,69 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   }, [])
   const isFreeTier = role === "free"
 
-  const menuItems = [
+  /* V2 gezinme: düz bir liste yerine anlam gruplarına ayrıldı.
+     Ölçüm: liste 9-12 öğeye kadar çıkıyordu (admin'de) ve hepsi aynı
+     görsel ağırlıktaydı - kullanıcı aradığını taramak zorundaydı. Gruplar
+     tarama alanını 3-4 öğeye indiriyor.
+
+     İkonlar artık MONOKROM. Eskiden her sayfanın kendi rengi vardı (mor,
+     mavi, kehribar, zümrüt, turuncu, pembe, kırmızı, çinko) - sekiz farklı
+     vurgu rengi, hiçbiri bir şey ifade etmiyordu ve ürünü "birbiriyle
+     ilgisiz ekranlar" gibi gösteren en büyük etkendi. V2'de renk yalnızca
+     DURUM taşır: etkin öğe yeşil, geri kalan nötr.
+
+     Trade bilerek burada değil - kendi tam ekran terminali var ve Header'daki
+     kendi butonundan açılıyor (bkz. AppChrome'un isTradeRoute erken dönüşü). */
+  const navGroups: NavGroup[] = [
     {
-      name: "Piyasa Takip",
-      href: "/",
-      icon: LayoutDashboard,
-      activeClass: "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_12px_rgba(168,85,247,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-purple-500/5 hover:text-purple-400",
-      iconClass: "text-purple-400"
+      label: "Piyasa",
+      items: [
+        { name: "Piyasa Takip", href: "/", icon: LayoutDashboard },
+        { name: "Hisseler", href: "/screener", icon: Search },
+      ],
     },
-    {
-      name: "Hisseler",
-      href: "/screener",
-      icon: Search,
-      activeClass: "bg-blue-500/10 text-blue-400 border border-blue-500/20 shadow-[0_0_12px_rgba(59,130,246,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-blue-500/5 hover:text-blue-400",
-      iconClass: "text-blue-400"
-    },
-    // Trade moved out of this list entirely per explicit request (the
-    // sidebar had too many top-level items) - it's a full-page brokerage
-    // terminal with its own internal nav anyway (see AppChrome's isTradeRoute
-    // special-case, which already skips this Sidebar for /trade routes), so
-    // it's now reached from a dedicated button in the Header instead.
     ...(isFreeTier ? [] : [{
-      name: "Frantic Algoritmik Strateji",
-      href: "/strategy",
-      icon: Bot,
-      // Its own distinct theme (amber) - a live signal engine is a
-      // different kind of tool than the informational pages around it and
-      // should read as such at a glance.
-      activeClass: "bg-amber-500/10 text-amber-300 border border-amber-400/30 shadow-[0_0_14px_rgba(245,158,11,0.15)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-amber-500/5 hover:text-amber-300",
-      iconClass: "text-amber-300"
+      label: "Strateji",
+      items: [
+        { name: "Frantic Algoritmik Strateji", href: "/strategy", icon: Bot },
+      ],
     }]),
     {
-      name: "Fon Takip",
-      href: "/funds",
-      icon: Coins,
-      activeClass: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-emerald-500/5 hover:text-emerald-400",
-      iconClass: "text-emerald-400"
+      label: "Yatırım",
+      items: [
+        { name: "Portföyüm", href: "/portfolio", icon: Briefcase },
+        { name: "Fon Takip", href: "/funds", icon: Coins },
+      ],
     },
     {
-      name: "Portföyüm",
-      href: "/portfolio",
-      icon: Briefcase,
-      activeClass: "bg-orange-500/10 text-orange-400 border border-orange-500/20 shadow-[0_0_12px_rgba(249,115,22,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-orange-500/5 hover:text-orange-400",
-      iconClass: "text-orange-400"
+      label: "İstihbarat",
+      items: [
+        { name: "Ekonomi Haberleri", href: "/news", icon: Newspaper },
+      ],
     },
     {
-      name: "Ekonomi Haberleri",
-      href: "/news",
-      icon: Newspaper,
-      activeClass: "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_12px_rgba(168,85,247,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-purple-500/5 hover:text-purple-400",
-      iconClass: "text-purple-400"
+      label: "Sistem",
+      items: [
+        { name: "Notlarım", href: "/notes", icon: StickyNote },
+        { name: "Ayarlar", href: "/settings", icon: Settings },
+        ...(isSuperuser ? [
+          { name: "Yönetim Paneli", href: "/admin", icon: ShieldCheck },
+          { name: "Yönetilen Portföyler", href: "/admin/managed-portfolios", icon: Users },
+          { name: "Fon Ağırlık Ayarlamaları", href: "/admin/fund-compositions", icon: PieChart },
+        ] : []),
+      ],
     },
-    {
-      name: "Notlarım",
-      href: "/notes",
-      icon: StickyNote,
-      activeClass: "bg-pink-500/10 text-pink-400 border border-pink-500/20 shadow-[0_0_12px_rgba(236,72,153,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-pink-500/5 hover:text-pink-400",
-      iconClass: "text-pink-400"
-    },
-    {
-      name: "Ayarlar",
-      href: "/settings",
-      icon: Settings,
-      activeClass: "bg-zinc-800/40 text-zinc-300 border border-zinc-700/60 shadow-inner font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-zinc-800/20 hover:text-zinc-300",
-      iconClass: "text-zinc-400"
-    },
-    ...(isSuperuser ? [{
-      name: "Yönetim Paneli",
-      href: "/admin",
-      icon: ShieldCheck,
-      activeClass: "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-red-500/5 hover:text-red-400",
-      iconClass: "text-red-400"
-    }, {
-      // Reached directly from the sidebar (not nested inside the admin
-      // dashboard) per explicit request - own page, own route, same
-      // superuser-only visibility as "Yönetim Paneli" above.
-      name: "Yönetilen Portföyler",
-      href: "/admin/managed-portfolios",
-      icon: Users,
-      activeClass: "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-red-500/5 hover:text-red-400",
-      iconClass: "text-red-400"
-    }, {
-      // Same superuser-only visibility - lets an admin correct a tracked
-      // fund's live-estimate holding weights without a code change/deploy
-      // (see admin/fund-compositions/page.tsx).
-      name: "Fon Ağırlık Ayarlamaları",
-      href: "/admin/fund-compositions",
-      icon: PieChart,
-      activeClass: "bg-red-500/10 text-red-400 border border-red-500/20 shadow-[0_0_12px_rgba(239,68,68,0.1)] font-extrabold",
-      hoverClass: "text-muted-foreground hover:bg-red-500/5 hover:text-red-400",
-      iconClass: "text-red-400"
-    }] : []),
   ]
 
+  // "/" needs an exact match (otherwise it'd match every route); everything
+  // else uses startsWith so sub-routes like a fund detail page still keep
+  // their parent menu item highlighted. Two entries can both be href-prefixes
+  // of the same pathname (/admin and /admin/managed-portfolios) - only the
+  // LONGEST matching href should light up, otherwise both show active at once.
+  const allHrefs = navGroups.flatMap(g => g.items.map(i => i.href))
+  const activeHref = allHrefs
+    .filter(href => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/")))
+    .sort((a, b) => b.length - a.length)[0]
 
   return (
     <>
@@ -222,7 +194,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       <div
         aria-hidden
         className={cn(
-          "fixed inset-0 z-30 bg-black/60 lg:hidden transition-opacity duration-200 ease-out",
+          "fixed inset-0 z-30 bg-black/70 lg:hidden transition-opacity duration-200 ease-out",
           open ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         onPointerDown={() => { armedRef.current = true }}
@@ -230,7 +202,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       />
 
       <aside
-        style={{ width: isCollapsedNow ? 76 : 256 }}
+        style={{ width: isCollapsedNow ? 72 : 248 }}
         className={cn(
           // Tailwind v4'te `-translate-x-full` / `translate-x-0` artık
           // `transform` değil `translate` özelliğini yazıyor - üretilen CSS
@@ -243,7 +215,9 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           // goruniyorken GORUNUR ALANDAN BUYUKTUR. Sonuc olarak surgunun alt
           // kismi (kenarlik, daralt tusu) ekranin altinda kaliyordu. `dvh`
           // dinamik gorunum yuksekligi - cubuk gorunup kayboldukca guncellenir.
-          "border-r border-border bg-card flex flex-col h-dvh z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
+          // V2: sürgü Base yüzeyinde (workspace'ten bir tık koyu), böylece
+          // içerik alanı ondan ayrılıyor - kenarlık taşımaya gerek kalmıyor.
+          "border-r border-border bg-background flex flex-col h-dvh z-40 transition-[translate,width] duration-250 ease-out touch-manipulation",
           "fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:translate-x-0",
           // Same safe-area reasoning as Header.tsx - this drawer is `fixed
           // inset-y-0`, so on a notched phone/PWA its own top row (logo,
@@ -263,7 +237,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         }}
       >
         {/* Brand Header */}
-        <div className={cn("h-16 flex items-center border-b border-border shrink-0", isCollapsedNow ? "justify-center px-0" : "px-6 justify-between")}>
+        <div className={cn("h-16 flex items-center border-b border-border shrink-0", isCollapsedNow ? "justify-center px-0" : "px-5 justify-between")}>
           {!isCollapsedNow && (
             <Link href="/" onClick={() => onClose?.()} className="flex items-center cursor-pointer min-w-0">
               <Logo />
@@ -274,7 +248,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             <Link
               href="/"
               onClick={() => onClose?.()}
-              className="flex h-9 w-9 rounded-xl overflow-hidden cursor-pointer shrink-0"
+              className="flex h-9 w-9 rounded-lg overflow-hidden cursor-pointer shrink-0"
             >
               <img src="/logo.png" alt="BIP Terminal" className="h-full w-full object-cover" />
             </Link>
@@ -290,70 +264,74 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           )}
         </div>
 
-        {/* Navigation Links */}
-        {/* stagger-list: menü öğeleri açılışta sırayla belirir. Sürgü
-            uygulama boyunca monte kalıyor (page-enter sarmalayıcısının
-            dışında), yani bu animasyon rota değiştikçe değil yalnızca ilk
-            yüklemede bir kez oynar. */}
-        <nav className={cn("flex-1 py-6 space-y-1.5 overflow-y-auto overflow-x-hidden stagger-list", isCollapsedNow ? "px-3" : "px-4")}>
-          {(() => {
-            // "/" needs an exact match (otherwise it'd match every route);
-            // everything else uses startsWith so sub-routes like /trade/performance
-            // or a fund detail page still keep their parent menu item highlighted.
-            // Two entries can both be href-prefixes of the same pathname now
-            // that /admin has a child route with its own sidebar entry
-            // (/admin/managed-portfolios) - only the LONGEST matching href
-            // should light up, otherwise "Yönetim Paneli" and "Yönetilen
-            // Portföyler" both showed active at once on the child page.
-            const matchingHrefs = menuItems
-              .map(i => i.href)
-              .filter(href => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/")))
-            const activeHref = matchingHrefs.sort((a, b) => b.length - a.length)[0]
+        {/* Navigation */}
+        <nav className={cn("flex-1 py-4 overflow-y-auto overflow-x-hidden", isCollapsedNow ? "px-2.5" : "px-3")}>
+          {navGroups.map((group, groupIndex) => (
+            <div key={group.label} className={cn(groupIndex > 0 && "mt-5")}>
+              {/* Grup başlığı daraltılmış modda gizleniyor - 72px genişlikte
+                  okunacak yer yok, ama ayrım gerekiyor: onun yerine ince bir
+                  çizgi konuyor. */}
+              {isCollapsedNow ? (
+                groupIndex > 0 && <div className="mx-2 mb-3 border-t border-border/70" />
+              ) : (
+                <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/55">
+                  {group.label}
+                </div>
+              )}
 
-            return menuItems.map((item) => {
-            const isActive = item.href === activeHref
-            const Icon = item.icon
-            return (
-              <div key={item.name} className="relative group/navitem">
-                <Link
-                  href={item.href}
-                  onClick={() => onClose?.()}
-                  data-active={isActive}
-                  className={cn(
-                    // nav-item: etkin öğenin sol kenarında büyüyerek beliren
-                    // 3px'lik çubuk (globals.css). Renk zaten ayırt ediyor
-                    // ama tek başına renge dayanmak renk körlüğünde çalışmaz.
-                    // press: dokunmatikte basıldığını gösteren ölçek tepkisi.
-                    "nav-item press w-full flex items-center h-10 rounded-lg text-sm font-medium transition-all duration-200 group cursor-pointer border border-transparent text-left",
-                    isCollapsedNow ? "justify-center px-0" : "px-4",
-                    isActive ? item.activeClass : item.hoverClass
-                  )}
-                >
-                  <Icon className={cn(
-                    "h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-110",
-                    !isCollapsedNow && "mr-3",
-                    isActive ? item.iconClass : "text-muted-foreground group-hover:text-foreground"
-                  )} />
-                  {!isCollapsedNow && <span className="truncate">{item.name}</span>}
-                </Link>
-                {/* Tooltip - collapsed desktop only, shown on hover next to the icon */}
-                {isCollapsedNow && (
-                  <div className="hidden group-hover/navitem:block animate-pop absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-semibold text-foreground whitespace-nowrap shadow-[var(--elev-3)] z-50 pointer-events-none">
-                    {item.name}
-                  </div>
-                )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = item.href === activeHref
+                  const Icon = item.icon
+                  return (
+                    <div key={item.name} className="relative group/navitem">
+                      <Link
+                        href={item.href}
+                        onClick={() => onClose?.()}
+                        data-active={isActive}
+                        className={cn(
+                          // nav-item: etkin öğenin sol kenarında büyüyerek
+                          // beliren çubuk (globals.css). Renk zaten ayırt
+                          // ediyor ama tek başına renge dayanmak renk
+                          // körlüğünde çalışmaz.
+                          // press: dokunmatikte basıldığını gösteren tepki.
+                          "nav-item press w-full flex items-center h-9 rounded-md text-[13px] transition-colors duration-150 cursor-pointer text-left",
+                          isCollapsedNow ? "justify-center px-0" : "px-3",
+                          isActive
+                            // V2 etkin durum: beyaz metin, yeşil ikon, çok
+                            // hafif yeşil zemin. Sekiz farklı sayfa rengi
+                            // yerine tek bir dil.
+                            ? "bg-primary/[0.08] text-foreground font-semibold"
+                            : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground font-medium"
+                        )}
+                      >
+                        <Icon className={cn(
+                          "h-4 w-4 shrink-0 transition-colors duration-150",
+                          !isCollapsedNow && "mr-2.5",
+                          isActive ? "text-primary" : "text-muted-foreground/70 group-hover/navitem:text-foreground"
+                        )} />
+                        {!isCollapsedNow && <span className="truncate">{item.name}</span>}
+                      </Link>
+                      {/* Tooltip - collapsed desktop only, shown on hover next to the icon */}
+                      {isCollapsedNow && (
+                        <div className="hidden group-hover/navitem:block animate-pop absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-md surface-modal border border-border text-xs font-semibold text-foreground whitespace-nowrap shadow-[var(--elev-3)] z-50 pointer-events-none">
+                          {item.name}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            )
-            })
-          })()}
+            </div>
+          ))}
         </nav>
 
         {/* Collapse/expand toggle - desktop only, mobile uses the drawer's own close button */}
-        <div className={cn("hidden lg:flex border-t border-border p-3", isCollapsedNow ? "justify-center" : "justify-end")}>
+        <div className={cn("hidden lg:flex border-t border-border p-2.5", isCollapsedNow ? "justify-center" : "justify-end")}>
           <button
             onClick={onToggleCollapse}
             title={collapsed ? "Menüyü genişlet (Ctrl+B)" : "Menüyü daralt (Ctrl+B)"}
-            className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-zinc-800/40 transition-colors cursor-pointer"
+            className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
             aria-label={collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
           >
             {collapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}

@@ -104,8 +104,14 @@ export default function AppChrome({ children }: AppChromeProps) {
         <Header onMenuClick={() => setMobileMenuOpen(true)} />
         {/* Alt boşluk lg altında sabit alt sekme çubuğunun (h-14 + safe-area)
             içeriğin üstüne binmemesi için genişletildi; lg'de çubuk zaten
-            görünmediğinden eski değerlere dönüyor. */}
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-background to-[#0b0b0f] p-4 md:p-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
+            görünmediğinden eski değerlere dönüyor.
+
+            V2: sabit bir gradyan yerine Workspace yüzeyi (#0B0E12). Sürgü ve
+            üst çubuk Base'de (#07090B) durduğu için içerik alanı onlardan
+            kendiliğinden ayrılıyor - araya kenarlık koymaya gerek yok.
+            bip-grid: çok düşük opaklıkta teknik ızgara, üstte belirgin,
+            aşağı doğru soluyor (globals.css). */}
+        <main className="bip-grid surface-workspace flex-1 overflow-y-auto p-4 md:p-8 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
           {/* Every page except the homepage gets a back button - added here
               once, in the shared shell, rather than duplicated per-page. */}
           {pathname !== "/" && (

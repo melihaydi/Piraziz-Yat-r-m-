@@ -128,9 +128,9 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   if (checkingSession) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-zinc-950 animate-fade">
-        <span className="text-sm font-black tracking-tight text-gradient-purple">BIP Terminal</span>
-        <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background animate-fade">
+        <span className="text-sm font-black tracking-tight text-gradient-brand">BIP Terminal</span>
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
     )
   }
@@ -141,15 +141,17 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   if (pendingTempToken) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl p-4">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl blob-a" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl blob-b" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 backdrop-blur-xl p-4">
+        {/* V2 atmosfer: birincil ışık emerald, ikincil ışık desatüre grafit -
+           mor/mavi ikili değil, globals.css'teki body::before ile aynı dil. */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl blob-a" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-white/5 rounded-full blur-3xl blob-b" />
 
         <div className="w-full max-w-md relative z-10">
-          <Card glass={true} className="animate-pop border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-[var(--elev-3)]">
+          <Card className="animate-pop surface-modal border-border shadow-[var(--elev-3)]">
             <CardHeader className="text-center pb-2">
-              <div className="mx-auto h-12 w-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
-                <ShieldCheck className="h-6 w-6 text-purple-400" />
+              <div className="mx-auto h-12 w-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+                <ShieldCheck className="h-6 w-6 text-primary" />
               </div>
               <CardTitle className="text-xl font-black tracking-tight text-foreground">
                 İki Adımlı Doğrulama
@@ -162,7 +164,7 @@ export default function AuthGate({ children }: AuthGateProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               {error && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-semibold text-center">
+                <div className="p-3 bg-bear/10 border border-bear/20 rounded-xl text-bear text-xs font-semibold text-center">
                   {error}
                 </div>
               )}
@@ -182,22 +184,22 @@ export default function AuthGate({ children }: AuthGateProps) {
                   placeholder={useRecoveryCode ? "ABCDE-FGHIJ" : "000000"}
                   inputMode={useRecoveryCode ? "text" : "numeric"}
                   autoFocus
-                  className={`text-center font-mono-code bg-zinc-900/60 border-zinc-800 ${
+                  className={`text-center font-mono-code bg-secondary/50 border-border ${
                     useRecoveryCode ? "text-lg tracking-[0.15em]" : "text-2xl tracking-[0.5em]"
                   }`}
                 />
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-foreground font-black text-sm py-2.5 flex items-center justify-center gap-1.5 border-0 shadow-lg shadow-purple-500/10"
-                >
+                {/* className override yok - Button'ın kendi "default" varyantı
+                    zaten tek doğru V2 birincil buton (bg-primary tonal
+                    gradyanı, Button.tsx). Burada özel bir mor/indigo gradyan
+                    tutmanın bir anlamı yoktu. */}
+                <Button type="submit" disabled={loading} className="w-full font-black text-sm py-2.5">
                   {loading ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : "Doğrula ve Giriş Yap"}
                 </Button>
               </form>
 
               <button
                 onClick={() => { setUseRecoveryCode(v => !v); setTwoFACode(""); setError("") }}
-                className="w-full text-center text-[11px] text-purple-400 hover:text-purple-300 transition-colors cursor-pointer"
+                className="w-full text-center text-[11px] text-primary hover:text-primary-hover transition-colors cursor-pointer"
               >
                 {useRecoveryCode
                   ? "Authenticator kodu ile gir"
@@ -217,13 +219,13 @@ export default function AuthGate({ children }: AuthGateProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-xl p-4">
-      {/* Background radial glows */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl blob-a" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl blob-b" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 backdrop-blur-xl p-4">
+      {/* Background radial glows - V2: emerald + desatüre grafit, mor/mavi yok. */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl blob-a" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-white/5 rounded-full blur-3xl blob-b" />
 
       <div className="w-full max-w-md relative z-10">
-        <Card glass={true} className="animate-pop border-purple-500/20 bg-gradient-to-br from-zinc-950 via-zinc-900 to-purple-950/20 shadow-[var(--elev-3)]">
+        <Card className="animate-pop surface-modal border-border shadow-[var(--elev-3)]">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto h-12 w-12 rounded-2xl overflow-hidden mb-4">
               <img src="/logo.png" alt="BIP Terminal" className="h-full w-full object-cover" />
@@ -238,7 +240,7 @@ export default function AuthGate({ children }: AuthGateProps) {
 
           <CardContent className="space-y-4">
             {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-semibold text-center">
+              <div className="p-3 bg-bear/10 border border-bear/20 rounded-xl text-bear text-xs font-semibold text-center">
                 {error}
               </div>
             )}
@@ -253,7 +255,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder="Ör: Ömer Faruk"
-                      className="pl-10 bg-zinc-900/60 border-zinc-800"
+                      className="pl-10 bg-secondary/50 border-border"
                       required
                     />
                   </div>
@@ -269,7 +271,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="bip@yatirim.com"
-                    className="pl-10 bg-zinc-900/60 border-zinc-800"
+                    className="pl-10 bg-secondary/50 border-border"
                     required
                   />
                 </div>
@@ -284,7 +286,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="pl-10 bg-zinc-900/60 border-zinc-800"
+                    className="pl-10 bg-secondary/50 border-border"
                     required
                   />
                 </div>
@@ -292,7 +294,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                   <div className="text-right">
                     <Link
                       href="/forgot-password"
-                      className="text-[11px] text-muted-foreground hover:text-purple-400 transition-colors"
+                      className="text-[11px] text-muted-foreground hover:text-primary transition-colors"
                     >
                       Şifremi unuttum
                     </Link>
@@ -306,14 +308,14 @@ export default function AuthGate({ children }: AuthGateProps) {
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900/60 accent-purple-500 cursor-pointer shrink-0"
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-border bg-secondary/50 accent-primary cursor-pointer shrink-0"
                   />
                   <span className="text-[11px] text-muted-foreground leading-snug">
-                    <Link href="/legal/terms" className="text-purple-400 hover:text-purple-300 underline">
+                    <Link href="/legal/terms" className="text-primary hover:text-primary-hover underline">
                       Kullanım Koşulları
                     </Link>
                     'nı ve{" "}
-                    <Link href="/legal/privacy" className="text-purple-400 hover:text-purple-300 underline">
+                    <Link href="/legal/privacy" className="text-primary hover:text-primary-hover underline">
                       KVKK Aydınlatma Metni
                     </Link>
                     'ni okudum, kabul ediyorum.
@@ -321,11 +323,9 @@ export default function AuthGate({ children }: AuthGateProps) {
                 </label>
               )}
 
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-4 cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-foreground font-black text-sm py-2.5 flex items-center justify-center gap-1.5 border-0 shadow-lg shadow-purple-500/10"
-              >
+              {/* className override yok - Button.tsx'in "default" varyantı zaten
+                  tek V2 birincil buton. */}
+              <Button type="submit" disabled={loading} className="w-full mt-4 font-black text-sm py-2.5">
                 {loading ? (
                   <Loader2 className="h-4.5 w-4.5 animate-spin" />
                 ) : (
@@ -346,7 +346,7 @@ export default function AuthGate({ children }: AuthGateProps) {
                   setIsRegister(!isRegister)
                   setError("")
                 }}
-                className="ml-1 text-purple-400 hover:text-purple-300 font-extrabold transition-colors cursor-pointer"
+                className="ml-1 text-primary hover:text-primary-hover font-extrabold transition-colors cursor-pointer"
               >
                 {isRegister ? "Giriş Yapın" : "Kayıt Olun"}
               </button>

@@ -10,15 +10,26 @@ import { cn } from "@/lib/utils"
  * etiketleri) isimlendirip tek yere topluyor.
  */
 
-export type BadgeVariant = "neutral" | "primary" | "success" | "warning" | "danger" | "info"
+/**
+ * V2 semantik palet - dört varyant, hepsi bu.
+ *
+ *   success  LONG · BUY · BULLISH · LIVE · AKTİF · BAŞARILI
+ *   danger   SHORT · SELL · BEARISH · STOP · ZARAR · KRİTİK
+ *   warning  UYARI · YÜKSEK RİSK · ÖNEMLİ · MAKRO OLAY
+ *   neutral  NÖTR · BEKLEMEDE · PASİF
+ *
+ * Eski "info" (camgöbeği) ve "primary" (mor) varyantları KALDIRILDI: V2'de
+ * mavi bir UI vurgusu yok ve birincil renk zaten yeşil - "primary" ile
+ * "success" iki ayrı şey olsaydı ikisi de zayıflardı. primary çağıran
+ * yerler success'e eşleniyor.
+ */
+export type BadgeVariant = "neutral" | "success" | "warning" | "danger"
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
-  neutral: "bg-secondary/60 text-muted-foreground border-border/60",
-  primary: "bg-primary/10 text-primary border-primary/20",
-  success: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  warning: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  danger: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-  info: "bg-cyan-500/10 text-cyan-300 border-cyan-500/20",
+  neutral: "bg-secondary/70 text-muted-foreground border-border",
+  success: "bg-primary/10 text-primary border-primary/25",
+  warning: "bg-warn/10 text-warn border-warn/25",
+  danger: "bg-bear/10 text-bear border-bear/25",
 }
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
