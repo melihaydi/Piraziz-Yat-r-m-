@@ -14,12 +14,13 @@ import {
   Newspaper,
   ExternalLink,
   Bot,
-  Layers,
+  Briefcase,
+  ChevronDown,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { Badge } from "@/components/ui/Badge"
-import { ScoreGauge } from "@/components/ui/ScoreGauge"
+import { EmptyState } from "@/components/ui/EmptyState"
 import { StatTile } from "@/components/ui/StatTile"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { API_BASE_URL } from "@/lib/config"
@@ -194,9 +195,44 @@ export default function Home() {
     getPopularFundsSnapshot,
     getPopularFundsSnapshot
   )
+  // Fon Takip sayfasındaki aynı davranış: karta basınca dağılımı (holdings)
+  // yerinde açar - popularFundsStore zaten her fon için gerçek holdings
+  // dizisini taşıyor, ek istek gerekmiyor.
+  const [expandedPopularCodes, setExpandedPopularCodes] = useState<Set<string>>(new Set())
 
   const [newsFeed, setNewsFeed] = useState<any[]>([])
   const [loadingNewsFeed, setLoadingNewsFeed] = useState(true)
+
+  // --- Portföyüm (küçük özet) ----------------------------------------
+  // Gerçek veri: /portfolio/ (aktif portföyün toplam değeri/K-Z) ve
+  // /portfolio/live-estimate (fonların canlı BİST fiyatıyla ağırlıklandırılmış
+  // TAHMİNİ gün-içi getirisi - portfolio/page.tsx'teki aynı gerçek uç nokta,
+  // "tahmini" etiketi de aynı sebeple korunuyor: bu bir NAV yeniden hesabı
+  // değil). Burada portföy YOKSA otomatik oluşturulmuyor - o davranış
+  // /portfolio sayfasına özel bir onboarding adımı, panodan sessizce
+  // tetiklenmemeli.
+  const [myPortfolio, setMyPortfolio] = useState<any>(null)
+  const [loadingMyPortfolio, setLoadingMyPortfolio] = useState(true)
+  const [myLiveEstimate, setMyLiveEstimate] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchPortfolio = () => {
+      authFetch("/portfolio/")
+        .then(res => (res.ok ? res.json() : []))
+        .then(data => { if (Array.isArray(data)) setMyPortfolio(data[0] || null) })
+        .catch(err => console.error("Failed to load portfolio summary:", err))
+        .finally(() => setLoadingMyPortfolio(false))
+    }
+    const fetchLiveEstimate = () => {
+      authFetch("/portfolio/live-estimate")
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data) setMyLiveEstimate(data) })
+        .catch(err => console.error("Failed to load portfolio live estimate:", err))
+    }
+    fetchPortfolio()
+    fetchLiveEstimate()
+    return pollWhileVisibleAndOpen(() => { fetchPortfolio(); fetchLiveEstimate() }, 15000)
+  }, [])
 
   // --- Frantic Algoritmik Sinyaller (premium) -----------------------------
   const [role, setRole] = useState<string | null>(null)
@@ -347,7 +383,7 @@ export default function Home() {
   const pulse = marketSummary.pulse || { score: 50, label: "NÖTR", sentiment: 50, trend: 50, momentum: 50, participation: 50, risk: 50 }
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto">
+    <div className="space-y-4 max-w-[1600px] mx-auto">
       {/* Başlık */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-rise">
         <div>
@@ -361,10 +397,10 @@ export default function Home() {
       </div>
 
       {/* Satır 1: Piyasa Genel Görünümü + Piyasa Nabzı + Favori Varlıklar */}
-      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr_1fr] gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr_1fr] gap-4">
         {/* Market Overview */}
         <Card className="bip-card">
-          <CardHeader className="flex flex-row items-start justify-between pb-3 gap-3">
+          <CardHeader className="flex flex-row items-start justify-between pb-2.5 pt-4 px-4 gap-3">
             <div>
               <CardTitle className="t-section">{indexDetails.title}</CardTitle>
               <CardDescription className="text-xs mt-0.5">
@@ -381,8 +417,8 @@ export default function Home() {
               </span>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <CardContent className="p-4 pt-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               {/* Endeks seçimi */}
               <div className="flex items-center gap-1 p-1 bg-secondary/40 rounded-lg w-fit">
                 {["XU100", "XU030", "XBANK"].map(idx => {
@@ -423,7 +459,7 @@ export default function Home() {
               </div>
             )}
 
-            <div className="h-64 w-full">
+            <div className="h-48 w-full">
               {indexChartError ? (
                 <div className="h-full w-full flex flex-col items-center justify-center gap-3 text-center px-4">
                   <p className="text-sm font-bold text-foreground">Endeks grafiği şu anda yüklenemedi</p>
@@ -441,7 +477,7 @@ export default function Home() {
 
             {/* Gerçek OHLC + Hacim + Önceki Kapanış - son iki candle'dan */}
             {lastCandle && (
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-5 pt-4 border-t border-border/70">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3 pt-3 border-t border-border/70">
                 <div>
                   <div className="t-label">Açılış</div>
                   <div className="text-sm font-bold font-mono text-foreground mt-0.5">{tl(lastCandle.open)}</div>
@@ -471,52 +507,70 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Piyasa Nabzı - gerçek canlı kotasyon genişliğinden (breadth)
-            hesaplanan bir bileşim skoru (bkz. ScoringService.
-            calculate_market_pulse). "AI" DENMİYOR bilerek - bir dil modeli
-            çıktısı değil, şeffaf bir istatistik. */}
+        {/* Portföyüm - küçük özet. Gerçek veri: /portfolio/ (toplam değer,
+            toplam K/Z) ve /portfolio/live-estimate (fonların canlı BİST
+            fiyatıyla ağırlıklandırılmış TAHMİNİ gün-içi getirisi - aynı
+            gerçek uç nokta portfolio/page.tsx'te de kullanılıyor). */}
         <Card className="bip-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="t-section flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              Piyasa Nabzı
-            </CardTitle>
-            <CardDescription className="text-xs">Canlı kotasyon genişliğinden hesaplanan piyasa sağlığı</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-4">
-            {loadingSummary ? (
-              <Skeleton className="h-32 w-32 rounded-full" />
-            ) : (
-              <ScoreGauge score={pulse.score} label={pulse.label} size={132} />
-            )}
-            <div className="w-full space-y-2">
-              {[
-                { key: "trend", label: "Trend" },
-                { key: "momentum", label: "Momentum" },
-                { key: "participation", label: "Katılım" },
-                { key: "risk", label: "Risk", invert: true },
-                { key: "sentiment", label: "Sentiment" },
-              ].map(row => {
-                const val = pulse[row.key] ?? 50
-                // Risk için yüksek değer olumsuz - renk yönü tersine çevriliyor.
-                const good = row.invert ? val < 40 : val >= 60
-                const bad = row.invert ? val > 60 : val <= 40
-                return (
-                  <div key={row.key} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground font-semibold">{row.label}</span>
-                    <span className={`font-mono font-bold ${good ? "val-up" : bad ? "val-down" : "text-foreground"}`}>
-                      {Math.round(val)}
-                    </span>
-                  </div>
-                )
-              })}
+          <CardHeader className="pb-2.5 pt-4 px-4">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="t-section flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-primary" />
+                Portföyüm
+              </CardTitle>
+              <button onClick={() => router.push("/portfolio")} className="text-[11px] font-bold text-primary hover:text-primary-hover shrink-0 cursor-pointer">
+                Detay
+              </button>
             </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 pt-0">
+            {loadingMyPortfolio ? (
+              <Skeleton className="h-28 w-full rounded-lg" />
+            ) : !myPortfolio ? (
+              <EmptyState
+                icon={Briefcase}
+                title="Henüz portföyünüz yok"
+                description="Varlık ekleyip takibe başlayın."
+                className="py-6"
+                action={
+                  <button onClick={() => router.push("/portfolio")} className="btn-base btn-secondary h-8 text-xs">
+                    Portföy Oluştur
+                  </button>
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <div className="t-label">Toplam Değer</div>
+                  <div className="t-metric text-foreground mt-0.5">{tl(myPortfolio.total_value || 0)}</div>
+                  <div className={`text-xs font-bold font-mono mt-0.5 ${(myPortfolio.total_profit || 0) >= 0 ? "val-up" : "val-down"}`}>
+                    {(myPortfolio.total_profit || 0) >= 0 ? "+" : ""}{tl(myPortfolio.total_profit || 0)} ({(myPortfolio.profit_percentage || 0).toFixed(2)}%)
+                  </div>
+                </div>
+                {myLiveEstimate?.estimated_change_pct != null && (
+                  <div className="rounded-lg bg-warn/[0.06] border border-warn/20 px-3 py-2">
+                    <div className="flex items-center gap-1.5 t-label !text-warn">
+                      <Zap className="h-3 w-3" />
+                      Tahmini Bugün
+                    </div>
+                    <div className={`text-sm font-black font-mono mt-0.5 ${myLiveEstimate.estimated_change_pct >= 0 ? "val-up" : "val-down"}`}>
+                      {myLiveEstimate.estimated_change_pct >= 0 ? "+" : ""}{myLiveEstimate.estimated_change_pct.toFixed(2)}%
+                      {myLiveEstimate.estimated_daily_gain_value != null && (
+                        <span className="text-xs font-bold ml-1.5">
+                          ({myLiveEstimate.estimated_daily_gain_value >= 0 ? "+" : ""}{tl(myLiveEstimate.estimated_daily_gain_value)})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
         {/* Favori Varlıklar */}
         <Card className="bip-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardHeader className="flex flex-row items-center justify-between p-4 pb-2.5">
             <div>
               <CardTitle className="t-section flex items-center gap-2">
                 <Star className="h-4 w-4 text-primary fill-primary" />
@@ -528,7 +582,7 @@ export default function Home() {
               Tümü
             </button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-0">
             {(loadingScreener || loadingFavoriteFunds) ? (
               <div className="space-y-2 py-1">
                 <Skeleton className="h-10 w-full rounded-lg" />
@@ -581,14 +635,14 @@ export default function Home() {
       </div>
 
       {/* Satır 2: Frantic Algoritmik Sinyaller + Sektör Performansı + Ekonomi Takvimi */}
-      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr_1fr] gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr_1fr] gap-4">
         {/* role !== null: rol bilinene kadar hiç render etme - aksi halde
             ücretsiz kullanıcıda kart bir an görünüp (role null iken) rol
             "free" olarak çözülünce kaybolurdu. Aynı "titremesin" kuralı
             Sidebar/Header'da da uygulanıyor. */}
         {role !== null && !isFreeTier && (
           <Card className="bip-card">
-            <CardHeader className="pb-3">
+            <CardHeader className="p-4 pb-2.5">
               <div className="flex items-center justify-between gap-3">
                 <CardTitle className="t-section flex items-center gap-2">
                   <Bot className="h-4 w-4 text-primary" />
@@ -599,7 +653,7 @@ export default function Home() {
                 </button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0">
               {loadingSignals ? (
                 <Skeleton className="h-24 w-full rounded-lg" />
               ) : (
@@ -610,8 +664,12 @@ export default function Home() {
                     <StatTile label="SHORT" value={String(signalsSummary.short)} className="[&_.t-metric]:text-bear" />
                     <StatTile label="Aktif Oran" value={`%${signalsSummary.activePct}`} />
                   </div>
-                  <div className="bip-table-scroll">
-                    <table className="bip-table">
+                  {/* max-h + sticky başlık: 30'a kadar BIST30 sembolü tek
+                      seferde kaydırmadan görünsün diye satırlar sıkı
+                      (h-7), tablo kendi içinde kayıyor - sayfa değil.
+                      Hepsi gösteriliyor, 8'e kırpma kaldırıldı. */}
+                  <div className="bip-table-scroll max-h-72 overflow-y-auto">
+                    <table className="bip-table [&_thead_tr]:sticky [&_thead_tr]:top-0 [&_tbody_td]:!py-1 [&_tbody_tr]:!h-7">
                       <thead>
                         <tr>
                           <th>Sembol</th>
@@ -624,7 +682,7 @@ export default function Home() {
                         </tr>
                       </thead>
                       <tbody>
-                        {signals.filter(s => s.direction !== "NONE").slice(0, 8).map(s => (
+                        {signals.filter(s => s.direction !== "NONE").map(s => (
                           <tr key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="cursor-pointer">
                             <td className="font-bold text-foreground">{s.ticker}</td>
                             <td><Badge variant={s.direction === "LONG" ? "success" : "danger"}>{s.direction}</Badge></td>
@@ -651,11 +709,11 @@ export default function Home() {
             kotasyonlardan hesaplanıyor (backend); önceden fetch ediliyor
             ama hiç gösterilmiyordu. */}
         <Card className="bip-card">
-          <CardHeader className="pb-3">
+          <CardHeader className="p-4 pb-2.5">
             <CardTitle className="t-section">Sektör Performansı</CardTitle>
             <CardDescription className="text-xs">Günlük değişim</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2.5">
+          <CardContent className="space-y-2.5 p-4 pt-0">
             {loadingSummary ? (
               <div className="space-y-2.5">
                 {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-4 w-full rounded" />)}
@@ -683,14 +741,14 @@ export default function Home() {
         </Card>
 
         <Card className="bip-card" data-reveal>
-          <CardHeader className="pb-3">
+          <CardHeader className="p-4 pb-2.5">
             <CardTitle className="t-section flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" />
               Ekonomi Takvimi
             </CardTitle>
             <CardDescription className="text-xs mt-0.5">Piyasa üzerinde etkili kritik makro açıklamalar</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-0">
             <EconomicCalendarWidget height={280} />
           </CardContent>
         </Card>
@@ -698,7 +756,7 @@ export default function Home() {
 
       {/* Satır 3: Popüler Fonlar */}
       <Card className="bip-card" data-reveal>
-        <CardHeader className="pb-3">
+        <CardHeader className="p-4 pb-2.5">
           <CardTitle className="t-section flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
             Popüler Fonlar - Anlık Getiri
@@ -708,7 +766,7 @@ export default function Home() {
             canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri hesaplar.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0">
           {loadingPopularFunds ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
@@ -719,20 +777,61 @@ export default function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 stagger">
               {popularFunds.map(f => {
                 const isUp = f.estimated_change_pct >= 0
+                const isExpanded = expandedPopularCodes.has(f.code)
                 return (
-                  <div
-                    key={f.code}
-                    onClick={() => router.push(`/funds?code=${f.code}`)}
-                    className="rounded-xl bg-secondary/30 p-3 cursor-pointer hover:bg-secondary/50 transition-colors lift press"
-                  >
-                    <Badge variant="success">{f.code}</Badge>
-                    <div className="text-xs text-muted-foreground mt-1.5 truncate">{f.name}</div>
-                    <div className="flex items-baseline justify-between mt-2">
-                      <span className={`text-xl font-black font-mono ${isUp ? "val-up" : "val-down"}`}>
-                        {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">kapsam %{f.resolved_weight_pct.toFixed(0)}</span>
-                    </div>
+                  <div key={f.code} className="rounded-xl bg-secondary/30 overflow-hidden lift press">
+                    {/* Karta basınca /funds'a gitmek yerine (Fon Takip
+                        sayfasındaki aynı davranış) dağılımı yerinde açar -
+                        holdings verisi zaten popularFundsStore'da, ek istek
+                        yok. /funds'a gitmek için koddaki rozete basılır. */}
+                    <button
+                      onClick={() => setExpandedPopularCodes(prev => {
+                        const next = new Set(prev)
+                        if (next.has(f.code)) next.delete(f.code)
+                        else next.add(f.code)
+                        return next
+                      })}
+                      className="w-full p-3 text-left cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          onClick={(e) => { e.stopPropagation(); router.push(`/funds?code=${f.code}`) }}
+                          className="inline-block"
+                        >
+                          <Badge variant="success">{f.code}</Badge>
+                        </span>
+                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1.5 truncate">{f.name}</div>
+                      <div className="flex items-baseline justify-between mt-2">
+                        <span className={`text-xl font-black font-mono ${isUp ? "val-up" : "val-down"}`}>
+                          {isUp ? "+" : ""}{f.estimated_change_pct.toFixed(2)}%
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">kapsam %{f.resolved_weight_pct.toFixed(0)}</span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-border/60 px-3 py-2 space-y-1.5 max-h-52 overflow-y-auto">
+                        {f.holdings
+                          .slice()
+                          .sort((a: any, b: any) => b.weight - a.weight)
+                          .map((h: any) => (
+                            <div key={h.ticker} className="flex items-center justify-between text-xs gap-2">
+                              <div className="flex items-baseline gap-1.5 min-w-0">
+                                <span className="font-bold text-foreground truncate">{h.ticker}</span>
+                                <span className="text-muted-foreground/70 shrink-0">%{h.weight.toFixed(2)}</span>
+                              </div>
+                              {h.impact_pct != null ? (
+                                <span className={`font-bold shrink-0 ${h.impact_pct >= 0 ? "val-up" : "val-down"}`}>
+                                  {h.impact_pct >= 0 ? "+" : ""}{h.impact_pct.toFixed(2)}p
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground/40 shrink-0">—</span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -742,9 +841,9 @@ export default function Home() {
       </Card>
 
       {/* Satır 4: Haber Akışı + Yükselenler + Düşenler */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="bip-card" data-reveal>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardHeader className="flex flex-row items-center justify-between p-4 pb-2.5">
             <CardTitle className="t-section flex items-center gap-2">
               <Newspaper className="h-4 w-4 text-primary" />
               Haber Akışı
@@ -753,7 +852,7 @@ export default function Home() {
               Tümü <ArrowRight className="h-3 w-3" />
             </button>
           </CardHeader>
-          <CardContent className="pt-0">
+          <CardContent className="p-4 pt-0">
             {loadingNewsFeed ? (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => <Skeleton key={i} className="h-11 w-full rounded-lg" />)}
@@ -780,11 +879,11 @@ export default function Home() {
         </Card>
 
         <Card className="bip-card">
-          <CardHeader className="pb-3">
+          <CardHeader className="p-4 pb-2.5">
             <CardTitle className="t-section">En Çok Yükselenler</CardTitle>
             <CardDescription className="text-xs">Günlük</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-1.5">
+          <CardContent className="space-y-1.5 p-4 pt-0">
             {loadingScreener ? (
               <Skeleton className="h-32 w-full rounded-lg" />
             ) : gainers.length === 0 ? (
@@ -805,11 +904,11 @@ export default function Home() {
         </Card>
 
         <Card className="bip-card">
-          <CardHeader className="pb-3">
+          <CardHeader className="p-4 pb-2.5">
             <CardTitle className="t-section">En Çok Düşenler</CardTitle>
             <CardDescription className="text-xs">Günlük</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-1.5">
+          <CardContent className="space-y-1.5 p-4 pt-0">
             {loadingScreener ? (
               <Skeleton className="h-32 w-full rounded-lg" />
             ) : losers.length === 0 ? (
