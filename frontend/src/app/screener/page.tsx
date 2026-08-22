@@ -81,8 +81,8 @@ const StockRow = React.memo(function StockRow({
         e.stopPropagation()
         onToggleFavorite(comp.ticker)
       }}>
-        <button className="text-muted-foreground hover:text-amber-400 transition-colors">
-          <Star className={`h-4 w-4 ${isFav ? "text-amber-400 fill-amber-400" : ""}`} />
+        <button className="text-muted-foreground hover:text-warn transition-colors">
+          <Star className={`h-4 w-4 ${isFav ? "text-warn fill-warn" : ""}`} />
         </button>
       </td>
       <td className="px-4 text-center" onClick={(e) => {
@@ -94,8 +94,8 @@ const StockRow = React.memo(function StockRow({
           title={isCompared ? "Karşılaştırmadan çıkar" : "Karşılaştırmaya ekle"}
           className={`h-6 w-6 rounded-md border flex items-center justify-center transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
             isCompared
-              ? "bg-cyan-500 border-cyan-400 text-black shadow-[0_0_10px_rgba(34,211,238,0.3)]"
-              : "border-border/60 text-muted-foreground hover:border-cyan-500/50 hover:text-cyan-400"
+              ? "bg-primary border-primary text-primary-foreground shadow-[0_0_10px_hsl(var(--primary)/0.3)]"
+              : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
           }`}
         >
           <Scale className="h-3.5 w-3.5" />
@@ -106,8 +106,8 @@ const StockRow = React.memo(function StockRow({
           <TickerLogo ticker={comp.ticker} size={18} />
           <span className={`px-2 py-0.5 rounded text-[10px] border transition-all ${
             isSelected
-              ? (isFav ? "bg-amber-500 text-black border-amber-400 font-black shadow-[0_0_12px_rgba(245,158,11,0.2)]" : "bg-primary text-primary-foreground border-primary")
-              : (isFav ? "bg-amber-500/10 text-amber-400 border-amber-500/20 font-black shadow-[0_0_8px_rgba(245,158,11,0.08)]" : "bg-secondary text-muted-foreground border-transparent")
+              ? (isFav ? "bg-warn text-background border-warn font-black shadow-[0_0_12px_hsl(var(--warn)/0.2)]" : "bg-primary text-primary-foreground border-primary")
+              : (isFav ? "bg-warn/10 text-warn border-warn/20 font-black shadow-[0_0_8px_hsl(var(--warn)/0.08)]" : "bg-secondary text-muted-foreground border-transparent")
           }`}>
             {comp.ticker}
           </span>
@@ -116,12 +116,12 @@ const StockRow = React.memo(function StockRow({
       <td className="px-4 text-muted-foreground truncate max-w-[120px]">{comp.sector}</td>
       <td className="px-4 text-right font-mono font-bold">₺{comp.price.toFixed(2)}</td>
       <td className="px-4 text-right font-mono font-semibold">
-        <span className={comp.change_percent >= 0 ? "text-emerald-400" : "text-rose-500"}>
+        <span className={comp.change_percent >= 0 ? "val-up" : "val-down"}>
           {comp.change_percent >= 0 ? "+" : ""}{comp.change_percent.toFixed(2)}%
         </span>
       </td>
       <td className="px-4 text-center font-mono font-bold">
-        <span className="bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded border border-purple-500/15">
+        <span className="bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-mono">
           {comp.ai_score}
         </span>
       </td>
@@ -430,6 +430,30 @@ export default function ScreenerPage() {
     return companies.find(c => c.ticker === selectedTicker) || null
   }, [companies, selectedTicker])
 
+  // AI Skoru kategorileri - backend'in calculate_ai_score_details'i 12 ayrı
+  // teknik kontrolü DÜZ bir liste olarak döndürüyor (EMA20/EMA50/SMA20/
+  // SMA50/Trend(EMA200)/RSI/MACD/ADX/ATR/Direnç/Destek/Momentum), fundamental
+  // bir "Kalite"/"Değerleme"/"Sentiment" ayrımı yok. Bu üçü gerçek olmayan
+  // sayı uydurmak yerine, var olan 12 kontrolü metinlerine göre üç dürüst
+  // kategoriye topluyor - her kategorinin puanı, o kategoriye giren gerçek
+  // kontrollerin backend'den gelen gerçek puan katkılarının toplamı.
+  const categorizeReason = (text: string): "trend" | "momentum" | "risk" => {
+    if (text.includes("RSI") || text.includes("MACD") || text.includes("Momentum")) return "momentum"
+    if (text.includes("Volatilite") || text.includes("Dirence") || text.includes("Desteğe")) return "risk"
+    return "trend" // EMA/SMA/Trend güçlü-zayıf/Trend kararlı (ADX)
+  }
+
+  const scoreCategories = useMemo(() => {
+    const totals = { trend: 0, momentum: 0, risk: 0 }
+    if (scoreDetails?.reasons) {
+      for (const r of scoreDetails.reasons) {
+        const n = parseInt(String(r.value).replace("+", ""), 10)
+        if (!Number.isNaN(n)) totals[categorizeReason(r.text)] += n
+      }
+    }
+    return totals
+  }, [scoreDetails])
+
   // Dynamic Sector list extraction
   const sectorsList = useMemo(() => {
     const sectors = new Set<string>()
@@ -541,7 +565,7 @@ export default function ScreenerPage() {
                     className="w-full h-8 rounded-md border border-input bg-secondary/30 px-2 text-xs focus-visible:outline-none"
                   >
                     {sectorsList.map((sector) => (
-                      <option key={sector} value={sector} className="bg-zinc-900 text-foreground">
+                      <option key={sector} value={sector} className="bg-popover text-foreground">
                         {sector}
                       </option>
                     ))}
@@ -692,9 +716,9 @@ export default function ScreenerPage() {
                     </button>
                     <button
                       onClick={() => toggleFavorite(selectedTicker)}
-                      className="text-muted-foreground hover:text-amber-400 transition-colors p-1"
+                      className="text-muted-foreground hover:text-warn transition-colors p-1"
                     >
-                      <Star className={`h-5 w-5 ${favorites.includes(selectedTicker) ? "text-amber-400 fill-amber-400" : ""}`} />
+                      <Star className={`h-5 w-5 ${favorites.includes(selectedTicker) ? "text-warn fill-warn" : ""}`} />
                     </button>
                   </div>
                 </div>
@@ -702,7 +726,7 @@ export default function ScreenerPage() {
                 {/* Price Display */}
                 <div className="flex items-baseline justify-between mt-3 pt-3 border-t border-border/40">
                   <span className="text-2xl font-black font-mono text-foreground">₺{selectedStockDetails.price.toFixed(2)}</span>
-                  <span className={`text-xs font-bold font-mono ${selectedStockDetails.change_percent >= 0 ? "text-emerald-400" : "text-rose-500"}`}>
+                  <span className={`text-xs font-bold font-mono ${selectedStockDetails.change_percent >= 0 ? "val-up" : "val-down"}`}>
                     {selectedStockDetails.change_percent >= 0 ? "+" : ""}{selectedStockDetails.change_percent.toFixed(2)}%
                   </span>
                 </div>
@@ -731,16 +755,16 @@ export default function ScreenerPage() {
                 {/* Same placeholder-bar labelling as the stock detail page -
                     simulated candles must not read as real prices. */}
                 {chartSimulated && !chartLoading && (
-                  <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                    <span className="text-[11px] font-bold text-amber-400">Geçici veri</span>
+                  <div className="flex items-center gap-2 rounded-md border border-warn/30 bg-warn/10 px-3 py-2">
+                    <span className="text-[11px] font-bold val-warn">Geçici veri</span>
                     <span className="text-[11px] text-muted-foreground">
                       Canlı fiyat akışı henüz bağlanmadı - gerçek piyasa verisi değildir.
                     </span>
                   </div>
                 )}
-                <div className="relative border border-border/40 rounded-xl overflow-hidden bg-zinc-900/60 p-1">
+                <div className="relative border border-border rounded-xl overflow-hidden bg-secondary/40 p-1">
                   {chartLoading && (
-                    <div className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm flex items-center justify-center z-10">
+                    <div className="absolute inset-0 bg-background/70 backdrop-blur-sm flex items-center justify-center z-10">
                       <Loader2 className="h-6 w-6 text-primary animate-spin" />
                     </div>
                   )}
@@ -756,44 +780,66 @@ export default function ScreenerPage() {
                   <div className="bg-secondary/20 p-2 border border-border/30 rounded-lg">
                     <span className="block text-[9px] text-muted-foreground uppercase font-bold">AI Duygu</span>
                     <span className={`font-bold mt-0.5 block ${
-                      selectedStockDetails.sentiment === "Pozitif" ? "text-emerald-400" :
-                      selectedStockDetails.sentiment === "Negatif" ? "text-rose-500" :
-                      "text-slate-400"
+                      selectedStockDetails.sentiment === "Pozitif" ? "val-up" :
+                      selectedStockDetails.sentiment === "Negatif" ? "val-down" :
+                      "text-muted-foreground"
                     }`}>{selectedStockDetails.sentiment}</span>
                   </div>
                   <div className="bg-secondary/20 p-2 border border-border/30 rounded-lg">
                     <span className="block text-[9px] text-muted-foreground uppercase font-bold">AI Skoru</span>
-                    <span className="font-bold text-purple-400 mt-0.5 block">{selectedStockDetails.ai_score}/100</span>
+                    <span className="font-bold text-primary mt-0.5 block font-mono">{selectedStockDetails.ai_score}/100</span>
                   </div>
                 </div>
 
                 {/* AI Score Breakdown Panel */}
                 {scoreDetails && (
-                  <div className="bg-zinc-950/40 border border-border/30 rounded-xl p-3.5 space-y-2.5">
+                  <div className="bg-secondary/25 border border-border rounded-xl p-3.5 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black text-foreground uppercase tracking-wider flex items-center">
-                        <Sparkles className="h-3.5 w-3.5 text-purple-400 mr-1.5 animate-pulse" />
+                        <Sparkles className="h-3.5 w-3.5 text-primary mr-1.5 animate-pulse" />
                         AI Skoru Detay Analizi
                       </span>
                       <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                        scoreDetails.result === "Pozitif" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                        scoreDetails.result === "Negatif" ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" :
-                        "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
+                        scoreDetails.result === "Pozitif" ? "bg-bull/10 text-bull border border-bull/20" :
+                        scoreDetails.result === "Negatif" ? "bg-bear/10 text-bear border border-bear/20" :
+                        "bg-secondary text-muted-foreground border border-border"
                       }`}>
                         {scoreDetails.result} ({scoreDetails.risk} Risk)
                       </span>
                     </div>
-                    
+
+                    {/* Kategori özeti - 12 gerçek kontrolün üç dürüst grupta
+                        toplamı (bkz. categorizeReason). Aşağıdaki tam liste
+                        her birinin ayrı ayrı hangi kontrolden geldiğini
+                        gösteriyor. */}
+                    <div className="grid grid-cols-3 gap-2 pb-1">
+                      {[
+                        { key: "trend", label: "Trend" },
+                        { key: "momentum", label: "Momentum" },
+                        { key: "risk", label: "Risk" },
+                      ].map(c => {
+                        const val = scoreCategories[c.key as keyof typeof scoreCategories]
+                        return (
+                          <div key={c.key} className="text-center rounded-lg bg-secondary/40 py-2">
+                            <div className="t-label !text-[9px]">{c.label}</div>
+                            <div className={`text-sm font-black font-mono mt-0.5 ${val > 0 ? "val-up" : val < 0 ? "val-down" : "text-muted-foreground"}`}>
+                              {val > 0 ? "+" : ""}{val}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] pt-0.5">
                       {scoreDetails.reasons && scoreDetails.reasons.map((r: any, idx: number) => (
-                        <div key={idx} className="flex items-center justify-between bg-zinc-900/50 p-2 rounded-lg border border-border/20">
+                        <div key={idx} className="flex items-center justify-between bg-secondary/40 p-2 rounded-lg border border-border/60">
                           <span className="flex items-center text-muted-foreground">
-                            <span className={`mr-1.5 font-bold ${r.icon === "✔" ? "text-emerald-400" : "text-rose-500"}`}>
+                            <span className={`mr-1.5 font-bold ${r.icon === "✔" ? "val-up" : "val-down"}`}>
                               {r.icon}
                             </span>
                             {r.text}
                           </span>
-                          <span className={`font-bold font-mono ${r.value.startsWith("+") ? "text-emerald-400" : "text-rose-500"}`}>
+                          <span className={`font-bold font-mono ${r.value.startsWith("+") ? "val-up" : "val-down"}`}>
                             {r.value}
                           </span>
                         </div>
@@ -835,7 +881,7 @@ export default function ScreenerPage() {
               <span className="text-xs text-muted-foreground">Karşılaştırma hesaplanıyor...</span>
             </div>
           ) : compareError ? (
-            <div className="py-10 text-center text-xs text-rose-400">{compareError}</div>
+            <div className="py-10 text-center text-xs val-down">{compareError}</div>
           ) : (
             <div className="space-y-6">
               <div className="h-64 w-full">
@@ -881,7 +927,7 @@ export default function ScreenerPage() {
                         {["return_1m_pct", "return_3m_pct", "return_1y_pct"].map((key) => (
                           <td key={key} className="px-3 text-right font-mono font-semibold">
                             {s[key] != null ? (
-                              <span className={s[key] >= 0 ? "text-emerald-400" : "text-rose-500"}>
+                              <span className={s[key] >= 0 ? "val-up" : "val-down"}>
                                 {s[key] >= 0 ? "+" : ""}{s[key]}%
                               </span>
                             ) : "—"}
@@ -893,7 +939,7 @@ export default function ScreenerPage() {
                         <td className="px-3 text-center">
                           <button
                             onClick={() => setCompareCodes((prev) => prev.filter((c) => c !== s.ticker))}
-                            className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer"
+                            className="text-muted-foreground hover:text-bear transition-colors cursor-pointer"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -915,9 +961,9 @@ export default function ScreenerPage() {
           the filter controls. */}
       {compareCodes.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4">
-          <div className="bg-card/95 backdrop-blur-xl border border-cyan-500/30 rounded-2xl shadow-2xl shadow-cyan-500/10 px-4 py-3 flex items-center gap-3">
+          <div className="bg-popover/95 backdrop-blur-xl border border-primary/30 rounded-2xl shadow-[var(--elev-3)] px-4 py-3 flex items-center gap-3">
             <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-              <Scale className="h-4 w-4 text-cyan-400 shrink-0" />
+              <Scale className="h-4 w-4 text-primary shrink-0" />
               {compareCodes.map((ticker) => (
                 <div
                   key={ticker}
@@ -927,7 +973,7 @@ export default function ScreenerPage() {
                   <span className="text-[11px] font-bold text-foreground">{ticker}</span>
                   <button
                     onClick={() => toggleCompare(ticker)}
-                    className="text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer p-0.5"
+                    className="text-muted-foreground hover:text-bear transition-colors cursor-pointer p-0.5"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -950,7 +996,7 @@ export default function ScreenerPage() {
                 size="sm"
                 disabled={compareCodes.length < 2}
                 onClick={runCompare}
-                className="text-xs h-8 px-3.5 cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-black font-bold disabled:opacity-40"
+                className="text-xs h-8 px-3.5 cursor-pointer bg-primary hover:bg-primary-hover text-primary-foreground font-bold disabled:opacity-40"
               >
                 Karşılaştır
               </Button>
