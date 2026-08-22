@@ -589,6 +589,14 @@ export default function Home() {
                         </span>
                       )}
                     </div>
+                    {/* Tahmini bugünkü kazancın portföyün mevcut toplam
+                        değerine eklenmiş hali - "kaç oldu" sorusunun
+                        cevabı, sadece "ne kadar değişti" değil. */}
+                    {myLiveEstimate.estimated_daily_gain_value != null && (
+                      <div className="text-[10px] font-semibold text-muted-foreground mt-1">
+                        Tahmini yeni toplam: <span className="text-foreground font-bold font-mono">{tl((myPortfolio.total_value || 0) + myLiveEstimate.estimated_daily_gain_value)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
                 {portfolioAssets.length > 0 && (
@@ -601,7 +609,12 @@ export default function Home() {
                         // bu yüzden hangi detay sayfasına gidileceğini
                         // (stok mu fon mu) buradan ayırt ediyoruz.
                         const isFundCode = a.ticker.length === 3
-                        const gain = a.daily_gain_value
+                        // Fonlarda daily_gain_value canlı TAHMİNİ, official_
+                        // daily_gain_value ise TEFAS'ın resmen yayınladığı
+                        // gerçek günlük getiri (bkz. backend/portfolio.py) -
+                        // burada resmi olanı gösteriyoruz, "tahmini" etiketi
+                        // olmadan bir rakam görünce gerçek sanılmasın diye.
+                        const gain = a.official_daily_gain_value
                         return (
                           <div
                             key={a.ticker}
@@ -980,12 +993,12 @@ export default function Home() {
             ) : gainers.map((s, i) => (
               <div key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="flex items-center justify-between py-3 sm:py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-muted-foreground w-6 sm:w-3">{i + 1}</span>
-                  <span className="text-xs font-bold text-foreground">{s.ticker}</span>
+                  <span className="text-xs font-bold text-muted-foreground w-6 sm:w-4">{i + 1}</span>
+                  <span className="text-sm font-bold text-foreground">{s.ticker}</span>
                 </div>
                 <div className="text-right">
-                  <span className="font-mono font-bold text-xs text-foreground block">{tl(s.price)}</span>
-                  <span className="val-up text-[11px] font-bold">+{s.change_percent.toFixed(2)}%</span>
+                  <span className="font-mono font-bold text-sm text-foreground block">{tl(s.price)}</span>
+                  <span className="val-up text-xs font-bold">+{s.change_percent.toFixed(2)}%</span>
                 </div>
               </div>
             ))}
@@ -1005,12 +1018,12 @@ export default function Home() {
             ) : losers.map((s, i) => (
               <div key={s.ticker} onClick={() => router.push(`/stock/${s.ticker}`)} className="flex items-center justify-between py-3 sm:py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-muted-foreground w-6 sm:w-3">{i + 1}</span>
-                  <span className="text-xs font-bold text-foreground">{s.ticker}</span>
+                  <span className="text-xs font-bold text-muted-foreground w-6 sm:w-4">{i + 1}</span>
+                  <span className="text-sm font-bold text-foreground">{s.ticker}</span>
                 </div>
                 <div className="text-right">
-                  <span className="font-mono font-bold text-xs text-foreground block">{tl(s.price)}</span>
-                  <span className="val-down text-[11px] font-bold">{s.change_percent.toFixed(2)}%</span>
+                  <span className="font-mono font-bold text-sm text-foreground block">{tl(s.price)}</span>
+                  <span className="val-down text-xs font-bold">{s.change_percent.toFixed(2)}%</span>
                 </div>
               </div>
             ))}
