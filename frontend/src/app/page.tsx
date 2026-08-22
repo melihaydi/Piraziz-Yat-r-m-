@@ -288,6 +288,13 @@ export default function Home() {
     return pollWhileVisibleAndOpen(fetchSignals, 60000)
   }, [role, isFreeTier])
 
+  // En büyük pozisyonlar önde - portfolio/page.tsx'in "Portföy Varlıkları"
+  // listesiyle aynı /portfolio/ yanıtındaki assets dizisi, ekstra istek yok.
+  const portfolioAssets = useMemo(() => {
+    const assets = myPortfolio?.assets || []
+    return [...assets].sort((a: any, b: any) => (b.total_value || 0) - (a.total_value || 0))
+  }, [myPortfolio])
+
   const signalsSummary = useMemo(() => {
     const scanned = signals.length
     const long = signals.filter(s => s.direction === "LONG").length
@@ -581,6 +588,38 @@ export default function Home() {
                           ({myLiveEstimate.estimated_daily_gain_value >= 0 ? "+" : ""}{tl(myLiveEstimate.estimated_daily_gain_value)})
                         </span>
                       )}
+                    </div>
+                  </div>
+                )}
+                {portfolioAssets.length > 0 && (
+                  <div>
+                    <div className="t-label mb-1.5">Varlıklarım</div>
+                    <div className="space-y-1">
+                      {portfolioAssets.slice(0, 4).map((a: any) => {
+                        // TEFAS fon kodları 3 karakterli (backend'in kendi
+                        // kuralı, bkz. portfolio.py) - hisse kodları değil,
+                        // bu yüzden hangi detay sayfasına gidileceğini
+                        // (stok mu fon mu) buradan ayırt ediyoruz.
+                        const isFundCode = a.ticker.length === 3
+                        const gain = a.daily_gain_value
+                        return (
+                          <div
+                            key={a.ticker}
+                            onClick={() => router.push(isFundCode ? `/funds?code=${a.ticker}` : `/stock/${a.ticker}`)}
+                            className="flex items-center justify-between text-xs py-1 px-1.5 -mx-1.5 rounded cursor-pointer hover:bg-secondary/40"
+                          >
+                            <span className="font-bold text-foreground truncate">{a.ticker}</span>
+                            <div className="text-right shrink-0">
+                              <span className="font-mono text-foreground block">{tl(a.total_value || 0, 0)}</span>
+                              {gain != null && (
+                                <span className={`text-[10px] font-bold ${gain >= 0 ? "val-up" : "val-down"}`}>
+                                  {gain >= 0 ? "+" : ""}{tl(gain, 0)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}

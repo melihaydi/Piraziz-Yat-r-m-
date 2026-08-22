@@ -312,6 +312,21 @@ h1, h2, h3 {
 /* Dipnot / açıklama - bilinçli olarak geri çekilmiş */
 .t-caption { font-size: 0.75rem;  line-height: 1.5; color: hsl(var(--muted-foreground)); }
 
+/* Yukarıdaki ölçek masaüstü için kalibre edildi (spec'in 32-42px başlık/
+   18-22px bölüm başlığı istekleri). Telefonda - özellikle Android sarmalayıcı
+   uygulamada, tarayıcı sekmesinden daha dar/daha yüksek çözünürlüklü render
+   ediyor - aynı punto boyutları "her şey çok büyük" hissi veriyordu. Değerler
+   burada küçültülüyor, .t-display/.t-metric-lg'nin clamp() alt sınırı DEĞİL,
+   çünkü clamp zaten masaüstü için ayarlanmış; 640px altı tamamen ayrı bir
+   ölçek olarak ele alınıyor. */
+@media (max-width: 640px) {
+  .t-display   { font-size: 1.5rem; }
+  .t-metric-lg { font-size: 1.75rem; }
+  .t-metric    { font-size: 1.375rem; }
+  .t-metric-sm { font-size: 1rem; }
+  .t-section   { font-size: 1rem; }
+}
+
 /* --- Hareket katmanı -----------------------------------------------------
    Ölçüm: sayfadaki 468 öğeden HİÇBİRİ animasyonlu değildi, 45'i yalnızca
    hover geçişine sahipti. "Akıcı" hissinin kaybolduğu yer tam olarak burası:

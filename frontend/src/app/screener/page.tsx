@@ -15,6 +15,17 @@ import { authFetch } from "@/lib/auth"
 import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 
+// AI Skoru'ndan dürüst bir yön etiketi - backend'in calculate_ai_score_details'i
+// (score-details uç noktasının kaynağı) sonucu aynı eşiklerle Pozitif/Negatif/
+// Nötr'e ayırıyor (score>=70 Pozitif, <45 Negatif). Burada tablo satırı başına
+// score-details çağırmak 87 hisse için 87 istek demek olacağından, aynı eşiği
+// listede zaten var olan ai_score alanına uyguluyoruz - ekstra istek yok.
+function signalFromScore(score: number): "LONG" | "SHORT" | "NÖTR" {
+  if (score >= 70) return "LONG"
+  if (score < 45) return "SHORT"
+  return "NÖTR"
+}
+
 import { COMPARE_COLORS } from "@/lib/chartColors"
 
 // Karşılaştırma grafiği tembel yükleniyor - gerekçe bileşenin kendi
@@ -113,7 +124,8 @@ const StockRow = React.memo(function StockRow({
           </span>
         </div>
       </td>
-      <td className="px-4 text-muted-foreground truncate max-w-[120px]">{comp.sector}</td>
+      <td className="px-4 text-muted-foreground truncate max-w-[140px] hidden lg:table-cell">{comp.name}</td>
+      <td className="px-4 text-muted-foreground truncate max-w-[100px]">{comp.sector}</td>
       <td className="px-4 text-right font-mono font-bold">₺{comp.price.toFixed(2)}</td>
       <td className="px-4 text-right font-mono font-semibold">
         <span className={comp.change_percent >= 0 ? "val-up" : "val-down"}>
@@ -125,6 +137,20 @@ const StockRow = React.memo(function StockRow({
           {comp.ai_score}
         </span>
       </td>
+      <td className="px-4 text-center">
+        {(() => {
+          const sig = signalFromScore(comp.ai_score)
+          return (
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+              sig === "LONG" ? "bg-bull/10 text-bull border-bull/20" :
+              sig === "SHORT" ? "bg-bear/10 text-bear border-bear/20" :
+              "bg-secondary text-muted-foreground border-border"
+            }`}>
+              {sig}
+            </span>
+          )
+        })()}
+      </td>
     </tr>
   )
 }, (prev, next) => {
@@ -134,6 +160,7 @@ const StockRow = React.memo(function StockRow({
     prev.isCompared === next.isCompared &&
     prev.compareDisabled === next.compareDisabled &&
     prev.comp.ticker === next.comp.ticker &&
+    prev.comp.name === next.comp.name &&
     prev.comp.sector === next.comp.sector &&
     prev.comp.price === next.comp.price &&
     prev.comp.change_percent === next.comp.change_percent &&
@@ -174,6 +201,15 @@ export default function ScreenerPage() {
   const [chartSimulated, setChartSimulated] = useState(false)
   const [scoreDetails, setScoreDetails] = useState<any>(null)
   const [scoreLoading, setScoreLoading] = useState(false)
+
+  // Seçili hissenin GERÇEK günlük Açılış/En Yüksek/En Düşük/Önceki Kapanış
+  // bilgisi - grafiğin kendi seçili periyodundan (5dk/1sa/haftalık olabilir)
+  // BAĞIMSIZ, hep "1d" periyoduyla ayrıca çekiliyor. Aksi halde ör. periyot
+  // "1sa" iken son iki mumun kapanışını "bugün açılış/dün kapanış" diye
+  // göstermek yanlış olurdu - bir saat önceki fiyat, dünün kapanışı değildir.
+  const [dailyCandles, setDailyCandles] = useState<any[]>([])
+  const [marketSummary, setMarketSummary] = useState<any>({})
+  const [loadingSummary, setLoadingSummary] = useState(true)
 
   // Stock comparison state (2-5 stocks, matches the backend's GET /screener/compare cap)
   const [compareCodes, setCompareCodes] = useState<string[]>([])
@@ -410,6 +446,37 @@ export default function ScreenerPage() {
     };
   }, [selectedTicker, selectedTimeframe])
 
+  // Grafik periyodundan bağımsız, sabit günlük mumlar - yalnızca OHLC şeridi
+  // için (bkz. yukarıdaki dailyCandles yorumu).
+  useEffect(() => {
+    if (!selectedTicker) return
+    let active = true
+    authFetch(`/screener/chart/${selectedTicker}?interval=1d`)
+      .then(res => (res.ok ? res.json() : []))
+      .then(data => { if (active && Array.isArray(data)) setDailyCandles(data) })
+      .catch(err => console.error("Failed to load daily OHLC candles:", err))
+    return () => { active = false }
+  }, [selectedTicker])
+
+  // Sektör Performansı + En Çok Yükselenler/Düşenler kartları için - Header
+  // ve ana sayfayla AYNI uç nokta, sektör yüzdeleri her yerde tutarlı olsun.
+  useEffect(() => {
+    const fetchMarketSummary = () => {
+      authFetch(`/screener/market-summary`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.sectors) setMarketSummary(data)
+          setLoadingSummary(false)
+        })
+        .catch(err => {
+          console.error("Failed to load market summary:", err)
+          setLoadingSummary(false)
+        })
+    }
+    fetchMarketSummary()
+    return pollWhileVisibleAndOpen(fetchMarketSummary, 15000)
+  }, [])
+
   useEffect(() => {
     if (!selectedTicker) return
     setScoreLoading(true)
@@ -453,6 +520,44 @@ export default function ScreenerPage() {
     }
     return totals
   }, [scoreDetails])
+
+  // Bugünkü Açılış/En Yüksek/En Düşük/Önceki Kapanış - dailyCandles'ın son
+  // mumu bugünü, ondan önceki mum dünü temsil ediyor.
+  const ohlc = useMemo(() => {
+    if (dailyCandles.length === 0) return null
+    const today = dailyCandles[dailyCandles.length - 1]
+    const prev = dailyCandles.length > 1 ? dailyCandles[dailyCandles.length - 2] : null
+    return {
+      open: today.open,
+      high: today.high,
+      low: today.low,
+      prevClose: prev ? prev.close : null,
+    }
+  }, [dailyCandles])
+
+  // Seçili hissenin gerçek RSI/MACD/VWAP/SMA20/EMA20 anlık değerleri - grafiğin
+  // kendi mum verisinden (backend her mumda bu göstergeleri zaten hesaplayıp
+  // döndürüyor, bkz. screener.py /chart), uydurma bir "teknik gösterge" değil.
+  const liveIndicators = useMemo(() => {
+    if (chartData.length === 0) return null
+    const last = chartData[chartData.length - 1]
+    return {
+      rsi: last.rsi,
+      macd: last.macd,
+      macdSignal: last.macd_signal,
+      vwap: last.vwap,
+      sma20: last.sma20,
+      ema20: last.ema20,
+    }
+  }, [chartData])
+
+  // En Çok Yükselenler/Düşenler - ana sayfayla aynı yöntem, aynı ekranda
+  // zaten yüklü olan `companies` listesinden, ekstra istek yok.
+  const { gainers, losers } = useMemo(() => {
+    const withChange = companies.filter((s) => typeof s.change_percent === "number")
+    const sorted = [...withChange].sort((a, b) => b.change_percent - a.change_percent)
+    return { gainers: sorted.slice(0, 5), losers: sorted.slice(-5).reverse() }
+  }, [companies])
 
   // Dynamic Sector list extraction
   const sectorsList = useMemo(() => {
@@ -645,6 +750,9 @@ export default function ScreenerPage() {
                         <th className="px-4 cursor-pointer hover:text-foreground" onClick={() => handleSort("ticker")}>
                           Kod <ArrowUpDown className="inline h-3 w-3 ml-0.5" />
                         </th>
+                        <th className="px-4 cursor-pointer hover:text-foreground hidden lg:table-cell" onClick={() => handleSort("name")}>
+                          Şirket <ArrowUpDown className="inline h-3 w-3 ml-0.5" />
+                        </th>
                         <th className="px-4 cursor-pointer hover:text-foreground" onClick={() => handleSort("sector")}>
                           Sektör <ArrowUpDown className="inline h-3 w-3 ml-0.5" />
                         </th>
@@ -657,6 +765,7 @@ export default function ScreenerPage() {
                         <th className="px-4 text-center cursor-pointer hover:text-foreground" onClick={() => handleSort("ai_score")}>
                           AI Skoru <ArrowUpDown className="inline h-3 w-3 ml-0.5" />
                         </th>
+                        <th className="px-4 text-center">Sinyal</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -676,7 +785,7 @@ export default function ScreenerPage() {
                         ))
                       ) : (
                         <tr className="h-20">
-                          <td colSpan={7} className="text-center text-muted-foreground text-xs">
+                          <td colSpan={9} className="text-center text-muted-foreground text-xs">
                             Şirket bulunamadı.
                           </td>
                         </tr>
@@ -697,30 +806,47 @@ export default function ScreenerPage() {
             // panelin GÜNCELLENDİĞİNİ gösteren tek ipucu bu.
             <Card key={selectedStockDetails.ticker} glass={true} className="border-primary/20 animate-pop">
               <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <TickerLogo ticker={selectedTicker} size={28} />
-                    <div>
+                    <div className="min-w-0">
                       <CardTitle className="text-sm font-black line-clamp-1">{selectedStockDetails.name}</CardTitle>
                       <CardDescription className="text-[10px] mt-0.5">{selectedTicker} · {selectedStockDetails.sector}</CardDescription>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => router.push(`/stock/${selectedTicker}`)}
-                      title="Detaylı Şirket Analizi"
-                      className="flex items-center gap-1 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
-                    >
-                      <FileSearch className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Detaylı Analiz</span>
-                    </button>
-                    <button
-                      onClick={() => toggleFavorite(selectedTicker)}
-                      className="text-muted-foreground hover:text-warn transition-colors p-1"
-                    >
-                      <Star className={`h-5 w-5 ${favorites.includes(selectedTicker) ? "text-warn fill-warn" : ""}`} />
-                    </button>
+                  {/* AI Skoru - listedeki aynı ai_score alanı, sadece burada
+                      daha belirgin. Etiket signalFromScore ile aynı eşiği
+                      kullanıyor (>=70 BULLISH, <45 BEARISH, aksi NÖTR). */}
+                  <div className="text-right shrink-0">
+                    <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">AI Skoru</div>
+                    <div className="text-xl font-black font-mono text-primary leading-tight">
+                      {selectedStockDetails.ai_score}<span className="text-xs text-muted-foreground">/100</span>
+                    </div>
+                    <div className={`text-[10px] font-black tracking-wide ${
+                      signalFromScore(selectedStockDetails.ai_score) === "LONG" ? "text-bull" :
+                      signalFromScore(selectedStockDetails.ai_score) === "SHORT" ? "text-bear" : "text-muted-foreground"
+                    }`}>
+                      {signalFromScore(selectedStockDetails.ai_score) === "LONG" ? "BULLISH" :
+                       signalFromScore(selectedStockDetails.ai_score) === "SHORT" ? "BEARISH" : "NÖTR"}
+                    </div>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-1 mt-2.5">
+                  <button
+                    onClick={() => router.push(`/stock/${selectedTicker}`)}
+                    title="Detaylı Şirket Analizi"
+                    className="flex items-center gap-1 text-[10px] font-bold px-2 py-1.5 rounded-lg border border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 transition-colors cursor-pointer"
+                  >
+                    <FileSearch className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Detaylı Analiz</span>
+                  </button>
+                  <button
+                    onClick={() => toggleFavorite(selectedTicker)}
+                    className="text-muted-foreground hover:text-warn transition-colors p-1 ml-auto"
+                  >
+                    <Star className={`h-5 w-5 ${favorites.includes(selectedTicker) ? "text-warn fill-warn" : ""}`} />
+                  </button>
                 </div>
 
                 {/* Price Display */}
@@ -730,6 +856,26 @@ export default function ScreenerPage() {
                     {selectedStockDetails.change_percent >= 0 ? "+" : ""}{selectedStockDetails.change_percent.toFixed(2)}%
                   </span>
                 </div>
+
+                {/* OHLC şeridi - grafiğin seçili periyodundan bağımsız,
+                    hep gerçek günlük mumlardan (bkz. dailyCandles/ohlc). */}
+                {ohlc && (
+                  <div className="grid grid-cols-4 gap-2 mt-2.5 text-center">
+                    {[
+                      { label: "Açılış", val: ohlc.open },
+                      { label: "En Yüksek", val: ohlc.high },
+                      { label: "En Düşük", val: ohlc.low },
+                      { label: "Önceki Kapanış", val: ohlc.prevClose },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <div className="text-[8px] font-bold text-muted-foreground uppercase tracking-wide">{s.label}</div>
+                        <div className="text-[11px] font-mono font-bold text-foreground mt-0.5">
+                          {s.val != null ? `₺${Number(s.val).toFixed(2)}` : "-"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardHeader>
               
               <CardContent className="space-y-4">
@@ -786,10 +932,41 @@ export default function ScreenerPage() {
                     }`}>{selectedStockDetails.sentiment}</span>
                   </div>
                   <div className="bg-secondary/20 p-2 border border-border/30 rounded-lg">
-                    <span className="block text-[9px] text-muted-foreground uppercase font-bold">AI Skoru</span>
-                    <span className="font-bold text-primary mt-0.5 block font-mono">{selectedStockDetails.ai_score}/100</span>
+                    <span className="block text-[9px] text-muted-foreground uppercase font-bold">Piyasa Değeri</span>
+                    <span className="font-bold text-foreground mt-0.5 block font-mono">
+                      {selectedStockDetails.market_cap > 0
+                        ? `₺${(selectedStockDetails.market_cap / 1_000_000_000).toFixed(2)}B`
+                        : "-"}
+                    </span>
                   </div>
                 </div>
+
+                {/* Teknik Göstergeler - grafiğin son mumundan gerçek RSI/MACD/
+                    VWAP/SMA20/EMA20 (bkz. liveIndicators) - backend her mumda
+                    bu değerleri zaten hesaplıyor, sadece daha önce hiçbir yerde
+                    gösterilmiyordu. */}
+                {liveIndicators && (
+                  <div>
+                    <div className="t-label mb-1.5">Teknik Göstergeler</div>
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      {[
+                        { label: "RSI (14)", val: liveIndicators.rsi, tone: liveIndicators.rsi != null ? (liveIndicators.rsi >= 70 ? "val-down" : liveIndicators.rsi <= 30 ? "val-up" : "text-foreground") : "text-foreground" },
+                        { label: "MACD", val: liveIndicators.macd, tone: liveIndicators.macd != null && liveIndicators.macdSignal != null ? (liveIndicators.macd >= liveIndicators.macdSignal ? "val-up" : "val-down") : "text-foreground" },
+                        { label: "VWAP", val: liveIndicators.vwap, tone: "text-foreground" },
+                        { label: "SMA 20", val: liveIndicators.sma20, tone: "text-foreground" },
+                        { label: "EMA 20", val: liveIndicators.ema20, tone: "text-foreground" },
+                        { label: "MACD Sinyal", val: liveIndicators.macdSignal, tone: "text-foreground" },
+                      ].map(ind => (
+                        <div key={ind.label} className="bg-secondary/20 p-2 border border-border/30 rounded-lg">
+                          <span className="block text-[9px] text-muted-foreground uppercase font-bold">{ind.label}</span>
+                          <span className={`font-mono font-bold mt-0.5 block ${ind.tone}`}>
+                            {ind.val != null ? Number(ind.val).toFixed(2) : "-"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* AI Score Breakdown Panel */}
                 {scoreDetails && (
@@ -860,6 +1037,96 @@ export default function ScreenerPage() {
           )}
         </div>
 
+      </div>
+
+      {/* Alt özet şeridi - ana sayfayla aynı 3 kart, aynı veri/yöntem:
+          Sektör Performansı (market-summary), En Çok Yükselenler/Düşenler
+          (companies listesinden client-side sıralama). "En Çok İşlem
+          Görenler" bilerek YOK - ScreenerStockResponse şemasında gerçek bir
+          hacim alanı yok, uydurmaktansa hiç eklenmedi (bkz. app/page.tsx'teki
+          aynı karar). */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="bip-card">
+          <CardHeader className="p-4 pb-2.5">
+            <CardTitle className="t-section">Sektör Performansı</CardTitle>
+            <CardDescription className="text-xs">Günlük değişim</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2.5 p-4 pt-0">
+            {loadingSummary ? (
+              <div className="space-y-2.5">
+                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-4 w-full rounded" />)}
+              </div>
+            ) : marketSummary.sectors?.length > 0 ? (
+              marketSummary.sectors.map((s: any) => {
+                const pct = parseFloat(String(s.change).replace("%", "").replace(",", "."))
+                const width = Math.min(100, Math.abs(pct) * 18)
+                return (
+                  <div key={s.name}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-muted-foreground font-semibold">{s.name}</span>
+                      <span className={`font-mono font-bold ${s.up ? "val-up" : "val-down"}`}>{s.change}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-secondary/60 overflow-hidden">
+                      <div className={`h-full rounded-full ${s.up ? "bg-bull" : "bg-bear"}`} style={{ width: `${width}%` }} />
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <p className="text-center text-xs text-muted-foreground py-6">Sektör verisi alınamadı.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bip-card">
+          <CardHeader className="p-4 pb-2.5">
+            <CardTitle className="t-section">En Çok Yükselenler</CardTitle>
+            <CardDescription className="text-xs">Günlük</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1.5 p-4 pt-0">
+            {loading ? (
+              <Skeleton className="h-32 w-full rounded-lg" />
+            ) : gainers.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-4">Veri alınamadı.</p>
+            ) : gainers.map((s, i) => (
+              <div key={s.ticker} onClick={() => handleSelectTicker(s.ticker)} className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-muted-foreground w-3">{i + 1}</span>
+                  <span className="text-xs font-bold text-foreground">{s.ticker}</span>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono font-bold text-xs text-foreground block">₺{s.price.toFixed(2)}</span>
+                  <span className="val-up text-[11px] font-bold">+{s.change_percent.toFixed(2)}%</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="bip-card">
+          <CardHeader className="p-4 pb-2.5">
+            <CardTitle className="t-section">En Çok Düşenler</CardTitle>
+            <CardDescription className="text-xs">Günlük</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1.5 p-4 pt-0">
+            {loading ? (
+              <Skeleton className="h-32 w-full rounded-lg" />
+            ) : losers.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-4">Veri alınamadı.</p>
+            ) : losers.map((s, i) => (
+              <div key={s.ticker} onClick={() => handleSelectTicker(s.ticker)} className="flex items-center justify-between py-1.5 cursor-pointer hover:bg-secondary/40 rounded px-1.5 -mx-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-muted-foreground w-3">{i + 1}</span>
+                  <span className="text-xs font-bold text-foreground">{s.ticker}</span>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono font-bold text-xs text-foreground block">₺{s.price.toFixed(2)}</span>
+                  <span className="val-down text-[11px] font-bold">{s.change_percent.toFixed(2)}%</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Stock Comparison Dialog */}
