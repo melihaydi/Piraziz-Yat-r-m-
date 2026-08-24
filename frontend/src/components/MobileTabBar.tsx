@@ -101,7 +101,17 @@ export default function MobileTabBar({ onMoreClick, drawerOpen }: MobileTabBarPr
         // V2: Base yüzeyi (sürgü/üst çubukla aynı kademe) - içerik alanı
         // Workspace'te durduğu için çubuk ondan kendiliğinden ayrılıyor.
         "border-t border-border bg-background/95 backdrop-blur-md",
-        "pb-[env(safe-area-inset-bottom)]"
+        // Safe-area payı 8px'e sınırlandı. Çubuğun ARKAPLANI zaten
+        // bottom-0 ile ekranın gerçek alt kenarına kadar iniyor (body
+        // layout.tsx'te `fixed inset-0`, yani viewport hesabı doğru) -
+        // buradaki dolgu sadece SEKMELERİ home-indicator'dan yukarı
+        // itiyor. Ham env() iPhone'da 34px döndürüyor ve simgeleri ekranın
+        // altından bir parmak boyu yukarıda bırakıyordu ("aşırı yukarı
+        // taşmış"). 8px, dokunma hedeflerini indicator'ın üstünde tutmaya
+        // yetiyor ama o boşluğu görünür olmaktan çıkarıyor. AppChrome'daki
+        // main dolgusu da aynı sınırı kullanıyor, yoksa içeriğin altında
+        // artık var olmayan bir yüksekliğe ayrılmış boşluk kalırdı.
+        "pb-[min(env(safe-area-inset-bottom),8px)]"
       )}
       aria-label="Birincil gezinme"
     >

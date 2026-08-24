@@ -50,7 +50,21 @@ services:
       dockerfile: Dockerfile
     container_name: bip_backend
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    # --forwarded-allow-ips: uvicorn's ProxyHeadersMiddleware is on by
+    # default but only trusts X-Forwarded-For from 127.0.0.1, and Caddy is
+    # a SEPARATE container reaching us over the Docker bridge (172.x.x.x).
+    # So the header was ignored and request.client.host was Caddy's own IP
+    # on every request - meaning slowapi saw one single client for the
+    # entire userbase and rate-limited everyone against one shared bucket
+    # (see app/core/limiter.py). "*" is safe specifically here because this
+    # service publishes NO host ports: Caddy is the only possible ingress,
+    # so nothing untrusted can reach uvicorn to spoof the header.
+    # Liste (exec) formu bilerek: string formu shlex ile bölünüyor ve
+    # tırnakların nasıl sıyrıldığı gözle görülmüyor - "*" yanlışlıkla
+    # tırnaklarıyla birlikte geçerse trusted_hosts hiçbir şeyle eşleşmez ve
+    # düzeltme sessizce çalışmamış olurdu. Liste formunda kabuk hiç devrede
+    # değil, uvicorn argümanı birebir alıyor.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--forwarded-allow-ips", "*"]
     env_file:
       - .env
     volumes:

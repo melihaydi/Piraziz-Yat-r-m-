@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
-import { PieChart, Loader2, ShieldAlert, Plus, Trash2, RotateCcw, Save, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { PieChart, Loader2, ShieldAlert, Plus, Trash2, RotateCcw, Save, AlertTriangle, CheckCircle2, ArrowDownWideNarrow } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -26,6 +26,31 @@ interface FundComposition {
 // admin/managed-portfolios/page.tsx ve portfolio/page.tsx'teki parseTLAmount
 // ile aynı desen.
 const parsePct = (raw: string): number => parseFloat(raw.trim().replace(",", "."))
+
+/**
+ * Ağırlığı en yüksek varlık en üstte. TEFAS'ın (ve kaydedilmiş
+ * override'ların) döndürdüğü sıra keyfi olabiliyor, oysa dağılımı elle
+ * ayarlarken önce büyük payları görmek gerekiyor - %0,3'lük bir kalemi
+ * kovalarken %22'lik olanı listenin dibinde aramak zaman kaybı.
+ *
+ * Bilerek SADECE fon açılırken ve "Sırala" tuşuna basınca çalışıyor, her
+ * tuş vuruşunda değil: canlı sıralama, kullanıcı bir değeri yazarken
+ * satırı imlecinin altından kaydırıp yanlış kutuya yazmasına yol açardı.
+ *
+ * Henüz sayı girilmemiş (yeni eklenmiş, boş) satırlar en sona düşüyor -
+ * yoksa "Satır Ekle" ile açılan boş satır listenin ortasında kaybolurdu.
+ */
+const sortByWeightDesc = (list: { name: string; value: string }[]) =>
+  [...list].sort((a, b) => {
+    const av = parsePct(a.value)
+    const bv = parsePct(b.value)
+    const aOk = Number.isFinite(av)
+    const bOk = Number.isFinite(bv)
+    if (!aOk && !bOk) return 0
+    if (!aOk) return 1
+    if (!bOk) return -1
+    return bv - av
+  })
 
 export default function FundCompositionsPage() {
   const [checkingAccess, setCheckingAccess] = useState(true)
@@ -79,7 +104,7 @@ export default function FundCompositionsPage() {
 
   const selectFund = (f: FundComposition) => {
     setSelectedCode(f.fund_code)
-    setRows(f.assets_distribution.map(h => ({ name: h.name, value: String(h.value).replace(".", ",") })))
+    setRows(sortByWeightDesc(f.assets_distribution.map(h => ({ name: h.name, value: String(h.value).replace(".", ",") }))))
     setAsOf(f.as_of || "")
     setError(null)
   }
@@ -296,6 +321,25 @@ export default function FundCompositionsPage() {
                       Yine de kaydedebilirsiniz, engellenmiyor.
                     </p>
                   )}
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
+                      Varlık / Ağırlık
+                    </span>
+                    {/* Fon açılırken liste zaten sıralı geliyor; bu tuş,
+                        elle değer değiştirdikten sonra sırayı tazelemek
+                        için - her tuş vuruşunda otomatik sıralamamamızın
+                        sebebi sortByWeightDesc'in başındaki nota bakın. */}
+                    <button
+                      type="button"
+                      onClick={() => setRows(prev => sortByWeightDesc(prev))}
+                      disabled={rows.length < 2}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border/40 bg-secondary/30 text-[10px] font-bold text-muted-foreground hover:text-foreground hover:border-border disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                    >
+                      <ArrowDownWideNarrow className="h-3 w-3" />
+                      Ağırlığa göre sırala
+                    </button>
+                  </div>
 
                   <div className="space-y-1.5">
                     {rows.map((r, idx) => (
