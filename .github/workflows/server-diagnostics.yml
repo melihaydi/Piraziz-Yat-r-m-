@@ -30,6 +30,4 @@ jobs:
             echo "=== docker stats (snapshot) ===" && sudo docker stats --no-stream
             echo "=== backend logs (last 200 lines) ===" && cd /home/ubuntu/bip && sudo docker compose logs --tail=200 backend
             echo "=== backend health from inside server ===" && curl -sS -o /dev/null -w "http_code=%{http_code} time_total=%{time_total}s\n" https://api.bipterminal.com/health
-            echo "=== TEFAS reachability probe (from server, TEFAS fon fiyatlari yanlis teshisi) ===" && curl -v -sS --max-time 15 -X POST "https://www.tefas.gov.tr/api/funds/fonGnlBlgSiraliGetir" -H "Content-Type: application/json" -H "Origin: https://www.tefas.gov.tr" -H "Referer: https://www.tefas.gov.tr/tr/fon-verileri" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36" -d "{\"fontip\":\"YAT\",\"bastarih\":\"24.08.2026\",\"bittarih\":\"24.08.2026\"}" 2>&1 | tail -60
-            echo "=== outbound IP as seen by the internet ===" && curl -sS --max-time 10 https://api.ipify.org
           '
