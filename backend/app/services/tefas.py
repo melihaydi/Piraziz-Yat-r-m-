@@ -494,6 +494,22 @@ class TefasService:
         self._snapshot_cache_days = 0
         self._snapshot_fetched_at = datetime.datetime.min
         self._snapshot_ttl = timedelta(minutes=10)
+        # Which of TEFAS_FUND_KINDS came back empty/erroring on the most
+        # recent actual fetch (set by _fetch_tefas_snapshot). YAT alone is
+        # ~14k rows vs a few hundred-to-few-thousand for the other kinds, and
+        # confirmed live in production: it times out/RemoteDisconnects often
+        # enough that _fetch_prices_sync used to treat "some funds updated"
+        # as "refresh succeeded" and mark _last_refresh as current - meaning
+        # every fund whose ONLY kind is YAT (e.g. THF, DOH) got silently
+        # reset to its static July-2026 FALLBACKS price and then never
+        # retried again until the next full hour, even while every other
+        # fund's real price kept updating normally. Confirmed live: 16 of 25
+        # funds were stuck on stale FALLBACKS values in production. Now used
+        # by _fetch_prices_sync to (a) not overwrite a fund's last known-real
+        # price with the static fallback just because THIS run's kind
+        # failed, and (b) not mark the whole refresh as complete while a
+        # kind is still failing, so it gets retried sooner.
+        self._snapshot_failed_kinds: set = set()
         # Separate from self._lock (which only ever guards fast in-memory
         # state updates) - held for the full duration of an actual TEFAS
         # network fetch, so a second caller that also misses the cache
@@ -518,6 +534,14 @@ class TefasService:
         self._drift_factors: Dict[str, float] = {}
         self._drift_factors_built_at = datetime.datetime.min
         self._is_building_drift = False
+
+        # Codes that have received at least one REAL TEFAS price since this
+        # process started. _fetch_prices_sync consults this so a run where
+        # this code's kind failed (see _snapshot_failed_kinds above) leaves
+        # the fund's last known-real price in place instead of stomping it
+        # with the static FALLBACKS placeholder - that placeholder is only
+        # correct as a first-ever value before any real data has arrived.
+        self._funds_with_real_data: set = set()
 
         for code, info in BASE_FUNDS.items():
             f = FALLBACKS[code]
@@ -739,6 +763,18 @@ class TefasService:
                     series.append((date_str, price, row.iloc[0].get("fund_name")))
 
                 if not series:
+                    # Only stamp the static placeholder in if this code has
+                    # NEVER had a real price yet (fresh process, before its
+                    # first successful fetch). Once real data has arrived at
+                    # least once, a day where its kind's fetch failed (see
+                    # _snapshot_failed_kinds) should leave the last known-real
+                    # price in place - overwriting it here with a static
+                    # July-2026 reference price is what caused 16 of 25 funds
+                    # to intermittently show a wildly wrong price/return
+                    # whenever YAT (the largest, most failure-prone kind)
+                    # timed out on a given run, confirmed live in production.
+                    if code in self._funds_with_real_data:
+                        continue
                     fb = FALLBACKS.get(code, {"price": 1.0, "daily": 0.0, "weekly": 0.0, "monthly": 0.0})
                     with self._lock:
                         self._cached_funds[code] = {
@@ -752,6 +788,7 @@ class TefasService:
                         }
                     continue
 
+                self._funds_with_real_data.add(code)
                 price_latest = series[0][1]
                 name = series[0][2] or meta.get("name", f"{code} Fonu")
 
@@ -778,9 +815,26 @@ class TefasService:
                 any_fund_updated = True
 
             if any_fund_updated:
-                logger.info("TEFAS real prices and returns updated successfully via pytefas fetch.")
-                with self._lock:
-                    self._last_refresh = datetime.datetime.now()
+                if self._snapshot_failed_kinds:
+                    # Do NOT advance _last_refresh here - some funds got
+                    # real updates but at least one kind (e.g. YAT) failed
+                    # outright this run, so the funds that live only under
+                    # that kind are still on stale/fallback data. Leaving
+                    # _last_refresh where it was means get_funds()'s own
+                    # staleness check (below) and the next scheduler tick
+                    # both retry again soon instead of waiting out the full
+                    # _refresh_interval on the mistaken belief that
+                    # everything just got refreshed.
+                    logger.warning(
+                        f"TEFAS prices partially updated - kind(s) "
+                        f"{sorted(self._snapshot_failed_kinds)} failed this run, "
+                        "will retry sooner rather than waiting a full "
+                        f"{self._refresh_interval}."
+                    )
+                else:
+                    logger.info("TEFAS real prices and returns updated successfully via pytefas fetch.")
+                    with self._lock:
+                        self._last_refresh = datetime.datetime.now()
                 self._persist_cache()
         except Exception as e:
             logger.error(f"Error fetching TEFAS prices/returns: {e}")
@@ -1040,6 +1094,12 @@ class TefasService:
         partway through and silently left returns/charts on stale data - this
         cuts a typical run to ~10-15 requests total.
         Returns {date_str: combined_df_for_that_date}.
+
+        Also records which kinds failed this run in self._snapshot_failed_kinds
+        (a whole-`kind` failure, e.g. YAT's own pytefas retries all timing
+        out with RemoteDisconnected) - see that attribute's docstring in
+        __init__ for why _fetch_prices_sync needs to know this, rather than
+        just seeing "some funds updated" and assuming everything is fine.
         """
         from pytefas import Crawler
         import datetime as dt
@@ -1051,6 +1111,7 @@ class TefasService:
         start_date = end_date - dt.timedelta(days=int(days * 1.6) + 10)
 
         per_day_df: Dict[str, Any] = {}
+        failed_kinds: set = set()
         for kind in TEFAS_FUND_KINDS:
             try:
                 df = crawler.fetch(
@@ -1061,14 +1122,17 @@ class TefasService:
                 )
             except Exception as e:
                 logger.warning(f"TEFAS range fetch failed for kind {kind}: {e}")
+                failed_kinds.add(kind)
                 continue
             if df is None or df.empty or "date" not in df.columns or "fund_code" not in df.columns:
+                failed_kinds.add(kind)
                 continue
             for date_val, group in df.groupby("date"):
                 date_str = pd.Timestamp(date_val).strftime("%Y-%m-%d")
                 existing = per_day_df.get(date_str)
                 per_day_df[date_str] = group if existing is None else pd.concat([existing, group], ignore_index=True)
 
+        self._snapshot_failed_kinds = failed_kinds
         return per_day_df
 
     def start_daily_scheduler(self, hour: int = 19, minute: int = 30):

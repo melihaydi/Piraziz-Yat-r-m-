@@ -145,6 +145,65 @@ TradingViewStream.subscribe_chart = patched_subscribe_chart
 
 logger = logging.getLogger(__name__)
 
+# Monkeypatch TradingViewStream._on_open/_reconnect: borsapy==0.10.2's
+# _on_open unconditionally resets the reconnect-attempt counter to 0 the
+# instant the raw WebSocket handshake succeeds, even if TradingView closes
+# the connection again a moment later (its own auth/session setup rejecting
+# us - e.g. a stale auth_token, since a refreshed one from
+# deploy/refresh_tv_auth_token.sh only takes effect on the backend's NEXT
+# restart, so it can sit stale for hours while the process keeps running).
+# When that happens the connection flaps: open -> counter reset to 0 ->
+# closed almost immediately -> reconnect with delay=2**0=1s -> repeat
+# forever. Confirmed live in production logs: dozens of open/close cycles
+# inside 15 seconds, with TradingView periodically answering with an
+# explicit 429 because of how often we were hammering it - a self-inflicted
+# loop that never gives the connection a stable-enough window to actually
+# carry real quote data, which is a plausible contributor to reports of
+# stale/degraded prices.
+#
+# Fixed by tracking our OWN "was the last connection actually stable" state,
+# independent of borsapy's own (buggy) counter, and only resetting the
+# backoff once a connection has survived _RECONNECT_STABLE_SECONDS. Also
+# drops borsapy's permanent give-up after MAX_RECONNECT_ATTEMPTS (10) - a
+# live financial data feed going dark forever until someone manually
+# restarts the container is worse than continuing to retry at the capped
+# delay indefinitely.
+_RECONNECT_STABLE_SECONDS = 10.0
+_RECONNECT_MAX_DELAY = 30.0  # matches borsapy's own MAX_RECONNECT_DELAY
+
+_original_on_open = TradingViewStream._on_open
+
+
+def patched_on_open(self, ws) -> None:
+    _original_on_open(self, ws)
+    self._flap_connected_at = time.time()
+
+
+def patched_reconnect(self) -> None:
+    if not hasattr(self, "_flap_attempts"):
+        self._flap_attempts = 0
+
+    now = time.time()
+    was_stable = (
+        getattr(self, "_flap_connected_at", None) is not None
+        and now - self._flap_connected_at >= _RECONNECT_STABLE_SECONDS
+    )
+    if was_stable:
+        self._flap_attempts = 0
+
+    delay = min(_RECONNECT_MAX_DELAY, 2 ** self._flap_attempts)
+    self._flap_attempts += 1
+    logger.info(
+        f"TradingView reconnecting in {delay:.0f}s "
+        f"(attempt {self._flap_attempts}, previous connection was stable={was_stable})"
+    )
+    time.sleep(delay)
+    self._start_websocket()
+
+
+TradingViewStream._on_open = patched_on_open
+TradingViewStream._reconnect = patched_reconnect
+
 # Symbols with a recent "bedelsiz sermaye artırımı" (bonus/rights share
 # issue) whose ratio TradingView's LIVE quote feed hasn't applied yet. The
 # chart/candle feed is requested with adjustment="splits" (see
