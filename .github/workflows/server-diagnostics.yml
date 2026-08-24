@@ -9,6 +9,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  tefas-runner-probe:
+    # GECİCİ: TEFAS prod sunucumuzun IP'sini (92.5.160.231) sessizce
+    # engellediği kanıtlandı (TLS handshake tam başarılı, HTTP isteği tam
+    # gönderiliyor, TEFAS "Empty reply from server" ile bağlantıyı kesiyor).
+    # Bu, GitHub'ın kendi runner'ının (Azure barındırmalı, farklı IP/ASN)
+    # aynı engele takılıp takılmadığını görmek için - eğer TEFAS'a
+    # buradan ulaşılabiliyorsa, periyodik bir GitHub Actions cron job'ı
+    # veriyi buradan çekip backend'e aktarabilir (relay), sunucu IP'si
+    # değişmeden. Sonuç netleşince bu job kaldırılacak.
+    runs-on: ubuntu-latest
+    steps:
+      - name: TEFAS'a GitHub runner üzerinden erişim testi
+        run: |
+          echo "=== outbound IP (GitHub runner) ===" && curl -sS --max-time 10 https://api.ipify.org
+          echo ""
+          echo "=== TEFAS reachability from GitHub runner ===" && curl -v -sS --max-time 15 -X POST "https://www.tefas.gov.tr/api/funds/fonGnlBlgSiraliGetir" -H "Content-Type: application/json" -H "Origin: https://www.tefas.gov.tr" -H "Referer: https://www.tefas.gov.tr/tr/fon-verileri" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36" -d '{"fontip":"YAT","bastarih":"24.08.2026","bittarih":"24.08.2026"}' 2>&1 | tail -80
+
   diagnostics:
     runs-on: ubuntu-latest
     steps:
