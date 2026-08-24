@@ -276,8 +276,34 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             backend/ "$SERVER_USER@$SERVER_HOST:/home/ubuntu/bip/backend/"
 
+          # Altyapı dosyasını da taşı. docker-compose.prod.yml sunucuda
+          # /home/ubuntu/bip/docker-compose.yml olarak duruyor ve şimdiye
+          # kadar YALNIZCA elle güncelleniyordu - yukarıdaki rsync sadece
+          # backend/ alt ağacını kopyalıyor. Bunun sonucu sinsi: bu dosyadaki
+          # bir düzeltme git'e girdiği anda "deploy edildi" sanılıyor, oysa
+          # sunucuda hiçbir etkisi olmuyordu. Somut örnek, bu değişikliğin
+          # sebebi: uvicorn'a --forwarded-allow-ips eklenmesi (bkz. o
+          # dosyadaki not) commit'lense de canlıda asla devreye girmezdi.
+          #
+          # Üzerine yazmadan önce fark loglanıyor ve zaman damgalı bir yedek
+          # alınıyor - sunucudaki kopya geçmişte elle düzenlenip sonradan
+          # git'e geri çekilmişti, yani tekrar sapmış olma ihtimali gerçek.
+          # Sapma varsa deploy çıktısında diff olarak görünür ve yedekten
+          # anında geri alınabilir; sessizce kaybolmaz.
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            docker-compose.prod.yml "$SERVER_USER@$SERVER_HOST:/tmp/docker-compose.new.yml"
+
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" '
             cd /home/ubuntu/bip &&
+            if diff -u docker-compose.yml /tmp/docker-compose.new.yml; then
+              echo "docker-compose.yml zaten guncel, dokunulmadi."
+              rm -f /tmp/docker-compose.new.yml
+            else
+              BAK="docker-compose.yml.bak-$(date +%F-%H%M%S)" &&
+              echo "--- Yukaridaki fark uygulaniyor. Yedek: $BAK ---" &&
+              cp docker-compose.yml "$BAK" &&
+              mv /tmp/docker-compose.new.yml docker-compose.yml
+            fi &&
             sudo docker compose build backend &&
             sudo docker compose up -d backend &&
             sleep 8 &&
