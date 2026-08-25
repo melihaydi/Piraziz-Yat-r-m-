@@ -22,6 +22,7 @@ from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
 from app.services import portfolio_ledger
 from app.services.portfolio_analytics import compute_portfolio_analytics
+from app.services import inflation
 from app.core.redis import cache_service
 
 logger = logging.getLogger(__name__)
@@ -288,10 +289,28 @@ def get_portfolio_history(
             .all()
         )
 
+    performance = portfolio_ledger.compute_time_weighted_return(history, transactions)
+
+    # Reel getiri: nominal TWR tek başına yanıltıcı - Türkiye'de %30 kazanç
+    # TÜFE %40 iken aslında kayıptır. TCMB'nin resmi enflasyon hesaplayıcısı
+    # (app/services/inflation.py) ay hassasiyetinde çalıştığı için history'nin
+    # ilk günü bir aydan az önceyse (yeni açılmış portföy) None döner - bu
+    # beklenen bir durum, hata değil.
+    real_return = None
+    if performance and history:
+        start_date = datetime.fromisoformat(history[0]["date"]).date()
+        end_date = datetime.now().date()
+        real_return = inflation.real_return_summary(performance["twr_pct"], start_date, end_date)
+        if real_return is not None:
+            real_return["deposit_alt_pct"] = inflation.deposit_alt_return_pct(start_date, end_date)
+            real_return["usd_alt_pct"] = inflation.alt_asset_return_pct("USD", start_date)
+            real_return["gold_alt_pct"] = inflation.alt_asset_return_pct("gram-altin", start_date)
+
     return {
         "history": history,
         "benchmark": _benchmark_series(history),
-        "performance": portfolio_ledger.compute_time_weighted_return(history, transactions),
+        "performance": performance,
+        "real_return": real_return,
     }
 
 

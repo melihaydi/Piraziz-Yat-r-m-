@@ -149,6 +149,7 @@ export default function PortfolioPage() {
   const [equityHistory, setEquityHistory] = useState<{ date: string; total_value: number }[]>([])
   const [benchmark, setBenchmark] = useState<{ date: string; index_change_pct: number }[]>([])
   const [performance, setPerformance] = useState<any>(null)
+  const [realReturn, setRealReturn] = useState<any>(null)
   const [equityHistoryLoading, setEquityHistoryLoading] = useState(true)
   const [loading, setLoading] = useState(true)
   const [liveEstimate, setLiveEstimate] = useState<any>(null)
@@ -327,6 +328,7 @@ export default function PortfolioPage() {
         setEquityHistory(data.history || [])
         setBenchmark(data.benchmark || [])
         setPerformance(data.performance || null)
+        setRealReturn(data.real_return || null)
       }
     } catch (err) {
       console.error("Failed to load portfolio equity history:", err)
@@ -1883,6 +1885,73 @@ export default function PortfolioPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Reel getiri: Türkiye'de nominal getiri tek başına yanıltıcı -
+              %30 kazanmış görünmek, TÜFE %40 iken aslında kayıptır. TCMB'nin
+              resmi enflasyon hesaplayıcısına göre (backend/app/services/
+              inflation.py). realReturn null ise (yeni açılmış portföyde bir
+              aydan az geçmiş, ya da TCMB'ye erişilemedi) kart hiç basılmıyor -
+              yarım/yanlış bir sayı göstermektense göstermemek tercih edildi. */}
+          {realReturn && (
+            <Card glass={true}>
+              <CardHeader>
+                <CardTitle className="t-section">Reel Getiri</CardTitle>
+                <CardDescription>
+                  Nominal getirinizin enflasyon ve alternatif yatırım araçlarına göre karşılığı
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-border/40 bg-secondary/30 px-3 py-2.5">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Nominal</div>
+                    <div className={`text-lg font-extrabold ${realReturn.nominal_pct >= 0 ? "text-bull" : "text-bear"}`}>
+                      {realReturn.nominal_pct >= 0 ? "+" : ""}{realReturn.nominal_pct.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2.5">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Reel (TÜFE'ye göre)</div>
+                    <div className={`text-lg font-extrabold ${realReturn.real_pct >= 0 ? "text-bull" : "text-bear"}`}>
+                      {realReturn.real_pct >= 0 ? "+" : ""}{realReturn.real_pct.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/40 bg-secondary/30 px-3 py-2.5">
+                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">TÜFE (aynı dönem)</div>
+                    <div className="text-lg font-extrabold text-foreground">
+                      +{realReturn.tufe_pct.toFixed(2)}%
+                    </div>
+                  </div>
+                  {realReturn.usd_alt_pct != null && (
+                    <div className="rounded-lg border border-border/40 bg-secondary/30 px-3 py-2.5">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Aynı Süre Dolarda</div>
+                      <div className={`text-lg font-extrabold ${realReturn.usd_alt_pct >= 0 ? "text-bull" : "text-bear"}`}>
+                        {realReturn.usd_alt_pct >= 0 ? "+" : ""}{realReturn.usd_alt_pct.toFixed(2)}%
+                      </div>
+                    </div>
+                  )}
+                  {realReturn.gold_alt_pct != null && (
+                    <div className="rounded-lg border border-border/40 bg-secondary/30 px-3 py-2.5">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Aynı Süre Altında</div>
+                      <div className={`text-lg font-extrabold ${realReturn.gold_alt_pct >= 0 ? "text-bull" : "text-bear"}`}>
+                        {realReturn.gold_alt_pct >= 0 ? "+" : ""}{realReturn.gold_alt_pct.toFixed(2)}%
+                      </div>
+                    </div>
+                  )}
+                  {realReturn.deposit_alt_pct != null && (
+                    <div className="rounded-lg border border-border/40 bg-secondary/30 px-3 py-2.5">
+                      <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Aynı Süre Mevduatta (tahmini)</div>
+                      <div className={`text-lg font-extrabold ${realReturn.deposit_alt_pct >= 0 ? "text-bull" : "text-bear"}`}>
+                        {realReturn.deposit_alt_pct >= 0 ? "+" : ""}{realReturn.deposit_alt_pct.toFixed(2)}%
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-3">
+                  TÜFE, TCMB'nin resmi enflasyon hesaplayıcısından alınır. Mevduat karşılaştırması piyasa ortalamasına
+                  yakın tek bir sabit faiz varsayımı kullanır, kesin bir simülasyon değildir.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="varliklar" className="mt-6 space-y-6">
