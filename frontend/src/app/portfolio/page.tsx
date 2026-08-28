@@ -155,7 +155,9 @@ export default function PortfolioPage() {
   const [liveEstimate, setLiveEstimate] = useState<any>(null)
   const [liveEstimateLoading, setLiveEstimateLoading] = useState(false)
   const [showLiveEstimate, setShowLiveEstimate] = useState(false)
-  const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur">("hisse")
+  const [distributionTab, setDistributionTab] = useState<"hisse" | "sektor" | "tur" | "gercek">("hisse")
+  const [lookThrough, setLookThrough] = useState<any>(null)
+  const [lookThroughLoading, setLookThroughLoading] = useState(true)
 
   // Guards the auto-create-default-portfolio POST below from firing twice
   // concurrently (e.g. loadData re-entering before the first POST resolves),
@@ -370,11 +372,30 @@ export default function PortfolioPage() {
     }
   }
 
+  // "Gerçek Dağılım" (look-through) - fonların içindeki hisseleri doğrudan
+  // tutulan hisselerle birleştiren gerçek maruziyet, ayrı bir uç noktadan
+  // geliyor çünkü diğer analytics çağrılarından bağımsız (fon kompozisyonu
+  // çözümü) bir maliyeti var.
+  const loadLookThrough = async () => {
+    setLookThroughLoading(true)
+    try {
+      const res = await authFetch("/portfolio/look-through")
+      if (res.ok) {
+        setLookThrough(await res.json())
+      }
+    } catch (err) {
+      console.error("Failed to load portfolio look-through:", err)
+    } finally {
+      setLookThroughLoading(false)
+    }
+  }
+
   const loadData = () => {
     loadCore()
     loadAnalytics()
     loadEquityHistory()
     loadLedger()
+    loadLookThrough()
   }
 
   // Seçili portföyü hatırla / geçersizse geri düş. Silinen bir portföyün
@@ -595,8 +616,24 @@ export default function PortfolioPage() {
     }))
   }, [analytics])
 
+  // Look-through dağılımı - backend zaten TL değere göre azalan sıralı
+  // döndürüyor (bkz. portfolio_ledger.compute_look_through_exposure), renk
+  // ataması diğer sekmelerle aynı COLORS paletinden.
+  const lookThroughPieData = React.useMemo(() => {
+    const rows = lookThrough?.holdings || []
+    return rows.map((r: any, idx: number) => ({
+      name: r.ticker,
+      value: Math.round(r.value),
+      color: COLORS[idx % COLORS.length],
+      concentrationFlag: r.concentration_flag,
+    }))
+  }, [lookThrough])
+
   const distributionData =
-    distributionTab === "hisse" ? pieData : distributionTab === "sektor" ? sectorPieData : assetTypePieData
+    distributionTab === "hisse" ? pieData
+    : distributionTab === "sektor" ? sectorPieData
+    : distributionTab === "gercek" ? lookThroughPieData
+    : assetTypePieData
 
   // Winners/losers are real per-asset profit figures (unchanged). Sharpe/Beta/
   // volatility now come from `analytics` (real historical daily returns vs
@@ -2430,12 +2467,29 @@ export default function PortfolioPage() {
                   >
                     Tür
                   </button>
+                  <button
+                    onClick={() => setDistributionTab("gercek")}
+                    className={`text-[11px] font-black px-2 py-1 rounded transition-all cursor-pointer ${
+                      distributionTab === "gercek" ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Gerçek
+                  </button>
                 </div>
               </div>
+              {distributionTab === "gercek" && (
+                <CardDescription className="text-xs">
+                  Fonların içindeki hisseler, doğrudan tuttuklarınla birleştirildi
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent className="flex flex-col items-center">
               <div className="h-48 w-full">
-                {distributionTab !== "hisse" && analyticsLoading ? (
+                {(distributionTab === "sektor" || distributionTab === "tur") && analyticsLoading ? (
+                  <div className="h-full flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                  </div>
+                ) : distributionTab === "gercek" && lookThroughLoading ? (
                   <div className="h-full flex items-center justify-center">
                     <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
                   </div>
@@ -2453,12 +2507,23 @@ export default function PortfolioPage() {
                       <div className="flex items-center text-muted-foreground">
                         <span className="h-2.5 w-2.5 rounded-full mr-2" style={{ backgroundColor: entry.color }} />
                         <span className="truncate max-w-[120px]">{entry.name}</span>
+                        {distributionTab === "gercek" && entry.concentrationFlag && (
+                          <span className="ml-1.5 text-[9px] font-black uppercase tracking-wide text-bear bg-bear/10 px-1.5 py-0.5 rounded">
+                            Yoğun
+                          </span>
+                        )}
                       </div>
                       <span className="font-mono text-foreground">{pct}%</span>
                     </div>
                   )
                 })}
               </div>
+              {distributionTab === "gercek" && lookThroughPieData.some((e: any) => e.concentrationFlag) && (
+                <div className="w-full mt-3 text-[11px] text-muted-foreground bg-bear/5 border border-bear/20 rounded-lg px-3 py-2">
+                  <span className="font-black text-bear">Konsantrasyon uyarısı:</span> "Yoğun" işaretli tickerlara maruziyetinin
+                  %15&apos;ten fazlası SADECE tuttuğun fonlar üzerinden geliyor - farkında olmadan aynı hisseye çok yoğunlaşmış olabilirsin.
+                </div>
+              )}
             </CardContent>
           </Card>
 

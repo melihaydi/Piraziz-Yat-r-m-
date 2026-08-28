@@ -578,6 +578,35 @@ def get_portfolio_live_estimate(
     }
 
 
+@router.get("/look-through")
+def get_portfolio_look_through(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
+    """"Gerçek Dağılım" (look-through) - kullanıcının tuttuğu fonların
+    İÇİNDEKİ hisseleri, doğrudan tuttuğu hisselerle birleştirerek her
+    tickera olan TOPLAM (doğrudan + fonlar üzerinden dolaylı) maruziyeti
+    gösterir. Örn. hem THYAO hem THYAO ağırlıklı bir fon tutan bir kullanıcı,
+    fon sekmesinde bunu göremez - bu endpoint ikisini birleştirir.
+
+    Fon holding'lerinin açılımı tefas_service.get_live_estimated_return()'ün
+    zaten hesapladığı drift-ayarlı ağırlık listesini kullanır (yeniden bir
+    kompozisyon hesabı yapılmaz), bkz. portfolio_ledger.compute_look_through_exposure.
+    """
+    portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
+    all_assets = [asset for p in portfolios for asset in p.assets]
+
+    if not all_assets:
+        return {"total_value": 0.0, "resolved_value_pct": 0.0, "holdings": []}
+
+    tickers = sorted({a.ticker.upper() for a in all_assets})
+    with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
+        price_by_ticker = dict(zip(tickers, pool.map(lambda t: _fetch_live_price(t, delay), tickers)))
+
+    return portfolio_ledger.compute_look_through_exposure(all_assets, price_by_ticker)
+
+
 @router.post("/", response_model=PortfolioResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 def create_portfolio(

@@ -13,15 +13,23 @@ yüzden aynı çağrıda yapılıyorlar.
 """
 import logging
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import PortfolioAsset
 from app.models.portfolio_transaction import PortfolioTransaction
+from app.services.tefas import tefas_service
 
 logger = logging.getLogger(__name__)
+
+# Bir tickerin sadece FONLAR ÜZERİNDEN gelen (dolaylı) payı bu eşiği
+# geçerse "konsantrasyon" olarak flaglenir - kullanıcı 3 farklı fon tutuyor
+# sanıp aslında hepsinin aynı büyük hisseye (ör. THYAO) yoğun şekilde maruz
+# kaldığını fark etmiyor olabilir; bu tam da look-through'un çözmeye
+# çalıştığı kör nokta.
+_CONCENTRATION_THRESHOLD_PCT = 15.0
 
 # Uygulamanın "gün" kavramı İstanbul saatine göre: günlük portföy anlık
 # görüntüleri datetime.now(_TR_TZ).date() ile yazılıyor (portfolio_snapshot.py)
@@ -396,3 +404,103 @@ def apply_bonus_issue(
         note=note or f"Bedelsiz/bölünme (oran {ratio:g}x)",
     )
     return asset
+
+
+def _expand_fund_leaf_weights(code: str, _visited: Optional[set] = None) -> Dict[str, float]:
+    """Bir fon kodunu, tefas_service.get_live_estimated_return()'ün ZATEN
+    hesapladığı (drift-ayarlı) ağırlık listesini kullanarak "yaprak"
+    tickerlara kadar açar - yeniden bir kompozisyon hesabı YAPMAZ, sadece
+    aynı veriyi tekrar kullanır (get_live_estimated_return kendi içinde
+    zaten cycle koruması yapıyor, o yüzden burada sadece bir üst seviye
+    _visited yeterli).
+
+    Dönen dict {ticker: bu_fonun_kesri} şeklinde, kesirler toplamı en fazla
+    1.0 eder - eksik kalan pay (kompozisyonda "Nakit"/"Ters Repo" gibi
+    kategori etiketleri ya da hiç yayınlanmamış diğer varlıklar) aynı
+    get_live_estimated_return'ün resolved_weight_pct'inin bıraktığı boşluk,
+    burada da sessizce atlanıyor - toplam portföy değerine oranlarken bu
+    boşluk otomatik olarak "çözülemeyen" pay olarak görünür.
+
+    Bir alt-fon holding'i kendi kompozisyonuyla çözülemiyorsa (get_live_
+    estimated_return zaten güven eşiğini geçemediği için onu "fund_daily"
+    olarak işaretlemiş olur), o alt-fonun kodu kendisi bir yaprak olarak
+    kabul edilir - daha fazla açılamaz ama değer hiç kaybolmaz.
+    """
+    code = code.upper()
+    _visited = (_visited or set()) | {code}
+    estimate = tefas_service.get_live_estimated_return(code)
+    if not estimate:
+        return {}
+
+    leaves: Dict[str, float] = {}
+    for holding in estimate["holdings"]:
+        frac = holding["weight"] / 100.0
+        ticker = holding["ticker"]
+        if holding["type"] == "fund" and ticker not in _visited:
+            sub_leaves = _expand_fund_leaf_weights(ticker, _visited)
+            if sub_leaves:
+                for sub_ticker, sub_frac in sub_leaves.items():
+                    leaves[sub_ticker] = leaves.get(sub_ticker, 0.0) + frac * sub_frac
+                continue
+            # Alt-fonun kendi kompozisyonu çözülemedi - kendi kodunu yaprak
+            # olarak kullanmaya devam et (aşağıdaki genel ekleme).
+        leaves[ticker] = leaves.get(ticker, 0.0) + frac
+    return leaves
+
+
+def compute_look_through_exposure(assets: List[PortfolioAsset], price_by_ticker: Dict[str, float]) -> dict:
+    """"Gerçek Dağılım" - kullanıcının doğrudan tuttuğu hisseler + tuttuğu
+    fonların İÇİNDEKİ hisseler birleştirilerek, her tickera olan TOPLAM
+    (doğrudan + fonlar üzerinden dolaylı) maruziyeti hesaplar.
+
+    price_by_ticker: her asset.ticker için önceden (paralel) çekilmiş güncel
+    fiyat - /live-estimate endpoint'indeki ile aynı desen, burada tekrar ağ
+    çağrısı yapılmaz.
+    """
+    total_value = 0.0
+    exposure: Dict[str, float] = {}
+    direct_exposure: Dict[str, float] = {}
+
+    for asset in assets:
+        ticker = asset.ticker.upper()
+        price = price_by_ticker.get(ticker) or asset.average_cost
+        value = asset.shares * price
+        total_value += value
+
+        if len(ticker) == 3:
+            leaves = _expand_fund_leaf_weights(ticker)
+            if leaves:
+                for leaf_ticker, frac in leaves.items():
+                    exposure[leaf_ticker] = exposure.get(leaf_ticker, 0.0) + value * frac
+                continue
+            # Kompozisyonu hiç çözülemedi - fonun kendi kodunu yaprak olarak
+            # kullan, değer yine de toplam dağılımda görünsün.
+            exposure[ticker] = exposure.get(ticker, 0.0) + value
+        else:
+            exposure[ticker] = exposure.get(ticker, 0.0) + value
+            direct_exposure[ticker] = direct_exposure.get(ticker, 0.0) + value
+
+    holdings_out = []
+    for ticker, value in exposure.items():
+        direct = direct_exposure.get(ticker, 0.0)
+        indirect = value - direct
+        indirect_pct_of_total = (indirect / total_value * 100) if total_value > 0 else 0.0
+        holdings_out.append({
+            "ticker": ticker,
+            "value": round(value, 2),
+            "direct_value": round(direct, 2),
+            "indirect_value": round(indirect, 2),
+            "pct_of_total": round((value / total_value * 100) if total_value > 0 else 0.0, 2),
+            # Sadece fonlar üzerinden gelen (doğrudan tutulmayan) pay eşiği
+            # geçiyorsa flaglenir - kullanıcının zaten bildiği doğrudan bir
+            # pozisyon "konsantrasyon uyarısı" olarak sayılmaz.
+            "concentration_flag": indirect_pct_of_total >= _CONCENTRATION_THRESHOLD_PCT,
+        })
+    holdings_out.sort(key=lambda h: h["value"], reverse=True)
+
+    resolved_value = sum(h["value"] for h in holdings_out)
+    return {
+        "total_value": round(total_value, 2),
+        "resolved_value_pct": round(resolved_value / total_value * 100, 2) if total_value > 0 else 0.0,
+        "holdings": holdings_out,
+    }
