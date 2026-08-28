@@ -20,7 +20,7 @@ from app.schemas.portfolio import (
 )
 from app.services.market_data import market_data_service
 from app.services.tefas import tefas_service
-from app.services import portfolio_ledger
+from app.services import portfolio_ledger, corporate_actions
 from app.services.portfolio_analytics import compute_portfolio_analytics
 from app.services import inflation
 from app.core.redis import cache_service
@@ -477,6 +477,31 @@ def get_portfolio_analytics(
         }
         for n in dividend_notices
     ]
+
+    # Kullanıcının tuttuğu tickerlarda son 30 günde bedelsiz/bölünme
+    # geçen bir KAP bildirimi varsa (bkz. corporate_actions.
+    # detect_candidates_from_kap), GERÇEK pozisyonuna ne yapacağının
+    # salt-okunur "tahmini" önizlemesi - hiçbir şey uygulanmaz/kaydedilmez.
+    # suggested_ratio KAP metninden regex tahmini olduğu için (ve o yüzden)
+    # None olabilir - o durumda tahmin edilecek bir şey yok, atlanır.
+    kap_candidates = [
+        c for c in corporate_actions.detect_candidates_from_kap(db)
+        if c["ticker"] in tickers and c["suggested_ratio"]
+    ]
+    kap_position_impacts = []
+    for candidate in kap_candidates:
+        for asset in all_assets:
+            if asset.ticker.upper() != candidate["ticker"]:
+                continue
+            impact = corporate_actions.estimate_position_impact(asset, candidate["suggested_ratio"])
+            kap_position_impacts.append({
+                **impact,
+                "title": candidate["title"],
+                "publish_date": candidate["publish_date"],
+                "link": candidate["link"],
+                "already_registered": candidate["already_registered"],
+            })
+    result["kap_position_impacts"] = kap_position_impacts
 
     cache_service.set_json(cache_key, result, expire_seconds=_ANALYTICS_CACHE_TTL_SECONDS)
     return result

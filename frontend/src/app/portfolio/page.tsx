@@ -676,6 +676,13 @@ export default function PortfolioPage() {
   // ödeme takvimi değil (backend'de öyle bir veri kaynağı yok).
   const dividendNotices = analytics?.dividend_notices || []
 
+  // KAP'ta bedelsiz/bölünme geçen bir bildirim, kullanıcının GERÇEK
+  // pozisyonuna ne yapacağının salt-okunur "tahmini" önizlemesi - bkz.
+  // backend'in corporate_actions.estimate_position_impact'i. Oran KAP
+  // metninden regex tahmini olduğu için YANLIŞ olabilir, hiçbir şey
+  // otomatik uygulanmaz - "tahmini" vurgusu bu yüzden şart.
+  const kapPositionImpacts = analytics?.kap_position_impacts || []
+
   // "Hızlı İşlemler" > Rapor İndir - sunucu tarafı bir rapor motoru yok,
   // mevcut pozisyon verisinden tarayıcıda basit bir CSV üretilip indiriliyor.
   // ";" ayraç + BOM: Türkçe Excel virgülü ondalık ayracı olarak kullanıyor.
@@ -2328,6 +2335,47 @@ export default function PortfolioPage() {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* KAP Bildirimi -> Portföy Etkisi - sadece kullanıcının tuttuğu bir
+              tickerda bedelsiz/bölünme geçen bir bildirim varsa görünür.
+              "Tahmini" vurgusu şart: oran KAP metninden regex tahmini,
+              hiçbir şey otomatik uygulanmıyor. */}
+          {kapPositionImpacts.length > 0 && (
+            <Card className="bip-card border-primary/25">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-primary" />
+                  KAP Bildirimi: Tahmini Portföy Etkisi
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Aşağıdaki oranlar KAP metninden otomatik tahmin edildi, kesinleşmiş değil - hiçbir şey portföyüne uygulanmadı.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {kapPositionImpacts.map((impact: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between gap-3 text-xs bg-secondary/30 rounded-lg px-3 py-2.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold bg-secondary px-1.5 py-0.5 rounded text-foreground shrink-0">
+                          {impact.ticker}
+                        </span>
+                        <span className="text-muted-foreground truncate">{impact.title}</span>
+                      </div>
+                      <div className="mt-1 text-foreground">
+                        Senin {impact.current_shares} lotun → <span className="font-bold text-primary">tahmini {impact.estimated_new_shares} lot</span> olacak
+                        <span className="text-muted-foreground"> (oran ~{impact.ratio}x)</span>
+                      </div>
+                    </div>
+                    {impact.link && (
+                      <a href={impact.link} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline shrink-0">
+                        KAP&apos;ta gör
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           )}
 
           {/* Son Alarmlar / Yaklaşan Ödemeler / Hızlı İşlemler - ana tabloya

@@ -164,6 +164,33 @@ def apply_action(db: Session, action: CorporateAction) -> List[AdjustmentPlan]:
     return plans
 
 
+def estimate_position_impact(asset: PortfolioAsset, ratio: float) -> Dict[str, Any]:
+    """Bir KAP adayının (detect_candidates_from_kap'ın suggested_ratio'su)
+    kullanıcının GERÇEK pozisyonuna ne yapacağının SALT-OKUNUR önizlemesi -
+    DB'ye hiçbir şey yazmaz, hiçbir şey kaydetmez. plan_adjustments'la aynı
+    çekirdek matematiği (shares*ratio, average_cost/ratio) kullanır ama
+    onun ex-date/idempotency uygunluk kontrollerini YAPMAZ - burada henüz
+    CORPORATE_ACTIONS'a kayıtlı gerçek/onaylı bir işlem yok, sadece "bu oran
+    doğruysa böyle olur" senaryosu. Gerçek uygulama hâlâ admin'in
+    plan_adjustments/apply_action akışından geçer (bkz. bu modülün üst
+    docstring'i) - suggested_ratio zaten KAP metninden regex tahmini olduğu
+    için YANLIŞ olabilir (bkz. detect_candidates_from_kap'ın kendi uyarısı),
+    otomatik uygulanmaz.
+    """
+    if ratio <= 0:
+        raise ValueError("Oran sıfırdan büyük olmalı.")
+    return {
+        "asset_id": asset.id,
+        "portfolio_id": asset.portfolio_id,
+        "ticker": asset.ticker,
+        "current_shares": asset.shares,
+        "current_average_cost": asset.average_cost,
+        "estimated_new_shares": round(asset.shares * ratio, 4),
+        "estimated_new_average_cost": round(asset.average_cost / ratio, 6),
+        "ratio": ratio,
+    }
+
+
 def get_action(ticker: str) -> Optional[CorporateAction]:
     ticker = ticker.upper()
     for a in CORPORATE_ACTIONS:
