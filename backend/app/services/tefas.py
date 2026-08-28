@@ -34,6 +34,43 @@ _FIXED_RATE_HOLDING_DAILY_PCT = {
 }
 _TR_TZ = datetime.timezone(timedelta(hours=3))
 
+# TEFAS'ın resmi emir kesme saati: hafta içi 13:30'a kadar verilen alım/
+# satım emri O GÜNÜN kapanış fiyatından, sonrası bir SONRAKİ işlem gününün
+# fiyatından işlem görür (doğrulandı 2026-08-27: TEFAS'ı destekleyen birden
+# fazla aracı kurumun - Tacirler, İş Portföy, OYAK Portföy - yayınladığı
+# birbiriyle tutarlı bilgi).
+_TEFAS_CUTOFF_TIME = datetime.time(13, 30)
+
+
+def tefas_order_cutoff_info() -> Dict[str, Any]:
+    """"Bugün alırsan hangi günün fiyatından işlem görürsün" bilgisi.
+
+    Basitleştirme (v1): TÜM fonlar için TEK bir kesme saati (13:30)
+    varsayılıyor. Gerçekte bazı fon türleri (özellikle para piyasası
+    fonları) farklı valör kuralları kullanabiliyor - bu fon-türü-özel fark
+    şimdilik modellenmiyor, gerekirse ileride eklenir.
+
+    Sadece hafta sonu ayrımı yapılıyor, resmi tatil takvimi YOK - "bir
+    sonraki işlem günü" hesaplamıyoruz, sadece "bugün mü, değil mi"
+    söylüyoruz. Bu yüzden `same_day=False` bir tatil gününde de doğru
+    (emrin bugün gerçekleşmeyeceği doğru), sadece "ne zaman gerçekleşir"
+    sorusuna kesin bir tarih vermiyoruz.
+    """
+    now = datetime.datetime.now(_TR_TZ)
+    is_weekday = now.weekday() < 5  # Monday=0 ... Sunday=6
+    same_day = is_weekday and now.time() <= _TEFAS_CUTOFF_TIME
+
+    minutes_remaining = 0
+    if same_day:
+        cutoff_dt = now.replace(hour=13, minute=30, second=0, microsecond=0)
+        minutes_remaining = max(0, int((cutoff_dt - now).total_seconds() // 60))
+
+    return {
+        "cutoff_time": "13:30",
+        "same_day": same_day,
+        "minutes_remaining": minutes_remaining,
+    }
+
 
 def _deposit_days_for_weekday(weekday: int) -> int:
     """weekday: Monday=0 ... Sunday=6 (Python's datetime.weekday()

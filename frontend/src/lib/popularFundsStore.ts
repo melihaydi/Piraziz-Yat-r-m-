@@ -15,9 +15,16 @@ import { pollWhileVisibleAndOpen } from "./usePolling"
 
 type Listener = () => void
 
+type OrderCutoff = { cutoff_time: string; same_day: boolean; minutes_remaining: number }
+type Snapshot = { funds: any[]; loading: boolean; orderCutoff: OrderCutoff | null }
+
 let funds: any[] = []
 let loading = true
 let started = false
+// TEFAS emir kesme saati bilgisi - fon-spesifik değil, tüm popüler fonlar
+// için tek bir ortak değer, bu yüzden funds array'inin dışında ayrı
+// tutuluyor. null: henüz hiç veri gelmedi.
+let orderCutoff: OrderCutoff | null = null
 const listeners = new Set<Listener>()
 
 // useSyncExternalStore requires getSnapshot to return a STABLE reference
@@ -26,10 +33,10 @@ const listeners = new Set<Listener>()
 // single render, which sends React into an infinite re-render loop (this
 // shipped broken once already: the homepage and /funds page both hung).
 // Cached here and only replaced when fetchOnce() actually gets new data.
-let snapshot: { funds: any[]; loading: boolean } = { funds, loading }
+let snapshot: Snapshot = { funds, loading, orderCutoff }
 
 function notify() {
-  snapshot = { funds, loading }
+  snapshot = { funds, loading, orderCutoff }
   listeners.forEach(l => l())
 }
 
@@ -38,6 +45,7 @@ function fetchOnce() {
     .then(res => res.json())
     .then(data => {
       if (Array.isArray(data.funds)) funds = data.funds
+      if (data.order_cutoff) orderCutoff = data.order_cutoff
       loading = false
       notify()
     })
@@ -60,6 +68,6 @@ export function subscribePopularFunds(listener: Listener): () => void {
   return () => listeners.delete(listener)
 }
 
-export function getPopularFundsSnapshot() {
+export function getPopularFundsSnapshot(): Snapshot {
   return snapshot
 }

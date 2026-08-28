@@ -3,7 +3,7 @@
 import React, { Suspense, useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History } from "lucide-react"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -134,7 +134,7 @@ function FundsPageInner() {
   // Reads from a shared module-level store (popularFundsStore.ts), same one
   // the homepage uses - navigating home -> funds -> home no longer fires a
   // fresh request each time, only the first page to mount this session does.
-  const { funds: popularFunds, loading: popularLoading } = useSyncExternalStore(
+  const { funds: popularFunds, loading: popularLoading, orderCutoff } = useSyncExternalStore(
     subscribePopularFunds,
     getPopularFundsSnapshot,
     getPopularFundsSnapshot
@@ -439,6 +439,23 @@ function FundsPageInner() {
             varlıkların canlı BİST fiyat değişimiyle ağırlıklandırarak <strong>tahmini</strong> bir gün-içi getiri
             hesaplar. Gerçek bir NAV yeniden hesaplaması değildir.
           </CardDescription>
+          {/* Emir kesme saati rozeti: TEFAS'ta bugün 13:30'dan sonra verilen
+              bir emir YARININ fiyatından işlem görür - kullanıcı yukarıdaki
+              "anlık" tahmine bakıp "şimdi alayım" derken, aslında bugünkü
+              fiyattan değil yarınkinden işlem göreceğini bilmeli. Zamanlama
+              bilgisi olarak çerçevelendi, yatırım tavsiyesi değil. */}
+          {orderCutoff && (
+            <div className={`mt-2 inline-flex items-center gap-1.5 self-start rounded-md border px-2 py-1 text-[11px] font-bold ${
+              orderCutoff.same_day
+                ? "border-bull/30 bg-bull/10 text-bull"
+                : "border-border/50 bg-secondary/30 text-muted-foreground"
+            }`}>
+              <Clock className="h-3 w-3" />
+              {orderCutoff.same_day
+                ? `Bugün ${orderCutoff.cutoff_time}'a kadar verilen emir bugünün fiyatından işlem görür (${orderCutoff.minutes_remaining} dk kaldı)`
+                : `Emir kesme saati (${orderCutoff.cutoff_time}) geçti - şimdi verilen emir yarının fiyatından işlem görür`}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {popularLoading ? (

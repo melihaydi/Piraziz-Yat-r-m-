@@ -5,7 +5,7 @@ from app.api import deps
 from app.core.limiter import limiter
 from app.core.redis import cache_service
 from app.models.user import User
-from app.services.tefas import tefas_service
+from app.services.tefas import tefas_service, tefas_order_cutoff_info
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 
 router = APIRouter()
@@ -112,7 +112,7 @@ def get_popular_funds_live_estimate(
             "holdings": _with_impact_pct(estimate["holdings"]),
         })
 
-    payload = {"funds": results}
+    payload = {"funds": results, "order_cutoff": tefas_order_cutoff_info()}
     # Only cache a complete answer. A partial result (some fund's quote or
     # composition momentarily unresolvable, so it got skipped by the
     # `continue` above) would otherwise be frozen in place for everyone on
@@ -225,6 +225,42 @@ def compare_funds(codes: str):
     # kısa TTL alıyor: bu veri birazdan gerçeğiyle değişecek, uzun süre
     # önbellekte tutmak uydurma rakamı gereksiz yere yaşatırdı.
     cache_service.set_json(cache_key, payload, expire_seconds=120 if any_simulated else 1800)
+    return payload
+
+
+@router.get("/{code}/live-estimate")
+@limiter.limit("120/minute")
+def get_fund_live_estimate(
+    code: str, request: Request, current_user: User = Depends(deps.get_current_user),
+    delay: int = Depends(deps.get_data_delay_minutes),
+):
+    """Tek bir fon için anlık tahmini getiri + TEFAS emir kesme saati bilgisi
+    - `/popular/live-estimate`'in aksine POPULAR_LIVE_FUNDS ile sınırlı değil,
+    herhangi bir takip edilen fon kodu için çalışır (fon detay sayfasının
+    "Bugün alırsan..." kartı bunu kullanır). Aynı sunucu-taraflı cache
+    deseni: her görüntüleyen aynı tier'da aynı cevabı alacağı için tekrar
+    hesaplamıyoruz."""
+    cache_key = f"funds:live-estimate:{code.upper()}:delay={delay}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    fund = tefas_service.get_fund(code)
+    estimate = tefas_service.get_live_estimated_return(code, delay_minutes=delay)
+    if not fund:
+        raise HTTPException(status_code=404, detail="Fund not found")
+
+    payload = {
+        "code": code.upper(),
+        "estimated_change_pct": estimate["estimated_change_pct"] if estimate else None,
+        "resolved_weight_pct": estimate["resolved_weight_pct"] if estimate else None,
+        "order_cutoff": tefas_order_cutoff_info(),
+    }
+    if estimate is not None:
+        # Tahmin çözülebildiyse (composition resolve olduysa) cache'le -
+        # çözülemeyen bir sonucu donduramayız, bir sonraki istekte tekrar
+        # denenmeli.
+        cache_service.set_json(cache_key, payload, expire_seconds=60 if delay > 0 else 15)
     return payload
 
 

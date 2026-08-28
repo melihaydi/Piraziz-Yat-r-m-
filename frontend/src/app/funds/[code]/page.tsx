@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp, AlertTriangle } from "lucide-react"
+import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp, AlertTriangle, Clock, Zap } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import {
@@ -17,6 +17,7 @@ import {
   YAxis
 } from "recharts"
 import { API_BASE_URL } from "@/lib/config"
+import { authFetch } from "@/lib/auth"
 
 const COLORS = ["#3b82f6", "#10b981", "#fbbf24", "#a855f7", "#ec4899", "#f97316"]
 
@@ -29,6 +30,11 @@ export default function FundDetailPage() {
   const [candles, setCandles] = useState<any[]>([])
   const [chartIsSimulated, setChartIsSimulated] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [liveEstimate, setLiveEstimate] = useState<{
+    estimated_change_pct: number | null
+    resolved_weight_pct: number | null
+    order_cutoff: { cutoff_time: string; same_day: boolean; minutes_remaining: number } | null
+  } | null>(null)
 
   useEffect(() => {
     if (!code) return
@@ -86,6 +92,20 @@ export default function FundDetailPage() {
       active = false
       if (retryTimer) clearTimeout(retryTimer)
     }
+  }, [code])
+
+  // Anlık tahmin + emir kesme saati - ayrı bir effect'te tutuluyor çünkü
+  // authFetch (giriş gerektiriyor) kullanıyor, yukarıdaki fetchDetails ise
+  // kimlik doğrulamasız genel fon bilgisini çekiyor; ikisi aynı retry/hata
+  // döngüsüne bağlanırsa biri diğerini gereksiz yere geciktirebilir.
+  useEffect(() => {
+    if (!code) return
+    let active = true
+    authFetch(`/funds/${code}/live-estimate`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (active && data) setLiveEstimate(data) })
+      .catch(() => {})
+    return () => { active = false }
   }, [code])
 
   // Map candles to AreaChart data
@@ -312,6 +332,61 @@ export default function FundDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Bugün Alırsan: anlık tahmini getiri + TEFAS emir kesme saati.
+              liveEstimate null iken hiç render edilmiyor (auth gerektiren
+              ayrı bir fetch, henüz dönmemiş ya da fon için tahmin
+              çözülemedi) - yarım/yanlış bir sayı göstermektense göstermemek
+              tercih edildi. */}
+          {liveEstimate && (
+            <Card glass={true}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-black uppercase tracking-wider text-primary flex items-center gap-2">
+                  <Zap className="h-3.5 w-3.5" />
+                  Bugün Alırsan
+                </CardTitle>
+                <CardDescription className="text-[10px]">
+                  Son bilinen varlık dağılımının canlı BİST fiyatlarıyla ağırlıklandırılmış <strong>tahmini</strong> gün-içi
+                  getirisi - gerçek bir NAV yeniden hesaplaması değildir.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {liveEstimate.estimated_change_pct != null ? (
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs text-muted-foreground font-semibold">Tahmini Gün-İçi Getiri</span>
+                    <span className={`text-xl font-black font-mono ${liveEstimate.estimated_change_pct >= 0 ? "text-bull" : "text-bear"}`}>
+                      {liveEstimate.estimated_change_pct >= 0 ? "+" : ""}{liveEstimate.estimated_change_pct.toFixed(2)}%
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Bu fon için şu an tahmin hesaplanamıyor.</p>
+                )}
+                {liveEstimate.resolved_weight_pct != null && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Varlıkların %{liveEstimate.resolved_weight_pct.toFixed(0)}&apos;i canlı fiyattan çözülebildi
+                  </p>
+                )}
+                {/* Emir kesme saati: yatırım tavsiyesi değil, sadece "hangi
+                    günün fiyatından işlem göreceğin" bilgisi - kesme
+                    saatinden sonra verilen bir emir bugünkü (yukarıdaki)
+                    tahminle DEĞİL, yarının kapanışıyla gerçekleşir. */}
+                {liveEstimate.order_cutoff && (
+                  <div className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-2 text-[11px] font-semibold leading-relaxed ${
+                    liveEstimate.order_cutoff.same_day
+                      ? "border-bull/30 bg-bull/10 text-bull"
+                      : "border-border/50 bg-secondary/30 text-muted-foreground"
+                  }`}>
+                    <Clock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>
+                      {liveEstimate.order_cutoff.same_day
+                        ? `Bugün ${liveEstimate.order_cutoff.cutoff_time}'a kadar verilen emir bugünün fiyatından işlem görür (${liveEstimate.order_cutoff.minutes_remaining} dk kaldı).`
+                        : `Emir kesme saati (${liveEstimate.order_cutoff.cutoff_time}) geçti - şimdi verilen emir yarının fiyatından işlem görür, yukarıdaki tahmini getiriyi değil.`}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Performance Returns List */}
           <Card glass={true}>
