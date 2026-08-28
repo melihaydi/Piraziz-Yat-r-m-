@@ -5,6 +5,7 @@ import { Briefcase, Loader2, ShieldAlert, Trash2, Pencil, Plus, Star, Wallet, Mi
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { TickerCombobox } from "@/components/ui/TickerCombobox"
 import { authFetch } from "@/lib/auth"
 import { parseTLAmount } from "@/lib/utils"
 
@@ -770,11 +771,12 @@ export default function ManagedPortfoliosPage() {
               <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-border/30">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted-foreground">Sembol</label>
-                  <Input
+                  <TickerCombobox
                     value={newAssetTicker}
-                    onChange={e => setNewAssetTicker(e.target.value)}
+                    onChange={setNewAssetTicker}
                     placeholder="THYAO"
-                    className="h-8 w-24 text-xs"
+                    className="w-24"
+                    inputClassName="h-8 w-24 text-xs"
                   />
                 </div>
                 {/* Döviz/altın hızlı seçim - USDTRY/XAUTRYG gerçek ticker

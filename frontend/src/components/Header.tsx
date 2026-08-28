@@ -10,6 +10,7 @@ import { API_BASE_URL } from "@/lib/config"
 import { authFetch, getProfilePicKey } from "@/lib/auth"
 import { usePolling, pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { useBistSessionOpen } from "@/lib/bistSession"
+import { useTickerDirectory } from "@/lib/tickerDirectory"
 
 // role -> display label/styling. Previously the header just hardcoded
 // "Pro Üye" for every single user regardless of their real subscription
@@ -56,8 +57,6 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter()
   const [indexData, setIndexData] = useState<any[]>(loadCachedIndexData)
 
-  const [tickersList, setTickersList] = useState<any[]>([])
-  const [fundsList, setFundsList] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
 
@@ -337,59 +336,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const bistSessionOpen = useBistSessionOpen()
   usePolling(fetchIndexes, 5000, bistSessionOpen)
 
-  // 2. Fetch all tickers (stocks) for search autocomplete
-  useEffect(() => {
-    authFetch(`/screener/`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setTickersList(data)
-        }
-      })
-      .catch(err => console.error("Failed to fetch tickers for search:", err))
-  }, [])
+  // 2. Tüm hisse+fon listesi - paylaşılan tek kaynak (bkz. tickerDirectory.ts),
+  // portföye/yönetilen portföye varlık ekleme ve fon kompozisyon editöründeki
+  // TickerCombobox'larla AYNI veriyi/fetch'i paylaşıyor.
+  const directory = useTickerDirectory()
 
-  // 3. Fetch all TEFAS mutual funds for search autocomplete
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/api/v1/funds/`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setFundsList(data)
-        }
-      })
-      .catch(err => console.error("Failed to fetch TEFAS funds for search:", err))
-  }, [])
-
-  // 4. Combine and filter searches
+  // 3. Filter searches
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) return []
     const q = searchQuery.toLowerCase()
-    
-    // Filter stocks
-    const matchedStocks = tickersList.filter(t => 
-      t.ticker.toLowerCase().includes(q) || 
-      (t.name && t.name.toLowerCase().includes(q))
-    ).map(t => ({
-      code: t.ticker,
-      name: t.name,
-      price: t.price,
-      isFund: false
-    }))
-
-    // Filter funds
-    const matchedFunds = fundsList.filter(f =>
-      f.code.toLowerCase().includes(q) ||
-      (f.name && f.name.toLowerCase().includes(q))
-    ).map(f => ({
-      code: f.code,
-      name: f.name,
-      price: f.price,
-      isFund: true
-    }))
-
-    return [...matchedStocks, ...matchedFunds].slice(0, 5)
-  }, [searchQuery, tickersList, fundsList])
+    return directory
+      .filter(e => e.code.toLowerCase().includes(q) || (e.name && e.name.toLowerCase().includes(q)))
+      .slice(0, 5)
+  }, [searchQuery, directory])
 
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-20 pt-[env(safe-area-inset-top)]">

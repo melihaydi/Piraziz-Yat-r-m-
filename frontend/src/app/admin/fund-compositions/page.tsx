@@ -5,6 +5,7 @@ import { PieChart, Loader2, ShieldAlert, Plus, Trash2, RotateCcw, Save, AlertTri
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { TickerCombobox } from "@/components/ui/TickerCombobox"
 import { authFetch } from "@/lib/auth"
 
 interface FundHolding {
@@ -344,11 +345,12 @@ export default function FundCompositionsPage() {
                   <div className="space-y-1.5">
                     {rows.map((r, idx) => (
                       <div key={idx} className="flex items-center gap-2">
-                        <Input
+                        <TickerCombobox
                           value={r.name}
-                          onChange={e => updateRow(idx, "name", e.target.value)}
-                          placeholder="THYAO"
-                          className="h-8 text-xs flex-1"
+                          onChange={v => updateRow(idx, "name", v)}
+                          placeholder="THYAO (ya da Nakit/Ters Repo gibi bir kategori)"
+                          className="flex-1"
+                          inputClassName="h-8 text-xs"
                         />
                         <div className="relative w-28 shrink-0">
                           <Input

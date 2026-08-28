@@ -30,6 +30,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
+import { TickerCombobox } from "@/components/ui/TickerCombobox"
 import {
   Dialog,
   DialogContent,
@@ -1191,11 +1192,12 @@ export default function PortfolioPage() {
               <form onSubmit={handleAddAsset} className="space-y-4 py-4">
                 <div className="grid grid-cols-3 items-center gap-4">
                   <label className="text-sm font-semibold text-muted-foreground text-right">Hisse veya Fon Kodu</label>
-                  <Input
+                  <TickerCombobox
                     value={assetTicker}
-                    onChange={(e) => setAssetTicker(e.target.value)}
+                    onChange={setAssetTicker}
                     placeholder="THYAO veya PHE"
-                    className="col-span-2 bg-secondary/50"
+                    className="col-span-2"
+                    inputClassName="bg-secondary/50"
                     required
                   />
                 </div>
