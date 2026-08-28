@@ -16,7 +16,7 @@ interface AuthGateProps {
 // Routes that must render even for a logged-out visitor - password reset
 // links and legal pages are handed out (or need to be readable) before
 // anyone has a session.
-const PUBLIC_PATHS = ["/forgot-password", "/reset-password", "/verify-email"]
+const PUBLIC_PATHS = ["/forgot-password", "/reset-password", "/verify-email", "/scorecard"]
 const isPublicPath = (path: string | null) =>
   !!path && (PUBLIC_PATHS.includes(path) || path.startsWith("/legal/"))
 

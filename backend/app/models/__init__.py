@@ -25,6 +25,7 @@ from app.models.push_subscription import PushSubscription
 from app.models.support_ticket import SupportTicket
 from app.models.subscription import Subscription
 from app.models.fund_composition_override import FundCompositionOverride
+from app.models.strategy_signal import StrategySignal
 
 __all__ = [
     "Base",

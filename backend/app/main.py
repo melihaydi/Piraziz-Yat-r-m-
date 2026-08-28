@@ -155,6 +155,8 @@ async def start_background_jobs():
     portfolio_snapshot_service.start_daily_scheduler()
     from app.services.fund_estimate_snapshot import fund_estimate_snapshot_service
     fund_estimate_snapshot_service.start_daily_scheduler()
+    from app.services.signal_tracking import signal_tracking_service
+    signal_tracking_service.start_background_scheduler()
     from app.services.subscription_expiry import subscription_expiry_service
     subscription_expiry_service.start_daily_scheduler()
     from app.services.news import NewsService
