@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
 import MobileTabBar from "@/components/MobileTabBar"
+import CommandPalette from "@/components/CommandPalette"
 import { useReveal, useSpotlight } from "@/lib/useReveal"
 
 interface AppChromeProps {
@@ -136,6 +137,7 @@ export default function AppChrome({ children }: AppChromeProps) {
         </main>
       </div>
       <MobileTabBar onMoreClick={() => setMobileMenuOpen(true)} drawerOpen={mobileMenuOpen} />
+      <CommandPalette />
     </>
   )
 }

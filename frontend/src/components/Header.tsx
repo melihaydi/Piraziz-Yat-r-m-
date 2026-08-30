@@ -442,6 +442,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
         {/* Search Autocomplete */}
         <div className="relative w-28 sm:w-44 md:w-64">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          {/* Ctrl+K/⌘K ipucu - gerçek kısayolu CommandPalette.tsx dinliyor,
+              bu sadece keşfedilebilirlik için (dar mobil genişlikte gizli). */}
+          <kbd className="hidden md:inline-block absolute right-2.5 top-2 text-[9px] font-bold text-muted-foreground/70 border border-border/50 rounded px-1 py-0.5 pointer-events-none">
+            ⌘K
+          </kbd>
           <Input
             placeholder="Ara..."
             value={searchQuery}
@@ -451,7 +456,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             }}
             onFocus={() => setShowDropdown(true)}
             onBlur={() => setTimeout(() => setShowDropdown(false), 250)}
-            className="pl-9 bg-secondary/50 border-border/60 hover:bg-secondary/80 focus-visible:ring-primary focus-visible:ring-1 w-full"
+            className="pl-9 md:pr-8 bg-secondary/50 border-border/60 hover:bg-secondary/80 focus-visible:ring-primary focus-visible:ring-1 w-full"
           />
           
           {showDropdown && filteredResults.length > 0 && (
