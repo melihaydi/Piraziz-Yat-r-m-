@@ -3,7 +3,7 @@
 import React, { Suspense, useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
-import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History, Clock } from "lucide-react"
+import { Search, Sparkles, Filter, RefreshCw, Loader2, Star, Coins, ArrowUpDown, Scale, X, Zap, ChevronDown, History, Clock, Layers } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
@@ -195,6 +195,12 @@ function FundsPageInner() {
   const [compareLoading, setCompareLoading] = useState(false)
   const [compareError, setCompareError] = useState<string | null>(null)
   const [compareResult, setCompareResult] = useState<any[]>([])
+  // Hisse örtüşmesi - fiyat/getiri karşılaştırmasından AYRI bir çağrı
+  // (GET /funds/overlap), aynı seçili fon setine bakıyor ama farklı bir
+  // soruya cevap veriyor: "içleri ne kadar aynı" - fiyatta ayrışan iki fon
+  // aslında aynı hisseleri tutuyor olabilir.
+  const [overlapResult, setOverlapResult] = useState<any>(null)
+  const [overlapLoading, setOverlapLoading] = useState(false)
 
   const toggleCompare = (code: string) => {
     setCompareCodes((prev) => {
@@ -209,6 +215,7 @@ function FundsPageInner() {
     setCompareOpen(true)
     setCompareLoading(true)
     setCompareError(null)
+    setOverlapResult(null)
     try {
       const res = await authFetch(`/funds/compare?codes=${compareCodes.join(",")}`)
       if (!res.ok) {
@@ -224,6 +231,18 @@ function FundsPageInner() {
       setCompareError("Karşılaştırma sırasında bir hata oluştu.")
     } finally {
       setCompareLoading(false)
+    }
+
+    // Fiyat karşılaştırmasını bekletmeden ayrı ayrı yükleniyor - biri
+    // yavaşsa/başarısız olsa diğerini etkilemesin.
+    setOverlapLoading(true)
+    try {
+      const res = await authFetch(`/funds/overlap?codes=${compareCodes.join(",")}`)
+      if (res.ok) setOverlapResult(await res.json())
+    } catch (err) {
+      console.error("Failed to compute fund overlap:", err)
+    } finally {
+      setOverlapLoading(false)
     }
   }
 
@@ -1009,6 +1028,61 @@ function FundsPageInner() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Hisse örtüşmesi - fiyat/getiri tablosunun YANINDA ama ondan
+                  bağımsız bir soru: "içleri ne kadar aynı". İki fon fiyatta
+                  ayrışabilir ama aynı hisseleri tutuyor olabilir (ya da tam
+                  tersi) - bu yüzden ayrı bir bölüm, aynı tabloya karıştırılmıyor. */}
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center mb-2">
+                  <Layers className="h-3.5 w-3.5 mr-1.5 text-primary" />
+                  Hisse Örtüşmesi
+                </h4>
+                {overlapLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Hesaplanıyor...
+                  </div>
+                ) : !overlapResult || overlapResult.pairs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">Örtüşme hesaplanamadı.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {[...overlapResult.pairs]
+                      .sort((a: any, b: any) => (b.overlap_pct ?? -1) - (a.overlap_pct ?? -1))
+                      .map((pair: any, i: number) => (
+                        <div key={i} className="text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-foreground">
+                              {pair.code_a} ↔ {pair.code_b}
+                            </span>
+                            <span className={`font-mono font-black ${pair.overlap_pct == null ? "text-muted-foreground" : pair.overlap_pct >= 30 ? "text-bear" : pair.overlap_pct >= 10 ? "val-warn" : "text-bull"}`}>
+                              {pair.overlap_pct != null ? `%${pair.overlap_pct}` : "hesaplanamadı"}
+                            </span>
+                          </div>
+                          {pair.overlap_pct != null && (
+                            <>
+                              <div className="h-1.5 w-full bg-secondary/50 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${pair.overlap_pct >= 30 ? "bg-bear" : pair.overlap_pct >= 10 ? "bg-warn" : "bg-bull"}`}
+                                  style={{ width: `${Math.min(100, pair.overlap_pct)}%` }}
+                                />
+                              </div>
+                              {pair.common_holdings.length > 0 && (
+                                <p className="text-[10px] text-muted-foreground mt-1 truncate">
+                                  Ortak: {pair.common_holdings.slice(0, 4).map((h: any) => h.ticker).join(", ")}
+                                  {pair.common_holdings.length > 4 && ` +${pair.common_holdings.length - 4}`}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    <p className="text-[10px] text-muted-foreground pt-1">
+                      %30+ örtüşme, iki fonu birden tutmanın çeşitlendirme sağlamadığının işareti olabilir.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

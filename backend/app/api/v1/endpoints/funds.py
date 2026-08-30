@@ -6,6 +6,7 @@ from app.core.limiter import limiter
 from app.core.redis import cache_service
 from app.models.user import User
 from app.services.tefas import tefas_service, tefas_order_cutoff_info
+from app.services import portfolio_ledger
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 
 router = APIRouter()
@@ -226,6 +227,37 @@ def compare_funds(codes: str):
     # önbellekte tutmak uydurma rakamı gereksiz yere yaşatırdı.
     cache_service.set_json(cache_key, payload, expire_seconds=120 if any_simulated else 1800)
     return payload
+
+
+@router.get("/overlap")
+def fund_overlap(codes: str):
+    """2-5 fonun İÇİNDEKİ hisselerin ne kadar örtüştüğü - "PHE ile TMV'nin
+    %38'i aynı hisseler" gibi. GET /funds/compare'in (fiyat/getiri/volatilite)
+    yanına eklenen tamamlayıcı bir görünüm: ikisi de aynı fon seçim akışını
+    kullanıyor, ama compare fiyat PERFORMANSINA bakarken bu HOLDİNG'lere
+    bakıyor - iki fon fiyatta farklı hareket edebilir ama içleri aynı
+    hisseler olabilir (ya da tam tersi).
+
+    codes'un sırası önemli değil, cache anahtarı sıralanmış kodlardan
+    üretiliyor (GET /funds/compare ile aynı desen).
+    """
+    fund_codes = [c.strip().upper() for c in codes.split(",") if c.strip()]
+    fund_codes = list(dict.fromkeys(fund_codes))[:5]
+    if len(fund_codes) < 2:
+        raise HTTPException(status_code=400, detail="Örtüşme için en az 2 fon kodu gerekli.")
+
+    cache_key = f"funds:overlap:{','.join(sorted(fund_codes))}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = portfolio_ledger.compute_fund_overlap_matrix(fund_codes)
+    # Herhangi bir çift çözülemediyse (fonun kompozisyonu henüz bilinmiyor)
+    # kısa TTL - bir sonraki istekte tekrar denensin. Hepsi çözüldüyse
+    # holding ağırlıkları günde bir güncellendiği için uzun TTL güvenli.
+    any_unresolved = any(p["overlap_pct"] is None for p in result["pairs"])
+    cache_service.set_json(cache_key, result, expire_seconds=120 if any_unresolved else 1800)
+    return result
 
 
 @router.get("/{code}/live-estimate")

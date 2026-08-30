@@ -406,7 +406,7 @@ def apply_bonus_issue(
     return asset
 
 
-def _expand_fund_leaf_weights(code: str, _visited: Optional[set] = None) -> Dict[str, float]:
+def expand_fund_leaf_weights(code: str, _visited: Optional[set] = None) -> Dict[str, float]:
     """Bir fon kodunu, tefas_service.get_live_estimated_return()'ün ZATEN
     hesapladığı (drift-ayarlı) ağırlık listesini kullanarak "yaprak"
     tickerlara kadar açar - yeniden bir kompozisyon hesabı YAPMAZ, sadece
@@ -437,7 +437,7 @@ def _expand_fund_leaf_weights(code: str, _visited: Optional[set] = None) -> Dict
         frac = holding["weight"] / 100.0
         ticker = holding["ticker"]
         if holding["type"] == "fund" and ticker not in _visited:
-            sub_leaves = _expand_fund_leaf_weights(ticker, _visited)
+            sub_leaves = expand_fund_leaf_weights(ticker, _visited)
             if sub_leaves:
                 for sub_ticker, sub_frac in sub_leaves.items():
                     leaves[sub_ticker] = leaves.get(sub_ticker, 0.0) + frac * sub_frac
@@ -446,6 +446,74 @@ def _expand_fund_leaf_weights(code: str, _visited: Optional[set] = None) -> Dict
             # olarak kullanmaya devam et (aşağıdaki genel ekleme).
         leaves[ticker] = leaves.get(ticker, 0.0) + frac
     return leaves
+
+
+def compute_fund_overlap(code_a: str, code_b: str) -> Optional[dict]:
+    """İki fonun İÇİNDEKİ hisselerin ne kadar örtüştüğü - expand_fund_leaf_
+    weights'in (look-through portföyde kullanılan, drift-ayarlı yaprak
+    ağırlıkları) her iki fon için ayrı ayrı hesaplanıp karşılaştırılmasıyla.
+
+    overlap_pct, portföy dünyasında standart "overlap" tanımı: her ORTAK
+    tickerın İKİ fondaki ağırlığından KÜÇÜK olanının toplamı (Morningstar'ın
+    "Portfolio X-Ray"inde kullandığı aynı yöntem). Örn. THYAO fon A'da %20,
+    fon B'de %10 ise, bu 10 puanlık kısım "örtüşen" sayılır - fazladan %10,
+    A'ya özgü kalır. %100 = iki fon aynı hisselere aynı ağırlıkla sahip
+    (aynı fonu iki kere almışsın gibi); %0 = hiç ortak hisse yok.
+
+    Herhangi bir fonun kompozisyonu hiç çözülemezse None döner - "örtüşme
+    yok" ile "hesaplanamadı" karıştırılmamalı.
+    """
+    code_a, code_b = code_a.upper(), code_b.upper()
+    leaves_a = expand_fund_leaf_weights(code_a)
+    leaves_b = expand_fund_leaf_weights(code_b)
+    if not leaves_a or not leaves_b:
+        return None
+
+    common_tickers = set(leaves_a) & set(leaves_b)
+    overlap_pct = sum(min(leaves_a[t], leaves_b[t]) for t in common_tickers) * 100
+
+    common_holdings = sorted(
+        [
+            {
+                "ticker": t,
+                "weight_a_pct": round(leaves_a[t] * 100, 2),
+                "weight_b_pct": round(leaves_b[t] * 100, 2),
+            }
+            for t in common_tickers
+        ],
+        key=lambda h: min(h["weight_a_pct"], h["weight_b_pct"]),
+        reverse=True,
+    )
+
+    return {
+        "code_a": code_a,
+        "code_b": code_b,
+        "overlap_pct": round(overlap_pct, 2),
+        "resolved_a_pct": round(sum(leaves_a.values()) * 100, 2),
+        "resolved_b_pct": round(sum(leaves_b.values()) * 100, 2),
+        "common_holdings": common_holdings,
+    }
+
+
+def compute_fund_overlap_matrix(codes: List[str]) -> dict:
+    """2-5 fonu ikili ikili karşılaştırıp her ÇİFTİN örtüşme yüzdesini döner -
+    compute_fund_overlap'in N fon için toplu hali (fon karşılaştırma
+    diyaloğundaki mevcut fiyat/getiri karşılaştırmasının yanına eklenen
+    "hisse örtüşmesi" görünümü besliyor). Fon başına kompozisyon çözümü
+    tefas_service içinde zaten cache'li olduğundan, aynı fonun birden fazla
+    çiftte tekrar geçmesi ekstra ağ maliyeti getirmiyor.
+    """
+    codes = list(dict.fromkeys(c.upper() for c in codes))
+    pairs = []
+    for i in range(len(codes)):
+        for j in range(i + 1, len(codes)):
+            result = compute_fund_overlap(codes[i], codes[j])
+            pairs.append(result if result is not None else {
+                "code_a": codes[i], "code_b": codes[j],
+                "overlap_pct": None, "resolved_a_pct": None, "resolved_b_pct": None,
+                "common_holdings": [],
+            })
+    return {"codes": codes, "pairs": pairs}
 
 
 def compute_look_through_exposure(assets: List[PortfolioAsset], price_by_ticker: Dict[str, float]) -> dict:
@@ -468,7 +536,7 @@ def compute_look_through_exposure(assets: List[PortfolioAsset], price_by_ticker:
         total_value += value
 
         if len(ticker) == 3:
-            leaves = _expand_fund_leaf_weights(ticker)
+            leaves = expand_fund_leaf_weights(ticker)
             if leaves:
                 for leaf_ticker, frac in leaves.items():
                     exposure[leaf_ticker] = exposure.get(leaf_ticker, 0.0) + value * frac
