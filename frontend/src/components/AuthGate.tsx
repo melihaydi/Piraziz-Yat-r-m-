@@ -17,8 +17,16 @@ interface AuthGateProps {
 // links and legal pages are handed out (or need to be readable) before
 // anyone has a session.
 const PUBLIC_PATHS = ["/forgot-password", "/reset-password", "/verify-email", "/scorecard"]
+// /funds/PHE gibi fon detay sayfaları da herkese açık - fon kompozisyonu/
+// fiyat verisi kişisel değil, ve sayfanın tek kimlik doğrulamalı kısmı
+// ("Bugün Alırsan" canlı tahmin kartı) zaten kendi authFetch'inin 401'ini
+// sessizce yutup göstermiyor (bkz. funds/[code]/page.tsx) - anonim ziyaretçi
+// sayfanın geri kalanını (fiyat, grafik, holdings) tam görür.
+// /funds/compare veya /funds gibi liste/karşılaştırma rotalarını KAPSAMAZ -
+// sadece tek bir fon koduna denk gelen segment.
+const isFundDetailPath = (path: string) => /^\/funds\/[a-zA-Z0-9]+$/.test(path)
 const isPublicPath = (path: string | null) =>
-  !!path && (PUBLIC_PATHS.includes(path) || path.startsWith("/legal/"))
+  !!path && (PUBLIC_PATHS.includes(path) || path.startsWith("/legal/") || isFundDetailPath(path))
 
 export default function AuthGate({ children }: AuthGateProps) {
   const pathname = usePathname()
