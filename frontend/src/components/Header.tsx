@@ -11,6 +11,7 @@ import { authFetch, getProfilePicKey } from "@/lib/auth"
 import { usePolling, pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { useBistSessionOpen } from "@/lib/bistSession"
 import { useTickerDirectory } from "@/lib/tickerDirectory"
+import { useFlash } from "@/lib/useFlash"
 
 // role -> display label/styling. Previously the header just hardcoded
 // "Pro Üye" for every single user regardless of their real subscription
@@ -47,6 +48,26 @@ function loadCachedIndexData(): any[] {
     // fall through to default
   }
   return DEFAULT_INDEX_DATA
+}
+
+// Tek bir marquee satırı - useFlash burada çağrılıyor çünkü Hook Kuralları
+// gereği bir .map() içinde doğrudan çağrılamaz (indexData'nın uzunluğu
+// render'lar arasında değişebiliyor). idx.rawValue değiştiğinde kısa bir
+// yeşil/kırmızı yanıp sönme - "gerçek terminal" hissi, önceden globals.css'te
+// tanımlı ama hiçbir yerde bağlanmamış .flash-up/.flash-down class'larını
+// kullanıyor.
+function IndexTickerRow({ idx, spacing = "space-x-2" }: { idx: { name: string; value: string; rawValue?: number; change: string; up: boolean }; spacing?: string }) {
+  const flashClass = useFlash(idx.rawValue)
+  return (
+    <div className={`flex items-center ${spacing} text-[10px] font-bold`}>
+      <span className="text-muted-foreground/95">{idx.name}</span>
+      <span className={`text-foreground font-mono font-medium ${flashClass}`}>{idx.value}</span>
+      <span className={idx.up ? "text-bull flex items-center" : "text-bear flex items-center"}>
+        {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
+        {idx.change}
+      </span>
+    </div>
+  )
 }
 
 interface HeaderProps {
@@ -270,6 +291,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               items.push({
                 name: "XU100",
                 value: Number(data.index.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                rawValue: Number(data.index.price),
                 change: (data.index.change_percent >= 0 ? "+" : "") + Number(data.index.change_percent).toFixed(2) + "%",
                 up: data.index.change_percent >= 0
               })
@@ -278,6 +300,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               items.push({
                 name: "XU030",
                 value: Number(data.xu030.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                rawValue: Number(data.xu030.price),
                 change: (data.xu030.change_percent >= 0 ? "+" : "") + Number(data.xu030.change_percent).toFixed(2) + "%",
                 up: data.xu030.change_percent >= 0
               })
@@ -286,6 +309,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               items.push({
                 name: "XBANK",
                 value: Number(data.xbank.price).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                rawValue: Number(data.xbank.price),
                 change: (data.xbank.change_percent >= 0 ? "+" : "") + Number(data.xbank.change_percent).toFixed(2) + "%",
                 up: data.xbank.change_percent >= 0
               })
@@ -295,6 +319,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               items.push({
                 name: "BTC/USDT",
                 value: Number(data.btcusdt.price).toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+                rawValue: Number(data.btcusdt.price),
                 change: (data.btcusdt.change_percent >= 0 ? "+" : "") + Number(data.btcusdt.change_percent).toFixed(2) + "%",
                 up: data.btcusdt.change_percent >= 0
               })
@@ -406,14 +431,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
           <div className="animate-ticker flex space-x-8 items-center pr-8">
             {[...indexData, ...indexData].map((idx, i) => (
-              <div key={`${idx.name}-${i}`} className="flex items-center space-x-2 text-[10px] font-bold">
-                <span className="text-muted-foreground/95">{idx.name}</span>
-                <span className="text-foreground font-mono font-medium">{idx.value}</span>
-                <span className={idx.up ? "text-bull flex items-center" : "text-bear flex items-center"}>
-                  {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-                  {idx.change}
-                </span>
-              </div>
+              <IndexTickerRow key={`${idx.name}-${i}`} idx={idx} />
             ))}
           </div>
         </div>
@@ -653,14 +671,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
         <div className="ticker-wrap flex overflow-hidden whitespace-nowrap">
           <div className="animate-ticker flex space-x-6 items-center pr-6">
             {[...indexData, ...indexData].map((idx, i) => (
-              <div key={`m-${idx.name}-${i}`} className="flex items-center space-x-1.5 text-[10px] font-bold">
-                <span className="text-muted-foreground/95">{idx.name}</span>
-                <span className="text-foreground font-mono font-medium">{idx.value}</span>
-                <span className={idx.up ? "text-bull flex items-center" : "text-bear flex items-center"}>
-                  {idx.up ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-                  {idx.change}
-                </span>
-              </div>
+              <IndexTickerRow key={`m-${idx.name}-${i}`} idx={idx} spacing="space-x-1.5" />
             ))}
           </div>
         </div>
