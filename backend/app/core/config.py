@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
     DISCORD_WEBHOOK_URL: Optional[str] = None
+    # TELEGRAM_BOT_TOKEN'ın YUKARIDA zaten kullanıldığı tek kanal, sabit
+    # TELEGRAM_CHAT_ID'ye giden bir admin uyarı hattıydı (core/notify.py).
+    # Sabah bülteni özelliği AYNI botu, kullanıcı başına AYRI bir chat_id'ye
+    # (bkz. telegram_bot.py, TelegramLink modeli) mesaj atmak için kullanıyor -
+    # botun @kullanıcı_adı'nı burada tutuyoruz ki kullanıcıya "bu botla
+    # sohbet başlat" deep link'i (t.me/<username>?start=<code>) verilebilsin.
+    TELEGRAM_BOT_USERNAME: Optional[str] = None
 
     # Error tracking - unset by default (no Sentry account existed when the
     # lightweight Telegram-alert fallback in core/notify.py was built, see

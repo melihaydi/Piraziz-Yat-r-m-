@@ -26,6 +26,7 @@ from app.models.support_ticket import SupportTicket
 from app.models.subscription import Subscription
 from app.models.fund_composition_override import FundCompositionOverride
 from app.models.strategy_signal import StrategySignal
+from app.models.telegram_link import TelegramLink
 
 __all__ = [
     "Base",

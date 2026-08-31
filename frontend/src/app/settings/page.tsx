@@ -456,6 +456,51 @@ export default function SettingsPage() {
     setPushLoading(false)
   }
 
+  // Telegram sabah bülteni bağlantısı - bkz. backend/app/api/v1/endpoints/telegram.py.
+  // `configured` false ise bu ortamda bot kurulmamış (TELEGRAM_BOT_USERNAME
+  // ayarlanmamış) demek, kart hiç gösterilmiyor.
+  const [telegramLink, setTelegramLink] = useState<{
+    configured: boolean; linked: boolean; linked_at: string | null
+    link_code: string; deep_link: string | null; daily_digest_enabled: boolean
+  } | null>(null)
+  const [telegramLoading, setTelegramLoading] = useState(false)
+
+  const loadTelegramLink = async () => {
+    try {
+      const res = await authFetch("/telegram/link")
+      if (res.ok) setTelegramLink(await res.json())
+    } catch (err) {
+      console.error("Failed to load Telegram link status:", err)
+    }
+  }
+
+  useEffect(() => { loadTelegramLink() }, [])
+
+  const handleRegenerateTelegramCode = async () => {
+    setTelegramLoading(true)
+    try {
+      const res = await authFetch("/telegram/link/regenerate", { method: "POST" })
+      if (res.ok) setTelegramLink(await res.json())
+    } finally {
+      setTelegramLoading(false)
+    }
+  }
+
+  const handleToggleTelegramDigest = async () => {
+    if (!telegramLink) return
+    setTelegramLoading(true)
+    try {
+      const res = await authFetch("/telegram/digest-enabled", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !telegramLink.daily_digest_enabled }),
+      })
+      if (res.ok) setTelegramLink(await res.json())
+    } finally {
+      setTelegramLoading(false)
+    }
+  }
+
   interface SupportTicket {
     id: number
     subject: string
@@ -977,6 +1022,75 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Telegram sabah bülteni - configured false ise bot bu ortamda
+              kurulmamış demek, kart tamamen gizli (yarım/bozuk bir özellik
+              göstermek yerine). */}
+          {telegramLink?.configured && (
+            <Card glass={true}>
+              <CardHeader>
+                <CardTitle className="t-section flex items-center">
+                  <MessageCircle className="h-4.5 w-4.5 mr-2 text-primary" />
+                  Telegram Sabah Bülteni
+                </CardTitle>
+                <CardDescription>
+                  Her sabah (BIST açılışından önce) portföyünün dünkü değişimi, tuttuğun hisselerdeki KAP
+                  bildirimleri ve fon emir kesme saati hatırlatması Telegram'a düşer.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {telegramLink.linked ? (
+                  <div className="flex items-center justify-between gap-4 p-4 bg-secondary/20 rounded-lg border border-border/30">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-4 w-4 text-bull" />
+                      <div>
+                        <p className="text-sm font-bold text-foreground">Bağlı</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {telegramLink.daily_digest_enabled ? "Sabah bülteni açık." : "Bağlantı var, bülten kapalı."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        type="button"
+                        onClick={handleToggleTelegramDigest}
+                        disabled={telegramLoading}
+                        className="cursor-pointer text-xs font-bold px-4 py-2 h-auto bg-secondary/60 hover:bg-secondary text-foreground border border-border/40"
+                      >
+                        {telegramLoading ? "..." : telegramLink.daily_digest_enabled ? "Kapat" : "Aç"}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleRegenerateTelegramCode}
+                        disabled={telegramLoading}
+                        className="cursor-pointer text-xs font-bold px-4 py-2 h-auto bg-secondary/60 hover:bg-secondary text-bear border border-border/40"
+                      >
+                        Bağlantıyı Kaldır
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-secondary/20 rounded-lg border border-border/30 space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Aşağıdaki butona basıp Telegram&apos;da botla sohbeti başlat - kod otomatik gönderilecek.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {telegramLink.deep_link && (
+                        <a href={telegramLink.deep_link} target="_blank" rel="noopener noreferrer">
+                          <Button type="button" className="cursor-pointer text-xs font-bold px-4 py-2 h-auto bg-primary hover:bg-primary/90 text-primary-foreground">
+                            Telegram&apos;da Bağla
+                          </Button>
+                        </a>
+                      )}
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        ya da elle: /start {telegramLink.link_code}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Privacy & Data Rights (KVKK m.11) */}
           <Card glass={true} id="section-privacy">

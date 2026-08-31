@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, portfolio, alert, subscription, screener, news, funds, trade, strategy, watchlist, admin, note, notifications, support, scorecard
+from app.api.v1.endpoints import auth, portfolio, alert, subscription, screener, news, funds, trade, strategy, watchlist, admin, note, notifications, support, scorecard, telegram
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -17,3 +17,4 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(support.router, prefix="/support", tags=["support"])
 api_router.include_router(watchlist.router, prefix="/watchlist", tags=["watchlist"])
 api_router.include_router(scorecard.router, prefix="/scorecard", tags=["scorecard"])
+api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
