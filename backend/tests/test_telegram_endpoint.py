@@ -19,7 +19,7 @@ def test_get_link_requires_auth(client):
 
 def test_get_link_creates_and_returns_unlinked_state(client, db):
     headers = _register_and_login(client)
-    with patch("app.api.v1.endpoints.telegram.settings.TELEGRAM_BOT_USERNAME", "BipTerminalBot"):
+    with patch("app.api.v1.endpoints.telegram.settings.TELEGRAM_USER_BOT_USERNAME", "BipTerminalBot"):
         res = client.get("/api/v1/telegram/link", headers=headers)
 
     assert res.status_code == 200
@@ -34,7 +34,7 @@ def test_get_link_creates_and_returns_unlinked_state(client, db):
 
 def test_get_link_reports_unconfigured_without_bot_username(client, db):
     headers = _register_and_login(client)
-    with patch("app.api.v1.endpoints.telegram.settings.TELEGRAM_BOT_USERNAME", None):
+    with patch("app.api.v1.endpoints.telegram.settings.TELEGRAM_USER_BOT_USERNAME", None):
         res = client.get("/api/v1/telegram/link", headers=headers)
 
     body = res.json()

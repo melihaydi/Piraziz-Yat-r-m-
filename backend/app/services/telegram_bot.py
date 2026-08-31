@@ -2,8 +2,9 @@
 Telegram botu: kullanıcı hesabını bota bağlama + sabah bülteni gönderimi.
 
 Var olan core/notify.py'deki send_telegram_alert SADECE sabit, tek bir
-admin chat_id'sine (TELEGRAM_CHAT_ID) uyarı gönderiyordu - bu modül AYNI
-botu (TELEGRAM_BOT_TOKEN), her kullanıcının KENDİ chat_id'sine (bkz.
+admin chat_id'sine (TELEGRAM_CHAT_ID) uyarı gönderiyordu - bu modül AYRI
+bir bot (TELEGRAM_USER_BOT_TOKEN, admin hattından bilinçli olarak farklı -
+bkz. config.py'nin ilgili notu), her kullanıcının KENDİ chat_id'sine (bkz.
 TelegramLink modeli) kişiselleştirilmiş sabah bülteni göndermek için
 kullanıyor. İkisi birbirinden bağımsız: admin uyarı hattı hiç dokunulmadan
 aynı şekilde çalışmaya devam ediyor.
@@ -46,11 +47,11 @@ def _send_message(chat_id: str, text: str) -> bool:
     """Best-effort - core/notify.py'nin send_telegram_alert'ının aksine
     burada bir cooldown YOK, çünkü her çağrı zaten günde bir kez (bülten)
     ya da kullanıcının kendi /start mesajına doğrudan yanıt (linkleme)."""
-    if not settings.TELEGRAM_BOT_TOKEN:
+    if not settings.TELEGRAM_USER_BOT_TOKEN:
         return False
     try:
         resp = httpx.post(
-            _API_BASE.format(token=settings.TELEGRAM_BOT_TOKEN) + "/sendMessage",
+            _API_BASE.format(token=settings.TELEGRAM_USER_BOT_TOKEN) + "/sendMessage",
             json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
             timeout=10.0,
         )
@@ -86,6 +87,55 @@ def regenerate_link_code(db: Session, link: TelegramLink) -> TelegramLink:
     return link
 
 
+
+# Homepage'deki "Popüler Fonlar" widget'ının izlediği AYNI liste (bkz.
+# funds.py'nin POPULAR_LIVE_FUNDS) - services katmanının bir API/endpoints
+# modülünü import etmesi ters katmanlama olacağından burada ayrı bir sabit
+# olarak tutuluyor, ikisi bilinçli olarak senkron tutulmalı.
+POPULAR_FUND_CODES = ["TMV", "DOH", "TLY", "THF"]
+
+_HELP_TEXT = (
+    "Kullanabileceğin komutlar:\n\n"
+    "/fonlar - Popüler fonların anlık tahmini getirisi\n"
+    "/yardim - Bu mesajı gösterir\n\n"
+    "Sabah bültenini kapatmak/açmak veya bağlantını kaldırmak için "
+    "BIP Terminal > Ayarlar sayfasına bakabilirsin."
+)
+
+
+def format_popular_funds_message() -> str:
+    """/fonlar komutunun cevabı - funds.py'nin GET /funds/popular/live-estimate
+    endpoint'iyle AYNI hesaplamayı (tefas_service.get_live_estimated_return)
+    kullanıyor, sadece HTTP yerine doğrudan servis çağrısı - Telegram
+    mesajından ayrı bir API isteği yapmaya gerek yok."""
+    from app.services.tefas import tefas_service
+
+    lines = ["📊 <b>Popüler Fonlar - Anlık Tahmini Getiri</b>"]
+    any_result = False
+    for code in POPULAR_FUND_CODES:
+        fund = tefas_service.get_fund(code)
+        estimate = tefas_service.get_live_estimated_return(code)
+        if not fund or not estimate or estimate.get("estimated_change_pct") is None:
+            continue
+        any_result = True
+        pct = estimate["estimated_change_pct"]
+        sign = "+" if pct >= 0 else ""
+        price = fund.get("price")
+        price_text = f"₺{price:.4f}" if price is not None else "—"
+        lines.append(f"\n<b>{code}</b> - {fund.get('name') or code}\n{price_text} · {sign}{pct}% (tahmini)")
+
+    if not any_result:
+        return "Şu an fon verileri alınamadı, birazdan tekrar dene."
+
+    cutoff = tefas_order_cutoff_info()
+    if cutoff.get("same_day"):
+        lines.append(f"\n⏰ Emir kesme saati bugün {cutoff.get('cutoff_time')} ({cutoff.get('minutes_remaining')} dk kaldı)")
+    else:
+        lines.append("\n⏰ Bugünkü fon emri kesim saati geçti.")
+
+    return "\n".join(lines)
+
+
 def _handle_update(db: Session, update: dict) -> None:
     message = update.get("message") or {}
     text = (message.get("text") or "").strip()
@@ -93,23 +143,36 @@ def _handle_update(db: Session, update: dict) -> None:
     chat_id = chat.get("id")
     if not text or chat_id is None:
         return
-    if not text.startswith("/start"):
+
+    if text.startswith("/start"):
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            _send_message(str(chat_id), "Merhaba! Hesabını bağlamak için BIP Terminal > Ayarlar sayfasındaki kodu buraya gönder (örn. /start ABCD1234).")
+            return
+
+        code = parts[1].strip().upper()
+        link = db.query(TelegramLink).filter(TelegramLink.link_code == code).first()
+        if not link:
+            _send_message(str(chat_id), "Kod tanınmadı. Ayarlar sayfasından yeni bir kod alıp tekrar dene.")
+            return
+
+        link.chat_id = str(chat_id)
+        link.linked_at = datetime.now(timezone.utc)
+        _send_message(str(chat_id), "Bağlantı tamam! Artık BIP Terminal'den sabah bültenini buradan alacaksın. Kapatmak istersen Ayarlar sayfasından bağlantıyı kaldırabilirsin.")
         return
 
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        _send_message(str(chat_id), "Merhaba! Hesabını bağlamak için BIP Terminal > Ayarlar sayfasındaki kodu buraya gönder (örn. /start ABCD1234).")
+    # /fonlar ve /yardim - kişisel hesap bağlantısı GEREKTİRMEZ (genel/
+    # herkese açık piyasa verisi, GET /scorecard'ın aynı felsefesi) - bota
+    # yazan herkes cevap alır, sadece sabah bülteni bağlı hesaba özel.
+    if text.startswith("/fonlar") or text.startswith("/populer"):
+        _send_message(str(chat_id), format_popular_funds_message())
         return
 
-    code = parts[1].strip().upper()
-    link = db.query(TelegramLink).filter(TelegramLink.link_code == code).first()
-    if not link:
-        _send_message(str(chat_id), "Kod tanınmadı. Ayarlar sayfasından yeni bir kod alıp tekrar dene.")
+    if text.startswith("/yardim") or text.startswith("/help"):
+        _send_message(str(chat_id), _HELP_TEXT)
         return
 
-    link.chat_id = str(chat_id)
-    link.linked_at = datetime.now(timezone.utc)
-    _send_message(str(chat_id), "Bağlantı tamam! Artık BIP Terminal'den sabah bültenini buradan alacaksın. Kapatmak istersen Ayarlar sayfasından bağlantıyı kaldırabilirsin.")
+    _send_message(str(chat_id), f"Bu komutu tanımıyorum.\n\n{_HELP_TEXT}")
 
 
 def poll_updates() -> None:
@@ -120,7 +183,7 @@ def poll_updates() -> None:
     yeniden işlemesin (Redis erişilemezse offset her seferinde baştan
     başlar - Telegram zaten en fazla son 24 saatin işlenmemiş mesajlarını
     tutuyor, o yüzden bu zararsız bir bozulma, sonsuz tekrar değil)."""
-    if not settings.TELEGRAM_BOT_TOKEN:
+    if not settings.TELEGRAM_USER_BOT_TOKEN:
         return
 
     offset = cache_service.get_json(_UPDATE_OFFSET_CACHE_KEY)
@@ -130,7 +193,7 @@ def poll_updates() -> None:
 
     try:
         resp = httpx.get(
-            _API_BASE.format(token=settings.TELEGRAM_BOT_TOKEN) + "/getUpdates",
+            _API_BASE.format(token=settings.TELEGRAM_USER_BOT_TOKEN) + "/getUpdates",
             params=params, timeout=30.0,
         )
         resp.raise_for_status()

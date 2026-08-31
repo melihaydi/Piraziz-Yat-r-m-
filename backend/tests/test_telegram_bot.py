@@ -76,10 +76,73 @@ def test_handle_update_bare_start_prompts_for_code(db):
         assert "Ayarlar" in mock_send.call_args[0][1]
 
 
-def test_handle_update_ignores_non_start_messages(db):
+def test_handle_update_unknown_text_gets_help_fallback(db):
+    # /start dışındaki AMA tanınan bir komut da (/fonlar, /yardim) olmayan
+    # serbest metin artık sessizce yok sayılmıyor - kullanıcıya /yardim'e
+    # yönlendiren kısa bir cevap dönüyor.
     with patch("app.services.telegram_bot._send_message") as mock_send:
         telegram_bot._handle_update(db, _fake_update("merhaba"))
-        mock_send.assert_not_called()
+        mock_send.assert_called_once()
+        assert "tanımıyorum" in mock_send.call_args[0][1]
+        assert "/fonlar" in mock_send.call_args[0][1]
+
+
+def test_handle_update_yardim_sends_help_text(db):
+    with patch("app.services.telegram_bot._send_message") as mock_send:
+        telegram_bot._handle_update(db, _fake_update("/yardim"))
+        mock_send.assert_called_once()
+        assert "/fonlar" in mock_send.call_args[0][1]
+
+
+def test_handle_update_fonlar_sends_popular_funds_message(db):
+    with patch("app.services.telegram_bot.format_popular_funds_message", return_value="FAKE FON MESAJI") as mock_fmt, \
+         patch("app.services.telegram_bot._send_message") as mock_send:
+        telegram_bot._handle_update(db, _fake_update("/fonlar"))
+        mock_fmt.assert_called_once()
+        mock_send.assert_called_once_with("999", "FAKE FON MESAJI")
+
+
+# --- format_popular_funds_message --------------------------------------------
+
+def _fake_fund(code, price=4.0, name=None):
+    return {"code": code, "name": name or f"{code} Fonu", "price": price, "daily_return": 1.0}
+
+
+def test_format_popular_funds_message_includes_each_resolvable_fund():
+    funds = {c: _fake_fund(c) for c in telegram_bot.POPULAR_FUND_CODES}
+    estimates = {c: {"estimated_change_pct": 1.23, "resolved_weight_pct": 80.0, "holdings": []} for c in telegram_bot.POPULAR_FUND_CODES}
+
+    with patch("app.services.tefas.tefas_service.get_fund", side_effect=lambda c: funds.get(c)), \
+         patch("app.services.tefas.tefas_service.get_live_estimated_return", side_effect=lambda c, **kw: estimates.get(c)), \
+         patch("app.services.telegram_bot.tefas_order_cutoff_info", return_value={"same_day": True, "cutoff_time": "13:30", "minutes_remaining": 42}):
+        text = telegram_bot.format_popular_funds_message()
+
+    for code in telegram_bot.POPULAR_FUND_CODES:
+        assert code in text
+    assert "+1.23%" in text
+    assert "13:30" in text
+
+
+def test_format_popular_funds_message_skips_unresolvable_funds():
+    with patch("app.services.tefas.tefas_service.get_fund", return_value=_fake_fund("TMV")), \
+         patch("app.services.tefas.tefas_service.get_live_estimated_return", return_value=None), \
+         patch("app.services.telegram_bot.tefas_order_cutoff_info", return_value={"same_day": False}):
+        text = telegram_bot.format_popular_funds_message()
+
+    assert "TMV" not in text
+    assert "alınamadı" in text
+
+
+def test_format_popular_funds_message_shows_cutoff_passed_when_not_same_day():
+    funds = {c: _fake_fund(c) for c in telegram_bot.POPULAR_FUND_CODES}
+    estimates = {c: {"estimated_change_pct": -0.5, "resolved_weight_pct": 90.0, "holdings": []} for c in telegram_bot.POPULAR_FUND_CODES}
+
+    with patch("app.services.tefas.tefas_service.get_fund", side_effect=lambda c: funds.get(c)), \
+         patch("app.services.tefas.tefas_service.get_live_estimated_return", side_effect=lambda c, **kw: estimates.get(c)), \
+         patch("app.services.telegram_bot.tefas_order_cutoff_info", return_value={"same_day": False}):
+        text = telegram_bot.format_popular_funds_message()
+
+    assert "kesim saati geçti" in text
 
 
 def test_handle_update_ignores_message_without_chat(db):
@@ -163,7 +226,7 @@ def test_compute_digest_text_no_cutoff_reminder_for_stock_only_portfolio(db):
 # --- poll_updates / send_morning_digest --------------------------------------
 
 def test_poll_updates_noop_without_bot_token():
-    with patch("app.services.telegram_bot.settings.TELEGRAM_BOT_TOKEN", None), \
+    with patch("app.services.telegram_bot.settings.TELEGRAM_USER_BOT_TOKEN", None), \
          patch("httpx.get") as mock_get:
         telegram_bot.poll_updates()
         mock_get.assert_not_called()
@@ -176,7 +239,7 @@ def test_poll_updates_processes_and_caches_offset(db):
     ]}
     fake_response.raise_for_status.return_value = None
 
-    with patch("app.services.telegram_bot.settings.TELEGRAM_BOT_TOKEN", "fake-token"), \
+    with patch("app.services.telegram_bot.settings.TELEGRAM_USER_BOT_TOKEN", "fake-token"), \
          patch("app.services.telegram_bot.SessionLocal", return_value=db), \
          patch("httpx.get", return_value=fake_response), \
          patch("app.services.telegram_bot._send_message", return_value=True), \
@@ -185,7 +248,7 @@ def test_poll_updates_processes_and_caches_offset(db):
 
     # assert_called_once DEĞİL: bu servisin gerçek arka plan poll_loop
     # thread'i (main.py'nin startup event'inde başlıyor) test paketi
-    # boyunca zaten çalışıyor - settings.TELEGRAM_BOT_TOKEN'ı yukarıda
+    # boyunca zaten çalışıyor - settings.TELEGRAM_USER_BOT_TOKEN'ı yukarıda
     # geçici olarak patch'lemek O thread'in de aynı anda görebileceği
     # PAYLAŞILAN bir global, yani nadiren o thread de bu pencerede
     # poll_updates()'e girip set_json'ı bir kere daha (AYNI, idempotent

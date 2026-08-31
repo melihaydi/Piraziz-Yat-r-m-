@@ -13,11 +13,11 @@ router = APIRouter()
 def _link_payload(link) -> dict:
     linked = link.chat_id is not None
     deep_link = (
-        f"https://t.me/{settings.TELEGRAM_BOT_USERNAME}?start={link.link_code}"
-        if settings.TELEGRAM_BOT_USERNAME else None
+        f"https://t.me/{settings.TELEGRAM_USER_BOT_USERNAME}?start={link.link_code}"
+        if settings.TELEGRAM_USER_BOT_USERNAME else None
     )
     return {
-        "configured": bool(settings.TELEGRAM_BOT_USERNAME),
+        "configured": bool(settings.TELEGRAM_USER_BOT_USERNAME),
         "linked": linked,
         "linked_at": link.linked_at.isoformat() if link.linked_at else None,
         "link_code": link.link_code,
