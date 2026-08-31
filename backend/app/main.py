@@ -159,6 +159,8 @@ async def start_background_jobs():
     signal_tracking_service.start_background_scheduler()
     from app.services.telegram_bot import telegram_bot_service
     telegram_bot_service.start_background_scheduler()
+    from app.services.index_tracker import index_tracker_service
+    index_tracker_service.start_daily_scheduler()
     from app.services.subscription_expiry import subscription_expiry_service
     subscription_expiry_service.start_daily_scheduler()
     from app.services.news import NewsService

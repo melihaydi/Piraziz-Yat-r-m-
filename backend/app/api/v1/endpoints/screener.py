@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy.orm import Session
 from app.api import deps
 from app.core.limiter import limiter
 from app.models.user import User
@@ -775,6 +776,32 @@ def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10), current_user: U
     result = {"is_sample": is_sample, "items": [_format_disclosure(d) for d in disclosures]}
     cache_service.set_json(cache_key, result, expire_seconds=_KAP_CACHE_TTL_SECONDS)
     return result
+
+
+@router.get("/index-changes")
+@limiter.limit("60/minute")
+def get_index_changes(
+    request: Request,
+    days: int = 30,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Son `days` gündeki BIST30/BIST100 endeks giriş/çıkışları - bkz.
+    index_tracker.py. Resmi bir rebalance takvimi değil, endeksin
+    bileşen listesindeki gün-be-gün gözlenen gerçek değişim."""
+    from app.services.index_tracker import get_recent_changes
+    events = get_recent_changes(db, days=days)
+    return {
+        "events": [
+            {
+                "index_code": e.index_code,
+                "ticker": e.ticker,
+                "change_type": e.change_type,
+                "detected_date": e.detected_date.isoformat(),
+            }
+            for e in events
+        ]
+    }
 
 
 

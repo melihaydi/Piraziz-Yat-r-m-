@@ -27,6 +27,7 @@ from app.models.subscription import Subscription
 from app.models.fund_composition_override import FundCompositionOverride
 from app.models.strategy_signal import StrategySignal
 from app.models.telegram_link import TelegramLink
+from app.models.index_membership import IndexMembership, IndexChangeEvent
 
 __all__ = [
     "Base",

@@ -16,6 +16,7 @@ import {
   Bot,
   Briefcase,
   ChevronDown,
+  ArrowRightLeft,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { Skeleton } from "@/components/ui/Skeleton"
@@ -212,6 +213,12 @@ export default function Home() {
   const [newsFeed, setNewsFeed] = useState<any[]>([])
   const [loadingNewsFeed, setLoadingNewsFeed] = useState(true)
 
+  // Endeks giriş/çıkış - günde bir kez değiştiği için 2s/10s pollingine
+  // dahil değil, sayfa açılışında bir kere çekiliyor (bkz. backend'in
+  // index_tracker.py'si).
+  const [indexChanges, setIndexChanges] = useState<any[]>([])
+  const [loadingIndexChanges, setLoadingIndexChanges] = useState(true)
+
   // --- Portföyüm (küçük özet) ----------------------------------------
   // Gerçek veri: /portfolio/ (aktif portföyün toplam değeri/K-Z) ve
   // /portfolio/live-estimate (fonların canlı BİST fiyatıyla ağırlıklandırılmış
@@ -325,6 +332,14 @@ export default function Home() {
         .finally(() => setLoadingNewsFeed(false))
     }
 
+    const fetchIndexChanges = () => {
+      authFetch(`/screener/index-changes?days=14`)
+        .then(res => (res.ok ? res.json() : { events: [] }))
+        .then(data => { if (Array.isArray(data.events)) setIndexChanges(data.events) })
+        .catch(err => console.error("Failed to load index changes:", err))
+        .finally(() => setLoadingIndexChanges(false))
+    }
+
     // Tam hisse listesi artık iki tüketicisi olduğu için koşulsuz çekiliyor:
     // favori eşleştirme VE Yükselenler/Düşenler. İkincisi kullanıcının
     // favorisi olsun olmasın her zaman anlamlı olduğundan, eski "favori
@@ -369,6 +384,7 @@ export default function Home() {
 
     fetchMarketSummary()
     fetchNewsFeed()
+    fetchIndexChanges()
     fetchScreenerList()
     loadFavoriteKeys().then(loadFavoriteFunds)
 
@@ -848,6 +864,43 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Endeks Giriş/Çıkış - BIST30/BIST100'ün bileşen listesindeki
+          gün-be-gün gözlenen gerçek değişim (bkz. backend'in
+          index_tracker.py'si). Değişiklik yoksa kart hiç gösterilmiyor -
+          çoğu gün gerçekten hiçbir şey değişmiyor, boş bir kart
+          göstermek yerine sessizce atlanıyor. */}
+      {!loadingIndexChanges && indexChanges.length > 0 && (
+        <Card className="bip-card" data-reveal>
+          <CardHeader className="p-4 pb-2.5">
+            <CardTitle className="t-section flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4 text-primary" />
+              Endeks Giriş/Çıkış
+            </CardTitle>
+            <CardDescription className="text-xs">Son 14 günde BIST30/BIST100 bileşen listesindeki değişimler</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="flex flex-wrap gap-2">
+              {indexChanges.map((e: any, i: number) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
+                    e.change_type === "ADDED"
+                      ? "bg-bull/10 border-bull/25 text-bull"
+                      : "bg-bear/10 border-bear/25 text-bear"
+                  }`}
+                >
+                  <span>{e.ticker}</span>
+                  <span className="text-[10px] font-black uppercase tracking-wide opacity-80">
+                    {e.change_type === "ADDED" ? "girdi" : "çıktı"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">{e.index_code}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Satır 3: Popüler Fonlar */}
       <Card className="bip-card" data-reveal>
