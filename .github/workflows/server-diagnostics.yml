@@ -21,7 +21,7 @@ jobs:
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" '
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \n            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \n            "$SERVER_USER@$SERVER_HOST" '
             echo "=== uptime / load ===" && uptime
             echo "=== memory ===" && free -h
             echo "=== swap activity ===" && vmstat 1 3
@@ -29,5 +29,8 @@ jobs:
             echo "=== docker ps ===" && sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
             echo "=== docker stats (snapshot) ===" && sudo docker stats --no-stream
             echo "=== backend logs (last 200 lines) ===" && cd /home/ubuntu/bip && sudo docker compose logs --tail=200 backend
+            echo "=== TradingView besleme durumu ===" && cd /home/ubuntu/bip && sudo docker compose logs backend 2>&1 | grep -iE "tradingview|auth_token|UNAUTHENTICATED|real-time feed|delayed" | tail -25
+            echo "=== tv_auth_token.txt (SADECE metadata - icerigi ASLA yazdirilmaz) ===" && ls -l /home/ubuntu/bip/backend/tv_auth_token.txt 2>/dev/null || echo "DOSYA YOK"
+            echo "=== .env TradingView anahtari (sadece var/yok) ===" && (grep -qE "^TV_SESSION=." /home/ubuntu/bip/backend/.env && echo "TV_SESSION satiri VAR" || echo "TV_SESSION YOK/BOS")
             echo "=== backend health from inside server ===" && curl -sS -o /dev/null -w "http_code=%{http_code} time_total=%{time_total}s\n" https://api.bipterminal.com/health
           '
