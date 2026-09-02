@@ -29,9 +29,9 @@ jobs:
             echo "=== scanner.tradingview.com REST istek sayisi (son 2000 satir) ==="
             sudo docker compose logs --tail=2000 backend 2>&1 | grep -ac "scanner.tradingview.com" || true
             echo "=== tv_auth_token.txt (SADECE metadata - icerik ASLA yazdirilmaz) ==="
-            ls -l /home/ubuntu/bip/backend/tv_auth_token.txt 2>/dev/null || echo "DOSYA YOK"
+            ls -l /home/ubuntu/bip/tv_auth_token.txt 2>/dev/null || echo "DOSYA YOK"
             echo "=== .env TV anahtarlari (sadece var/yok) ==="
-            (grep -qE "^TV_SESSION=." /home/ubuntu/bip/backend/.env && echo "TV_SESSION VAR" || echo "TV_SESSION YOK/BOS")
+            (grep -qE "^TV_SESSION=." /home/ubuntu/bip/.env && echo "TV_SESSION VAR" || echo "TV_SESSION YOK/BOS")
             echo "=== uptime / load ===" && uptime
             echo "=== memory ===" && free -h
             echo "=== swap activity ===" && vmstat 1 3
