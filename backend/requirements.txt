@@ -21,16 +21,16 @@ email-validator>=2.0.0
 # requirements.txt" on a clean machine would fail with
 # "ModuleNotFoundError: No module named 'borsapy'". Versions pinned to match
 # what's actually installed and verified working in this project's venv.
-borsapy==0.10.2
+borsapy==0.11.0
 pytefas==0.4.1
-pandas==3.0.3
+pandas==3.0.5
 bcrypt==5.0.0
-slowapi==0.1.9
-pyotp==2.9.0
-qrcode[pil]==8.0
+slowapi==0.1.10
+pyotp==2.10.0
+qrcode[pil]==8.2
 pywebpush==2.4.0
-reportlab==5.0.0
-sentry-sdk[fastapi]==2.19.2
+reportlab==5.0.1
+sentry-sdk[fastapi]==2.68.1
 # Not used for actual template rendering (this is an API-only backend) -
 # sentry-sdk's StarletteIntegration (a dependency of FastApiIntegration,
 # auto-enabled regardless of what's passed to integrations=[...]) does an
@@ -38,5 +38,5 @@ sentry-sdk[fastapi]==2.19.2
 # setup, which raises ImportError at sentry_sdk.init() time if jinja2 isn't
 # installed - confirmed live, this crashed the app on startup the moment
 # SENTRY_DSN got set. jinja2 itself is pure-Python with no heavy deps.
-jinja2==3.1.5
+jinja2==3.1.6
 iyzipay==1.0.46
