@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { LayoutDashboard, Briefcase, Coins, CandlestickChart, Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { authFetch } from "@/lib/auth"
+import { useCurrentUser } from "@/lib/currentUserStore"
 
 /**
  * Mobil/tablet birincil gezinme - alt sekme çubuğu.
@@ -44,13 +44,11 @@ export default function MobileTabBar({ onMoreClick, drawerOpen }: MobileTabBarPr
   // butonuyla aynı ürün kararı ("gösterip griletmek yerine hiç gösterme").
   // /trade'e zaten girilse bile kendi accessDenied ekranını gösteriyor,
   // ama tutarlılık için burada da aynı kural uygulanıyor.
-  const [role, setRole] = useState<string | null>(null)
-  useEffect(() => {
-    authFetch("/auth/me")
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => { if (data?.role) setRole(data.role) })
-      .catch(() => {})
-  }, [])
+  // Paylaşılan /auth/me - bkz. currentUserStore.ts (Sidebar/Header ile aynı
+  // tek istek). role null kalırsa (henüz yüklenmedi) sekme gizlenmiyor,
+  // eski davranışla aynı: rol bilinene kadar "free" varsayılmıyor.
+  const { user: currentUser, loading: userLoading } = useCurrentUser()
+  const role = userLoading ? null : (currentUser?.role ?? null)
   const isFreeTier = role === "free"
 
   const primaryHrefs = ["/", "/portfolio", "/funds", "/trade"]

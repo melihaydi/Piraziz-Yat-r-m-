@@ -26,6 +26,8 @@ import { StatTile } from "@/components/ui/StatTile"
 import EconomicCalendarWidget from "@/components/EconomicCalendarWidget"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { subscribeMarketSummary, getMarketSummarySnapshot } from "@/lib/marketSummaryStore"
+import { useCurrentUser } from "@/lib/currentUserStore"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { fetchWatchlist, migrateLegacyWatchlist } from "@/lib/watchlist"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
@@ -97,13 +99,23 @@ interface Signal {
 
 export default function Home() {
   const router = useRouter()
-  const [marketSummary, setMarketSummary] = useState<any>({
+  // Piyasa özeti PAYLAŞILAN store'dan (marketSummaryStore.ts) - Header da
+  // aynı uç noktayı kullanıyor ve önceden ikisi ayrı ayrı polluyordu
+  // (2sn + 5sn, aynı cevap için dakikada 42 istek). Store artık tek poll
+  // yapıp en kısa aralığı (burada 2sn) uyguluyor.
+  const MARKET_SUMMARY_FALLBACK = {
     sentiment: { bullish: 52, neutral: 28, bearish: 20 },
     sectors: [],
     pulse: { score: 50, label: "NÖTR", sentiment: 50, trend: 50, momentum: 50, participation: 50, risk: 50 },
     index: { price: 10240.50, change_percent: 1.42 },
-  })
-  const [loadingSummary, setLoadingSummary] = useState(true)
+  }
+  const marketSnapshot = useSyncExternalStore(
+    useCallback((cb: () => void) => subscribeMarketSummary(cb, 2000), []),
+    getMarketSummarySnapshot,
+    getMarketSummarySnapshot,
+  )
+  const marketSummary = marketSnapshot.data ?? MARKET_SUMMARY_FALLBACK
+  const loadingSummary = marketSnapshot.loading
 
   // --- Endeks grafiği ------------------------------------------------
   const [indexCandlesDaily, setIndexCandlesDaily] = useState<Candle[]>([])
@@ -268,12 +280,14 @@ export default function Home() {
   const [loadingSignals, setLoadingSignals] = useState(true)
   const isFreeTier = role === "free"
 
+  // Paylaşılan /auth/me - bkz. currentUserStore.ts (Header/Sidebar ile aynı
+  // tek istek). role null kalırken sinyal kartı hiç render edilmiyor (aşağıdaki
+  // `role !== null` kapısı), o davranış korunuyor.
+  const { user: currentUser, loading: userLoading } = useCurrentUser()
   useEffect(() => {
-    authFetch("/auth/me")
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => { if (data?.role) setRole(data.role) })
-      .catch(() => setRole("free"))
-  }, [])
+    if (userLoading) return
+    setRole(currentUser?.role ?? "free")
+  }, [currentUser, userLoading])
 
   useEffect(() => {
     if (role === null || isFreeTier) {
@@ -311,19 +325,6 @@ export default function Home() {
   }, [signals])
 
   useEffect(() => {
-    const fetchMarketSummary = () => {
-      authFetch(`/screener/market-summary`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.sentiment) setMarketSummary(data)
-          setLoadingSummary(false)
-        })
-        .catch(err => {
-          console.error("Failed to load market summary:", err)
-          setLoadingSummary(false)
-        })
-    }
-
     const fetchNewsFeed = () => {
       authFetch(`/news/`)
         .then(res => (res.ok ? res.json() : []))
@@ -382,17 +383,16 @@ export default function Home() {
       }
     }
 
-    fetchMarketSummary()
+    // Piyasa özeti bu listede YOK - onu marketSummaryStore yürütüyor
+    // (yukarıdaki useSyncExternalStore aboneliği), Header'la paylaşımlı.
     fetchNewsFeed()
     fetchIndexChanges()
     fetchScreenerList()
     loadFavoriteKeys().then(loadFavoriteFunds)
 
-    const stopMarket = pollWhileVisibleAndOpen(fetchMarketSummary, 2000)
     const stopScreener = pollWhileVisibleAndOpen(fetchScreenerList, 10000)
 
     return () => {
-      stopMarket()
       stopScreener()
     }
   }, [])

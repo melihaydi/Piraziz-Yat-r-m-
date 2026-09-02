@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useCallback } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { Search, Sparkles, Filter, RefreshCw, Loader2, ArrowUpDown, Star, Eye, EyeOff, Scale, X, FileSearch } from "lucide-react"
@@ -14,6 +14,7 @@ import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
 import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
+import { subscribeMarketSummary, getMarketSummarySnapshot } from "@/lib/marketSummaryStore"
 
 // AI Skoru'ndan dürüst bir yön etiketi - backend'in calculate_ai_score_details'i
 // (score-details uç noktasının kaynağı) sonucu aynı eşiklerle Pozitif/Negatif/
@@ -208,8 +209,6 @@ export default function ScreenerPage() {
   // "1sa" iken son iki mumun kapanışını "bugün açılış/dün kapanış" diye
   // göstermek yanlış olurdu - bir saat önceki fiyat, dünün kapanışı değildir.
   const [dailyCandles, setDailyCandles] = useState<any[]>([])
-  const [marketSummary, setMarketSummary] = useState<any>({})
-  const [loadingSummary, setLoadingSummary] = useState(true)
 
   // Stock comparison state (2-5 stocks, matches the backend's GET /screener/compare cap)
   const [compareCodes, setCompareCodes] = useState<string[]>([])
@@ -460,22 +459,17 @@ export default function ScreenerPage() {
 
   // Sektör Performansı + En Çok Yükselenler/Düşenler kartları için - Header
   // ve ana sayfayla AYNI uç nokta, sektör yüzdeleri her yerde tutarlı olsun.
-  useEffect(() => {
-    const fetchMarketSummary = () => {
-      authFetch(`/screener/market-summary`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.sectors) setMarketSummary(data)
-          setLoadingSummary(false)
-        })
-        .catch(err => {
-          console.error("Failed to load market summary:", err)
-          setLoadingSummary(false)
-        })
-    }
-    fetchMarketSummary()
-    return pollWhileVisibleAndOpen(fetchMarketSummary, 15000)
-  }, [])
+  // Bu yüzden de artık PAYLAŞILAN store'dan besleniyor (marketSummaryStore.ts):
+  // Header zaten her sayfada 5sn'de bir aynı cevabı çekiyordu, buradaki 15sn'lik
+  // ikinci poll mükerrerdi. Store en kısa aralığı uyguladığı için bu sayfa
+  // eskisinden daha taze veri görüyor (15sn yerine 5sn).
+  const marketSnapshot = useSyncExternalStore(
+    useCallback((cb: () => void) => subscribeMarketSummary(cb, 15000), []),
+    getMarketSummarySnapshot,
+    getMarketSummarySnapshot,
+  )
+  const marketSummary = marketSnapshot.data ?? {}
+  const loadingSummary = marketSnapshot.loading
 
   useEffect(() => {
     if (!selectedTicker) return

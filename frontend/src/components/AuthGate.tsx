@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { login, register, fetchCurrentUser, verifyTwoFactor } from "@/lib/auth"
+import { refreshCurrentUser } from "@/lib/currentUserStore"
 
 interface AuthGateProps {
   children: React.ReactNode
@@ -64,7 +65,11 @@ export default function AuthGate({ children }: AuthGateProps) {
       return
     }
     const verifySession = async () => {
-      const user = await fetchCurrentUser()
+      // Paylaşılan store üzerinden (currentUserStore.ts): AuthGate uygulamanın
+      // EN DIŞ katmanı olduğu için isteği ilk o tetikliyor, Header/Sidebar/
+      // MobileTabBar ve ana sayfa aynı cevabı önbellekten okuyor - önceden
+      // beşi de ayrı ayrı /auth/me çağırıyordu.
+      const user = await refreshCurrentUser()
       if (user) {
         setIsLoggedIn(true)
       }

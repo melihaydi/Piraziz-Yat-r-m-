@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils"
 import Logo from "@/components/Logo"
 import { authFetch } from "@/lib/auth"
+import { useCurrentUser } from "@/lib/currentUserStore"
 
 interface SidebarProps {
   open?: boolean
@@ -98,18 +99,12 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   // Strateji at all (trade.py/strategy.py's routers now require
   // get_current_premium_user) - hiding its own link here is the UX half of
   // that same enforcement.
-  const [isSuperuser, setIsSuperuser] = useState(false)
-  const [role, setRole] = useState("free")
-  useEffect(() => {
-    authFetch("/auth/me")
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => {
-        if (!data) return
-        setIsSuperuser(!!data.is_superuser)
-        if (data.role) setRole(data.role)
-      })
-      .catch(() => {})
-  }, [])
+  // Paylaşılan /auth/me (bkz. currentUserStore.ts) - önceden Sidebar,
+  // Header, MobileTabBar, AuthGate ve ana sayfa aynı uç noktayı ayrı ayrı
+  // çağırıyordu, tek sayfa açılışında beş istek.
+  const { user: currentUser } = useCurrentUser()
+  const isSuperuser = !!currentUser?.is_superuser
+  const role = currentUser?.role || "free"
   const isFreeTier = role === "free"
 
   /* V2 gezinme: düz bir liste yerine anlam gruplarına ayrıldı.

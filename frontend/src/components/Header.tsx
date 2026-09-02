@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useRef } from "react"
+import React, { useState, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Bell, Menu, Search, TrendingUp, TrendingDown, Sparkles, ShieldCheck, User, CandlestickChart } from "lucide-react"
@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch, getProfilePicKey } from "@/lib/auth"
-import { usePolling, pollWhileVisibleAndOpen } from "@/lib/usePolling"
-import { useBistSessionOpen } from "@/lib/bistSession"
+import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { useTickerDirectory } from "@/lib/tickerDirectory"
+import { subscribeMarketSummary, getMarketSummarySnapshot } from "@/lib/marketSummaryStore"
+import { useCurrentUser } from "@/lib/currentUserStore"
 import { useFlash } from "@/lib/useFlash"
 
 // role -> display label/styling. Previously the header just hardcoded
@@ -262,29 +263,35 @@ export default function Header({ onMenuClick }: HeaderProps) {
   // backend had the real full_name all along. Re-fetched whenever a profile
   // change might have happened (profile-updated is dispatched by Settings
   // after any /auth/me PUT).
+  // Veri paylaşılan store'dan (currentUserStore.ts) - "profile-updated"
+  // olayını store'un kendisi dinleyip önbelleği tazeliyor, o yüzden burada
+  // ayrı bir dinleyiciye gerek kalmadı; Ayarlar'da isim değişince rozet
+  // yine anında güncelleniyor.
+  const { user: currentUser } = useCurrentUser()
   useEffect(() => {
-    const loadProfile = () => {
-      authFetch("/auth/me")
-        .then(res => (res.ok ? res.json() : null))
-        .then(data => {
-          if (!data) return
-          if (data.role) setRole(data.role)
-          const displayName = data.full_name?.trim() || data.email?.split("@")[0]
-          if (displayName) setUsername(displayName)
-        })
-        .catch(() => {})
-    }
-    loadProfile()
-    window.addEventListener("profile-updated", loadProfile)
-    return () => window.removeEventListener("profile-updated", loadProfile)
-  }, [])
+    if (!currentUser) return
+    if (currentUser.role) setRole(currentUser.role)
+    const displayName = currentUser.full_name?.trim() || currentUser.email?.split("@")[0]
+    if (displayName) setUsername(displayName)
+  }, [currentUser])
 
-  // 1. Fetch live market indexes
-  const fetchIndexes = React.useCallback(() => {
+  // 1. Canlı endeks şeridi - veri artık PAYLAŞILAN store'dan geliyor
+  // (marketSummaryStore.ts). Önceden Header kendi authFetch'ini 5sn'de bir
+  // yapıyordu; ana sayfa/screener de AYNI uç noktayı ayrı ayrı polluyordu,
+  // yani tek sekmede aynı cevap iki kez çekiliyordu (detay: store'un kendi
+  // yorumunda). Şimdi tek bir poll var, store abonelerin istediği en kısa
+  // aralıkta dönüyor.
+  const marketSnapshot = useSyncExternalStore(
+    React.useCallback((cb: () => void) => subscribeMarketSummary(cb, 5000), []),
+    getMarketSummarySnapshot,
+    getMarketSummarySnapshot,
+  )
+
+  useEffect(() => {
+    const data = marketSnapshot.data
     {
-      authFetch(`/screener/market-summary`)
-        .then(res => res.json())
-        .then(data => {
+      {
+        {
           if (data) {
             const items = []
             if (data.index) {
@@ -336,30 +343,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
               }
             }
           }
-        })
-        .catch(err => console.error("Failed to load header ticker feed:", err))
+        }
+      }
     }
-  }, [])
-
-  useEffect(() => { fetchIndexes() }, [fetchIndexes])
-
-  // This is a persistent component (mounted for the whole app, not per
-  // page), so its poll interval runs continuously everywhere, stacked on
-  // top of whatever the current page itself is polling. 2s was excessive
-  // for a ticker banner - re-rendering the header 30x/minute added
-  // constant background CPU/network pressure that made route transitions
-  // feel janky even though nothing was actually reloading. 5s still reads
-  // as live for an index ticker.
-  //
-  // usePolling (not setInterval) so this stops entirely while the tab is
-  // hidden. Being app-wide, this was the single largest source of idle
-  // traffic: a parked tab kept requesting market-summary 12x/minute
-  // forever, and nothing rendered any of it. Also gated on the BIST session
-  // (Mon-Fri 09:30-18:15 Istanbul time, see bistSession.ts) - the index
-  // doesn't move outside those hours either, and this header is mounted on
-  // every single page.
-  const bistSessionOpen = useBistSessionOpen()
-  usePolling(fetchIndexes, 5000, bistSessionOpen)
+  }, [marketSnapshot])
 
   // 2. Tüm hisse+fon listesi - paylaşılan tek kaynak (bkz. tickerDirectory.ts),
   // portföye/yönetilen portföye varlık ekleme ve fon kompozisyon editöründeki

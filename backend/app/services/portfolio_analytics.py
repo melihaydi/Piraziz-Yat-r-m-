@@ -24,6 +24,68 @@ MIN_RETURN_POINTS = 20
 TRADING_DAYS_PER_YEAR = 252
 FALLBACK_RISK_FREE_RATE = 0.35  # only used if borsapy.risk_free_rate() is unavailable
 
+# Bu iki değer de GÜNLÜK çözünürlükte: 6 aylık günlük getiri serisi ancak
+# kapanıştan sonra bir bar uzuyor, TCMB politika faizi ise ayda bir
+# değişiyor. Buna rağmen ikisi de /portfolio/analytics'in HER cache
+# miss'inde yeniden ağdan çekiliyordu.
+#
+# Ölçüm (yerelde, tek hisseli portföy): toplam ~2.7s'nin 1.9s'si XU100
+# benchmark serisi, 0.26s'si risk_free_rate. Benchmark üstelik HER
+# KULLANICININ her isteğinde aynı - kullanıcı başına değil, sistem
+# genelinde tek bir değer. İkisini de saatlik önbelleğe almak analytics'in
+# soğuk-cache maliyetini hissedilir şekilde düşürüyor; veri tazeliği
+# açısından kayıp yok çünkü ikisi de gün içinde zaten değişmiyor.
+_RETURNS_CACHE_TTL_SECONDS = 3 * 60 * 60
+_RISK_FREE_CACHE_TTL_SECONDS = 6 * 60 * 60
+
+
+def _cached_returns(cache_key: str, compute) -> Optional[pd.Series]:
+    """Getiri serisini Redis'te JSON olarak (tarih -> getiri) tutar.
+    Redis erişilemezse (yerel geliştirme) cache_service zaten sessizce
+    None/False dönüyor, yani davranış eskisiyle birebir aynı kalıyor -
+    sadece hızlanma olmuyor."""
+    from app.core.redis import cache_service
+
+    cached = cache_service.get_json(cache_key)
+    if cached:
+        try:
+            import datetime as dt
+            index = [dt.date.fromisoformat(d) for d in cached["dates"]]
+            return pd.Series(cached["values"], index=index)
+        except Exception:
+            pass  # bozuk/eski format - yeniden hesapla
+
+    series = compute()
+    if series is not None and len(series) > 0:
+        try:
+            cache_service.set_json(
+                cache_key,
+                {"dates": [d.isoformat() for d in series.index], "values": [float(v) for v in series.values]},
+                expire_seconds=_RETURNS_CACHE_TTL_SECONDS,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to cache returns for {cache_key}: {e}")
+    return series
+
+
+def _get_risk_free_rate() -> float:
+    """TCMB politika faizi - ayda bir toplanan bir kurulun kararı, yani
+    gün içinde hiç değişmiyor; yine de her analytics cache miss'inde
+    yeniden çekiliyordu (~0.26s). Redis yoksa eski davranışın aynısı."""
+    from app.core.redis import cache_service
+
+    cached = cache_service.get_json("analytics:risk_free_rate")
+    if cached and isinstance(cached.get("rate"), (int, float)):
+        return float(cached["rate"])
+
+    try:
+        rate = borsapy.risk_free_rate() or FALLBACK_RISK_FREE_RATE
+    except Exception:
+        return FALLBACK_RISK_FREE_RATE
+
+    cache_service.set_json("analytics:risk_free_rate", {"rate": float(rate)}, expire_seconds=_RISK_FREE_CACHE_TTL_SECONDS)
+    return float(rate)
+
 
 def _fetch_stock_returns(ticker: str, retries: int = 2) -> Optional[pd.Series]:
     """A couple of retries absorb the occasional transient "No data
@@ -32,21 +94,25 @@ def _fetch_stock_returns(ticker: str, retries: int = 2) -> Optional[pd.Series]:
     thread sharing the same TradingView connection pool) - a single
     request-scoped retry is cheap and avoids the whole risk-metrics
     response bailing out over what's usually a one-off hiccup."""
-    last_err: Optional[Exception] = None
-    for attempt in range(retries + 1):
-        try:
-            df = borsapy.Ticker(ticker).history(period=LOOKBACK_PERIOD, interval="1d")
-            if df is None or len(df) < MIN_RETURN_POINTS:
-                return None
-            returns = df["Close"].pct_change().dropna()
-            returns.index = df.index[1:].date
-            return returns
-        except Exception as e:
-            last_err = e
-            if attempt < retries:
-                continue
-    logger.warning(f"Failed to fetch stock returns for {ticker}: {last_err}")
-    return None
+
+    def _fetch() -> Optional[pd.Series]:
+        last_err: Optional[Exception] = None
+        for attempt in range(retries + 1):
+            try:
+                df = borsapy.Ticker(ticker).history(period=LOOKBACK_PERIOD, interval="1d")
+                if df is None or len(df) < MIN_RETURN_POINTS:
+                    return None
+                returns = df["Close"].pct_change().dropna()
+                returns.index = df.index[1:].date
+                return returns
+            except Exception as e:
+                last_err = e
+                if attempt < retries:
+                    continue
+        logger.warning(f"Failed to fetch stock returns for {ticker}: {last_err}")
+        return None
+
+    return _cached_returns(f"analytics:returns:stock:{ticker.upper()}", _fetch)
 
 
 def _fetch_fund_returns(code: str) -> Optional[pd.Series]:
@@ -148,10 +214,7 @@ def _compute_risk_metrics(assets: List[Dict[str, Any]], total_value: float) -> D
     annualized_return = portfolio_returns.mean() * TRADING_DAYS_PER_YEAR
     annualized_volatility = portfolio_returns.std() * (TRADING_DAYS_PER_YEAR ** 0.5)
 
-    try:
-        risk_free_rate = borsapy.risk_free_rate() or FALLBACK_RISK_FREE_RATE
-    except Exception:
-        risk_free_rate = FALLBACK_RISK_FREE_RATE
+    risk_free_rate = _get_risk_free_rate()
 
     sharpe = (annualized_return - risk_free_rate) / annualized_volatility if annualized_volatility > 0 else None
 

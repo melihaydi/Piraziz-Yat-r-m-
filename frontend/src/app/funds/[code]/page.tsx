@@ -2,22 +2,30 @@
 
 import React, { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
+import dynamic from "next/dynamic"
 import { ChevronLeft, Loader2, Calendar, Shield, Wallet, User, TrendingUp, AlertTriangle, Clock, Zap } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis
-} from "recharts"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+
+// recharts (~324KB) bu sayfanın İLK yükünden çıkarıldı - diğer tüm
+// sayfaların zaten kullandığı dynamic() deseni buraya da uygulandı.
+// Burada ekstra önemli: /funds/[code] herkese açık (bkz. AuthGate'in
+// PUBLIC_PATHS'i), arama motorundan gelen ziyaretçinin ilk gördüğü sayfa.
+const chartLoading = () => (
+  <div className="h-full flex items-center justify-center">
+    <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+  </div>
+)
+const FundPriceAreaChart = dynamic(() => import("@/components/charts/FundPriceAreaChart"), {
+  ssr: false,
+  loading: chartLoading,
+})
+const FundDistributionPieChart = dynamic(() => import("@/components/charts/FundDistributionPieChart"), {
+  ssr: false,
+  loading: chartLoading,
+})
 
 const COLORS = ["#3b82f6", "#10b981", "#fbbf24", "#a855f7", "#ec4899", "#f97316"]
 
@@ -264,20 +272,7 @@ export default function FundDetailPage() {
               )}
               <div className="h-72 w-full">
                 {chartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                      <defs>
-                        <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} />
-                      <YAxis stroke="#52525b" fontSize={10} domain={["auto", "auto"]} tickLine={false} />
-                      <Tooltip formatter={(value) => `₺${Number(value).toFixed(4)}`} />
-                      <Area type="monotone" dataKey="price" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <FundPriceAreaChart data={chartData} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Tarihsel grafik verisi bulunamadı</div>
                 )}
@@ -297,24 +292,7 @@ export default function FundDetailPage() {
             <CardContent className="flex flex-col items-center">
               <div className="h-44 w-full">
                 {fund.assets_distribution && fund.assets_distribution.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={fund.assets_distribution}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={58}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {fund.assets_distribution.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `%${value}`} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <FundDistributionPieChart data={fund.assets_distribution} colors={COLORS} />
                 ) : (
                   <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Varlık kırılım verisi bulunamadı</div>
                 )}
