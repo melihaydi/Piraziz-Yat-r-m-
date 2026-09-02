@@ -1011,7 +1011,15 @@ class TefasService:
                 last_err: Optional[Exception] = None
                 for attempt in range(3):
                     try:
-                        df = borsapy.Ticker(ticker).history(period=f"{days_back}d", interval="1d")
+                        # Ayni as_of tarihi icin ayni pencere tekrar tekrar
+                        # cekiliyordu; her cagri kendi TradingView oturumunu
+                        # aciyor (bkz. price_history.py). days_back anahtara
+                        # dahil - farkli pencere farkli seri demek.
+                        from app.services.price_history import cached_history
+                        df = cached_history(
+                            f"history:1d:{days_back}d:{ticker.upper()}",
+                            lambda: borsapy.Ticker(ticker).history(period=f"{days_back}d", interval="1d"),
+                        )
                         break
                     except Exception as e:
                         last_err = e

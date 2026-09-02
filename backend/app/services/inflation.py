@@ -127,7 +127,14 @@ def alt_asset_return_pct(asset: str, start_date: datetime.date) -> Optional[floa
     "gram-altin" (borsapy.FX'in kabul ettiği semboller). Geçmiş veri
     çekilemezse None - hiçbir sayı uydurulmaz."""
     try:
-        df = borsapy.FX(asset).history(start=start_date.isoformat())
+        # Gunluk cozunurluklu bir karsilastirma metrigi - portfoy sayfasi
+        # her acildiginda yeniden cekmesi gereksiz. 1 saat fazlasiyla taze.
+        from app.services.price_history import cached_history
+        df = cached_history(
+            f"history:fx:{asset}:{start_date.isoformat()}",
+            lambda: borsapy.FX(asset).history(start=start_date.isoformat()),
+            ttl_seconds=60 * 60,
+        )
         if df is None or df.empty:
             return None
         start_price = float(df.iloc[0]["Close"])

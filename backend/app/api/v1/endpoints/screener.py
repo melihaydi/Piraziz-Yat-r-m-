@@ -266,7 +266,13 @@ def _fetch_compare_candles(ticker: str) -> List[dict]:
         return candles
     try:
         import borsapy
-        hist_df = borsapy.Ticker(ticker).history(period="1y", interval="1d")
+        from app.services.price_history import cached_history
+        # portfolio.py'deki fallback ile AYNI onbellek anahtari - iki uc da
+        # ayni 1y gunluk seriyi istiyor, bir kez cekilip ikisine de yetiyor.
+        hist_df = cached_history(
+            f"history:1d:1y:{ticker.upper()}",
+            lambda: borsapy.Ticker(ticker).history(period="1y", interval="1d"),
+        )
         if hist_df is not None and not hist_df.empty:
             return [
                 {"time": int(idx.timestamp()), "close": float(row["Close"])}

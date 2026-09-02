@@ -1263,7 +1263,14 @@ def get_portfolio_signals(
 
         try:
             import borsapy
-            hist_df = borsapy.Ticker(ticker).history(period="1y", interval="1d")
+            from app.services.price_history import cached_history
+            # Her history() cagrisi KENDI TradingView oturumunu aciyor
+            # (yukaridaki nota bakin) - ayni ticker'i acan her istek yeni bir
+            # el sikisma odemesin diye 15 dk onbellek. Bkz. price_history.py.
+            hist_df = cached_history(
+                f"history:1d:1y:{ticker.upper()}",
+                lambda: borsapy.Ticker(ticker).history(period="1y", interval="1d"),
+            )
             if hist_df is not None and not hist_df.empty:
                 built = []
                 for idx, row in hist_df.iterrows():

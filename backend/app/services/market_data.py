@@ -168,6 +168,24 @@ logger = logging.getLogger(__name__)
 # live financial data feed going dark forever until someone manually
 # restarts the container is worse than continuing to retry at the capped
 # delay indefinitely.
+def read_auth_token_file() -> Optional[str]:
+    """tv_auth_token.txt'yi okur. Yoksa/bossa None - yerel gelistirmede
+    normal durum. Hem baslangicta hem HER yeniden baglanmada cagriliyor
+    (bkz. patched_reconnect)."""
+    path = settings.TV_AUTH_TOKEN_FILE
+    if not path:
+        return None
+    try:
+        with open(path, "r") as f:
+            token = f.read().strip()
+        return token or None
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to read pre-fetched TradingView auth_token from {path}: {e}")
+        return None
+
+
 _RECONNECT_STABLE_SECONDS = 10.0
 _RECONNECT_MAX_DELAY = 30.0  # matches borsapy's own MAX_RECONNECT_DELAY
 
@@ -198,6 +216,24 @@ def patched_reconnect(self) -> None:
         f"(attempt {self._flap_attempts}, previous connection was stable={was_stable})"
     )
     time.sleep(delay)
+
+    # Token dosyasi cron ile 3 saatte bir tazeleniyor (bkz.
+    # deploy/refresh_tv_auth_token.sh) ama surec onu YALNIZCA baslangicta
+    # okuyordu - yani calisan backend saatlerce bayat bir token'la
+    # kalabiliyordu. TradingView bayat token'la baglantiyi hemen kapatiyor,
+    # bu da tam olarak buradaki flap dongusunu besliyor: her denemede ayni
+    # olu token yeniden sunuluyordu.
+    #
+    # Dosyayi HER yeniden baglanmada okumak bunu kendiliginden iyilestiriyor
+    # ve konteyneri yeniden baslatmaya gerek birakmiyor - restart canli
+    # fiyat onbellegini bosaltip _subscribe_all_tickers'i sifirdan
+    # calistirdigi icin (yalnizca baslangicta calisiyor) seans icinde
+    # gorunur bir bosluk yaratirdi.
+    refreshed = read_auth_token_file()
+    if refreshed and refreshed != getattr(self, "_auth_token", None):
+        logger.info("Yeniden baglanmadan once tazelenmis TradingView auth_token alindi.")
+        self._auth_token = refreshed
+
     self._start_websocket()
 
 
@@ -370,18 +406,7 @@ class MarketDataService:
         config.py for why this exists instead of just using borsapy's own
         cookie-based auth. Returns None (not an error) if the file is
         missing/empty, which is the normal case for local dev."""
-        path = settings.TV_AUTH_TOKEN_FILE
-        if not path:
-            return None
-        try:
-            with open(path, "r") as f:
-                token = f.read().strip()
-            return token or None
-        except FileNotFoundError:
-            return None
-        except Exception as e:
-            logger.warning(f"Failed to read pre-fetched TradingView auth_token from {path}: {e}")
-            return None
+        return read_auth_token_file()
 
     def _initialize_stream(self) -> None:
         """Connects stream and starts background subscription manager."""
