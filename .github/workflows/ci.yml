@@ -293,7 +293,22 @@ jobs:
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             docker-compose.prod.yml "$SERVER_USER@$SERVER_HOST:/tmp/docker-compose.new.yml"
 
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" '
+          # ServerAliveInterval ŞART: aşağıdaki `docker compose build`
+          # dakikalarca tek satır çıktı üretmiyor (pip'in "Installing
+          # collected packages" aşaması) ve taban imaj her yenilendiğinde
+          # katman önbelleği komple soğuyup bu sessizlik 5 dakikayı aşıyor.
+          # O sessizlikte aradaki NAT/güvenlik duvarı boşta duran TCP
+          # oturumunu düşürüyor: istemci "client_loop: send disconnect:
+          # Broken pipe" deyip 255 ile çıkıyor, DERLEME SUNUCUDA SORUNSUZ
+          # SÜRERKEN deploy başarısız sayılıyor. #301 çalıştırmasında
+          # birebir bu oldu (12dk sonra 255; canlı eski konteynerle ayakta
+          # kaldığı için kesinti olmadı, ama yeni sürüm de yayına girmedi).
+          #
+          # CountMax=20 ile gerçekten ölmüş bir bağlantı yine de ~10 dk'da
+          # yakalanıyor - asılı kalan bir iş runner'ı sonsuza dek tutmuyor.
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            "$SERVER_USER@$SERVER_HOST" '
             cd /home/ubuntu/bip &&
             if diff -u docker-compose.yml /tmp/docker-compose.new.yml; then
               echo "docker-compose.yml zaten guncel, dokunulmadi."
