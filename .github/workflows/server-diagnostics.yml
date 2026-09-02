@@ -21,7 +21,7 @@ jobs:
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \n            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \n            "$SERVER_USER@$SERVER_HOST" '
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=20 "$SERVER_USER@$SERVER_HOST" '
             echo "=== uptime / load ===" && uptime
             echo "=== memory ===" && free -h
             echo "=== swap activity ===" && vmstat 1 3
