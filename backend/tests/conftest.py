@@ -1,3 +1,4 @@
+from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -60,3 +61,24 @@ def client(db):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_external_free_quote_calls(request):
+    """Testler Is Yatirim'in canli ucuna CIKMASIN.
+
+    free_market_data devreye girdikten sonra, gecikmeli kotasyon yolundan
+    gecen her test gercek bir HTTP istegi yapmaya basladi: paket suresi
+    ~3:45'ten ~10 dakikaya cikti ve sonuclar ucuncu parti bir servisin o
+    andaki durumuna bagli hale geldi. Varsayilan olarak "kaynak veri
+    dondurmedi" davranisi veriliyor; free yolu ozellikle test eden dosyalar
+    kendi patch'leriyle bunu zaten eziyor.
+    """
+    # free yolun KENDISINI test eden dosyalar bu muhafizdan muaf:
+    # @pytest.mark.free_quote ile isaretleniyorlar ve saglayiciyi kendileri
+    # taklit ediyorlar (yine aga cikmiyorlar).
+    if request.node.get_closest_marker("free_quote"):
+        yield
+        return
+    with patch("app.services.free_market_data.get_quote", return_value=None):
+        yield

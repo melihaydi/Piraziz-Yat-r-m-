@@ -826,9 +826,32 @@ class MarketDataService:
         Falls back to the live quote if not enough 1m history exists yet
         (e.g. right after this symbol's first subscription) - a
         briefly-fresher-than-promised price beats showing nothing."""
-        live = self.get_quote(symbol)
         if delay_minutes <= 0:
-            return live
+            return self.get_quote(symbol)
+
+        # FREE TIER TRADINGVIEW'A DOKUNMUYOR.
+        #
+        # Eskiden burasi canli TradingView kotasyonunu alip 1 dakikalik
+        # mumlarla geriye kaydiriyordu - yani her ucretsiz kullanici, hesap
+        # sahibinin KENDI TradingView oturumundan besleniyordu. Free kayitlar
+        # internete acilinca bu ne olceklenir ne de o hesabin kullanim
+        # kosullari acisindan dogrudur.
+        #
+        # BIST'in 15 dakika gecikmeli verisi zaten kamuya acik; Is
+        # Yatirim'in kendi acik ucundan aliniyor (bkz. free_market_data.py).
+        # Paylasilan Redis onbellegi sayesinde N ucretsiz kullanici yukariya
+        # TEK istek uretiyor.
+        from app.services import free_market_data
+        free_quote = free_market_data.get_quote(symbol, delay_minutes)
+        if free_quote is not None:
+            return free_quote
+
+        # Ucretsiz kaynak hem erisilemez hem de son bilinen degeri yoksa
+        # (ornegin hic sorulmamis bir sembol): TradingView'dan geriye
+        # kaydirma yoluna DUSULUYOR. Bilerek dar bir kapi - hicbir fiyat
+        # gostermemektense, nadir bir kesintide eski davranisa donmek daha
+        # iyi. Normal islemede buraya hic gelinmiyor.
+        live = self.get_quote(symbol)
         # subscribe=False is load-bearing, not an optimization. get_candles()
         # with the default subscribe=True takes the global self._lock and
         # calls subscribe_chart() whenever the 1m cache is empty - and

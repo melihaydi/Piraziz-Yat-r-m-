@@ -346,8 +346,31 @@ def _resample_candles(candles: List[Dict[str, Any]], group_size: int) -> List[Di
     return resampled
 
 
+# Grafik mumlari icin PAYLASILAN Redis onbellegi. TTL cozunurlukle
+# orantili: 1 dakikalik mumda 30sn bayatlik gorunmez, gunlukte 15 dakika
+# bile fark etmez.
+#
+# NEDEN SART: TradingView baglantisinda TEK BIR paylasilan grafik oturumu
+# var (bkz. market_data.py patched_subscribe_chart) ve her chart istegi
+# global kilidi alip o oturumu SIFIRLIYOR - eski seriyi silip yenisini
+# kuruyor, ustelik bellek ici mum onbellegini de temizliyor. Yani
+# onbelleksiz halde neredeyse HER istek TradingView'a gidiyordu.
+#
+# Tek kullanicida bu gorunmuyor. Free kayitlar internete acilinca ayni
+# anda farkli sembollere bakan N kullanici hem bu kilitte siraya girer hem
+# de birbirinin grafik oturumunu surekli dusururdu. Onbellek, ayni
+# sembol/aralik icin N istegi TEK bir cekise indiriyor.
+_CHART_CACHE_TTL = {
+    "1m": 30, "5m": 60, "15m": 120,
+    "1h": 300, "2h": 300, "4h": 300,
+    "1d": 900, "1wk": 3600, "1mo": 3600,
+}
+
+
 @router.get("/chart/{symbol}")
+@limiter.limit("60/minute")
 def get_stock_chart(
+    request: Request,
     symbol: str, response: Response, interval: str = Query("1d"),
     current_user: User = Depends(deps.get_current_user),
     delay: int = Depends(deps.get_data_delay_minutes),
@@ -376,14 +399,30 @@ def get_stock_chart(
     # TIMEFRAMES.get(interval, "1D") default) without any error, which would
     # mislabel daily data as 2-hour. Instead fetch real hourly candles and
     # merge them pairwise into 2-hour candles ourselves.
-    try:
-        if normalized_interval == "2h":
-            hourly_candles = market_data_service.get_candles(symbol, "1h")
-            candles = _resample_candles(hourly_candles, group_size=2)
-        else:
-            candles = market_data_service.get_candles(symbol, normalized_interval)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch candles: {str(e)}")
+    # Onbellek anahtari KULLANICIDAN BAGIMSIZ: mumlar herkes icin ayni.
+    # (Gecikme/kirpma asagida, onbellekten SONRA uygulaniyor - yoksa bir
+    # free kullanicinin kirpilmis serisi premium kullaniciya da servis
+    # edilirdi.)
+    from app.core.redis import cache_service
+
+    chart_cache_key = f"screener:chart:{symbol}:{normalized_interval}"
+    candles = cache_service.get_json(chart_cache_key)
+
+    if candles is None:
+        try:
+            if normalized_interval == "2h":
+                hourly_candles = market_data_service.get_candles(symbol, "1h")
+                candles = _resample_candles(hourly_candles, group_size=2)
+            else:
+                candles = market_data_service.get_candles(symbol, normalized_interval)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch candles: {str(e)}")
+
+        if candles:
+            cache_service.set_json(
+                chart_cache_key, candles,
+                expire_seconds=_CHART_CACHE_TTL.get(normalized_interval, 300),
+            )
 
     if not candles:
         # Generate simulated daily/hourly candles as a fallback (Request 1 & 4!)
