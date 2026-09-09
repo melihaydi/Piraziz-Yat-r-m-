@@ -329,7 +329,9 @@ class MarketDataService:
             # ESTIMATE DISINDA birakirdi - anlik getiri eksik hesaplanirdi.
             "AEFES", "ALTNY", "BINHO", "BLUME", "BOBET", "CCOLA", "CIMSA",
             "GENIL", "GIPTA", "GUBRF", "ISVEA", "KARSN", "KRDMD", "MARTI",
-            "SURGY", "TKNKA", "TRMET", "ULKER", "VAKBN"
+            "SURGY", "TKNKA", "TRMET", "ULKER", "VAKBN",
+            # 2026-09-09 ikinci dagilim guncellemesiyle gelen tek yeni isim.
+            "KZGYO"
         ]
         
         self.tickers = []

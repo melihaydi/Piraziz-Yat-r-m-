@@ -295,67 +295,50 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
     },
     "TLY": {
         "fund_size": "₺3,125,000,000",
-        # 3 -> 7: teraportfoy.com'un TLY sayfasi risk degerini 7/7 olarak
-        # veriyor ("piyasa tecrubesi olan, yuksek deger dalgalanmasina
-        # toleransli yatirimcilar icin"). 3 ciddi sekilde yaniltiyordu -
-        # kullaniciya olduğundan cok daha guvenli bir fon gibi gosteriyordu.
         "risk_level": 7,
-        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
-        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
-        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
-        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
-        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
-        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
         "manager": "Tera Portföy Yönetimi A.Ş.",
-        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
-        # dagilimin yerine.
-        #
-        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
-        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
-        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
-        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
-        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
-        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
-        # get_live_estimated_return estimated_change'i resolved_weight'e
-        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
-        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
-        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09, ikinci
+        # guncelleme). Toplam 101.76 - TEFAS dagilimlari zaten tam 100
+        # etmiyor, kalan sayilmayan nakit/diger olarak kabul ediliyor.        #
+        # HMV izlenen bir fon (BASE_FUNDS), kendi gunluk getirisiyle
+        # cozuluyor. MTL ve T3B izlenmiyor - anlik getiri hesabinda
+        # agirliklari disarida kaliyor, uydurulmuyor.
         "as_of": "2026-09-09",
         "assets_distribution": [
-            {"name": "OZATD", "value": 21.7},
-            {"name": "DSTKF", "value": 21.1},
-            {"name": "TEHOL", "value": 16.1},
-            {"name": "TRHOL", "value": 8.0},
-            {"name": "PEKGY", "value": 6.0},
-            {"name": "ANELE", "value": 3.1},
-            {"name": "SELEC", "value": 2.3},
-            {"name": "BIGEN", "value": 2.2},
-            {"name": "TKNKA", "value": 2.2},
-            {"name": "KARCL", "value": 0.6},
-            {"name": "HEDEF", "value": 0.3},
-            {"name": "TERA", "value": 0.3},
+            {"name": "DSTKF", "value": 25.32},
+            {"name": "OZATD", "value": 20.22},
+            {"name": "TEHOL", "value": 14.42},
+            {"name": "TRHOL", "value": 8.46},
+            {"name": "PEKGY", "value": 8.46},
+            {"name": "ANELE", "value": 6.43},
+            {"name": "SELEC", "value": 3.5},
+            {"name": "BIGEN", "value": 2.11},
+            {"name": "TERA", "value": 1.52},
+            {"name": "KARCL", "value": 0.91},
+            {"name": "HEDEF", "value": 0.48},
             {"name": "THYAO", "value": 0.3},
-            {"name": "TMPOL", "value": 0.1},
-            {"name": "SISE", "value": 0.1},
-            {"name": "AKBNK", "value": 0.1},
+            {"name": "SISE", "value": 0.19},
+            {"name": "AKBNK", "value": 0.12},
+            {"name": "ALKLC", "value": 0.11},
+            {"name": "TKNKA", "value": 0.11},
             {"name": "ISCTR", "value": 0.1},
-            {"name": "GESAN", "value": 0.1},
-            {"name": "EKGYO", "value": 0.1},
             {"name": "YKBNK", "value": 0.1},
-            {"name": "TCELL", "value": 0.1},
-            {"name": "KCHOL", "value": 0.1},
-            {"name": "ASELS", "value": 0.1},
-            {"name": "SAHOL", "value": 0.0},
-            {"name": "TRALT", "value": 0.0},
-            {"name": "ALKLC", "value": 0.0},
-            {"name": "AKSEN", "value": 0.0},
-            {"name": "DAPGM", "value": 0.0},
-            {"name": "GIPTA", "value": 0.0},
-            {"name": "SVGYO", "value": 0.0},
-            {"name": "EREGL", "value": 0.0},
-            {"name": "HMV", "value": 8.5},
-            {"name": "SABIT", "value": 6.3},
-            {"name": "T3B", "value": 0.0}
+            {"name": "TCELL", "value": 0.07},
+            {"name": "EKGYO", "value": 0.06},
+            {"name": "KCHOL", "value": 0.06},
+            {"name": "ASELS", "value": 0.05},
+            {"name": "SAHOL", "value": 0.05},
+            {"name": "TRALT", "value": 0.04},
+            {"name": "ATATR", "value": 0.04},
+            {"name": "MANAS", "value": 0.02},
+            {"name": "AKSEN", "value": 0.02},
+            {"name": "SVGYO", "value": 0.02},
+            {"name": "TMPOL", "value": 0.02},
+            {"name": "EREGL", "value": 0.01},
+            {"name": "GIPTA", "value": 0.01},
+            {"name": "HMV", "value": 5.06},
+            {"name": "MTL", "value": 3.36},
+            {"name": "T3B", "value": 0.01}
         ]
     },
     "TMV": {
@@ -556,71 +539,65 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
     "DOH": {
         "fund_size": "₺250,000,000",
         "risk_level": 6,
-        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
-        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
-        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
-        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
-        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
-        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
         "manager": "Tera Portföy Yönetimi A.Ş.",
-        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
-        # dagilimin yerine.
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09, ikinci
+        # guncelleme). Toplam 99.01 - TEFAS dagilimlari zaten tam 100
+        # etmiyor, kalan sayilmayan nakit/diger olarak kabul ediliyor.        #
+        # Fon-icinde-fon bacaklari: THF/TMV/TLY (Tera'nin diger fonlari) ve
+        # T3B. DOH <-> THF karsilikli dongusu duruyor; get_live_estimated_
+        # return'un `_visited` korumasi ikinci seviyede recursion'i kesip
+        # fonun son gercek TEFAS gunluk getirisine dusuyor.
         #
-        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
-        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
-        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
-        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
-        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
-        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
-        # get_live_estimated_return estimated_change'i resolved_weight'e
-        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
-        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
-        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.        #
-        # YENI: DOH ile THF artik BIRBIRINI tutuyor (DOH -> THF %3.0,
-        # THF -> DOH %2.9). Bu KARSILIKLI bir dongu; onceki dagilimlarda
-        # yalnizca tek yonlu fon-icinde-fon vardi. get_live_estimated_return'un
-        # `_visited` korumasi bunu dogru ele aliyor: ikinci seviyede ayni kod
-        # tekrar gorulunce recursion durup fonun son gercek TEFAS gunluk
-        # getirisine dusuluyor (BASE_FUNDS yolu). Sonsuz dongu yok.
+        # T3B kodda izlenen bir fon DEGIL (BASE_FUNDS'ta yok), bu yuzden
+        # anlik getiri hesabinda cozulemeyip agirligi disarida kaliyor -
+        # uydurma bir deger vermektense eksik birakmak dogrusu.
         "as_of": "2026-09-09",
         "assets_distribution": [
-            {"name": "TEHOL", "value": 9.1},
-            {"name": "TRHOL", "value": 7.6},
-            {"name": "TERA", "value": 7.4},
-            {"name": "ANELE", "value": 7.1},
-            {"name": "DSTKF", "value": 6.5},
-            {"name": "TKNKA", "value": 4.8},
-            {"name": "SELEC", "value": 4.7},
-            {"name": "YKBNK", "value": 3.5},
-            {"name": "TUPRS", "value": 3.4},
-            {"name": "THYAO", "value": 3.0},
-            {"name": "ALKLC", "value": 2.9},
-            {"name": "ISVEA", "value": 2.5},
-            {"name": "PEKGY", "value": 2.5},
-            {"name": "ASELS", "value": 2.0},
-            {"name": "SARAE", "value": 1.7},
-            {"name": "ALTNY", "value": 1.5},
-            {"name": "MANAS", "value": 1.5},
-            {"name": "CITAS", "value": 1.3},
-            {"name": "OZATD", "value": 1.2},
-            {"name": "SVGYO", "value": 1.0},
-            {"name": "EUPWR", "value": 1.0},
-            {"name": "TURSG", "value": 0.8},
-            {"name": "TMPOL", "value": 0.7},
-            {"name": "GESAN", "value": 0.6},
-            {"name": "NETCD", "value": 0.5},
-            {"name": "KORDS", "value": 0.3},
-            {"name": "KGYO", "value": 0.3},
-            {"name": "ORZAX", "value": 0.3},
-            {"name": "MCARD", "value": 0.1},
-            {"name": "KARCL", "value": 0.1},
-            {"name": "GENIL", "value": 0.1},
-            {"name": "MARTI", "value": 0.1},
-            {"name": "KARSN", "value": 0.1},
-            {"name": "ATATR", "value": 0.0},
-            {"name": "THF", "value": 3.0},
-            {"name": "TLY", "value": 3.0},
-            {"name": "TMV", "value": 2.3}
+            {"name": "DSTKF", "value": 21.13},
+            {"name": "TERA", "value": 6.67},
+            {"name": "KARCL", "value": 5.23},
+            {"name": "GESAN", "value": 4.98},
+            {"name": "SELEC", "value": 4.77},
+            {"name": "ANELE", "value": 4.31},
+            {"name": "TRHOL", "value": 4.06},
+            {"name": "TEHOL", "value": 3.88},
+            {"name": "TKNKA", "value": 2.77},
+            {"name": "ALKLC", "value": 2.74},
+            {"name": "BIGEN", "value": 2.55},
+            {"name": "ISVEA", "value": 2.27},
+            {"name": "TUPRS", "value": 2.17},
+            {"name": "PEKGY", "value": 2.12},
+            {"name": "ASELS", "value": 1.73},
+            {"name": "AKBNK", "value": 1.61},
+            {"name": "YKBNK", "value": 1.28},
+            {"name": "SARAE", "value": 1.25},
+            {"name": "OZATD", "value": 1.22},
+            {"name": "EUPWR", "value": 1.09},
+            {"name": "SVGYO", "value": 1.03},
+            {"name": "MANAS", "value": 0.99},
+            {"name": "THYAO", "value": 0.99},
+            {"name": "ALTNY", "value": 0.91},
+            {"name": "CITAS", "value": 0.88},
+            {"name": "TURSG", "value": 0.69},
+            {"name": "MCARD", "value": 0.68},
+            {"name": "MARTI", "value": 0.53},
+            {"name": "TMPOL", "value": 0.5},
+            {"name": "KTLEV", "value": 0.36},
+            {"name": "NETCD", "value": 0.35},
+            {"name": "KARSN", "value": 0.32},
+            {"name": "SISE", "value": 0.23},
+            {"name": "KORDS", "value": 0.22},
+            {"name": "ATATR", "value": 0.19},
+            {"name": "KGYO", "value": 0.15},
+            {"name": "ORZAX", "value": 0.15},
+            {"name": "GLRMK", "value": 0.14},
+            {"name": "GENIL", "value": 0.04},
+            {"name": "BINHO", "value": 0.03},
+            {"name": "KZGYO", "value": 0.02},
+            {"name": "T3B", "value": 9.01},
+            {"name": "THF", "value": 0.98},
+            {"name": "TMV", "value": 0.93},
+            {"name": "TLY", "value": 0.86}
         ]
     },
     "PUK": {
@@ -670,6 +647,36 @@ def _num(v) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return None if f != f else f  # NaN kontrolu
+
+
+def composition_fingerprint(distribution) -> str:
+    """Bir dagilimin icerigine bagli kararli parmak izi.
+
+    Admin panelinden bir override kaydedilirken, O ANKI kod dagiliminin
+    parmak izi de saklaniyor. _resolve_composition daha sonra kodun
+    dagiliminin degisip degismedigini buradan anliyor - degistiyse
+    override tanim geregi BAYATTIR ve kod kazanir.
+
+    Neden tarih/zaman karsilastirmasi DEGIL: onceki iki denemede once gun,
+    sonra zaman damgasi kullanildi. Gun yaklasimi ayni gun yapilan deploy
+    ile admin duzenlemesini ayirt edemiyordu (canlida tam olarak bu
+    yasandi). Zaman damgasi bunu cozuyordu ama kodda elle guncellenen bir
+    "revizyon zamani" sabiti gerektiriyordu - biri onu guncellemeyi
+    unuttugu anda yeni veri yine sessizce gomuluyordu. Parmak izi hicbir
+    elle bakim gerektirmiyor: veri degistiyse iz degisir.
+
+    Siralama name'e gore sabitleniyor - ayni dagilimin farkli sirayla
+    yazilmasi farkli iz uretmesin.
+    """
+    import hashlib
+    import json as _json
+    items = sorted(
+        ((str(h.get("name", "")).upper(), round(float(h.get("value", 0) or 0), 4))
+         for h in (distribution or [])),
+        key=lambda x: x[0],
+    )
+    payload = _json.dumps(items, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _tefas_metrics(series) -> Dict[str, Any]:
@@ -843,7 +850,8 @@ class TefasService:
                         # as_of null birakilabiliyor (drift'i atlamak icin);
                         # o durumda "bu override ne zaman yazildi" sorusunun
                         # tek cevabi updated_at. Bkz. _resolve_composition.
-                        "_updated_at": row.updated_at.date().isoformat() if row.updated_at else None,
+                        "_updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                        "_base_fingerprint": row.base_fingerprint,
                     }
             finally:
                 db.close()
@@ -865,7 +873,8 @@ class TefasService:
                 self._composition_overrides[fund_code] = {
                     "assets_distribution": row.assets_distribution,
                     "as_of": row.as_of.isoformat() if row.as_of else None,
-                    "_updated_at": row.updated_at.date().isoformat() if row.updated_at else None,
+                    "_updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    "_base_fingerprint": row.base_fingerprint,
                 }
             else:
                 self._composition_overrides.pop(fund_code, None)
@@ -903,11 +912,22 @@ class TefasService:
         # eski elle girdinin onu ezmesi icin bir sebep yok. as_of bilerek null
         # birakilmis olabilecegi icin (drift'i atlamak icin) o durumda
         # override'in YAZILDIGI tarihe (updated_at) bakiliyor.
-        override_date = override.get("as_of") or override.get("_updated_at")
-        default_date = default.get("as_of")
-        if default_date and override_date and default_date > override_date:
+        # Override, YAZILDIGI ANDAKI kod dagiliminin parmak izini tasiyor.
+        # Kodun dagilimi o gunden beri degistiyse override bayatlamis
+        # demektir ve kod kazanir. Degismediyse admin bilerek mevcut veriyi
+        # ozellestirmistir, override kazanir.
+        #
+        # Bu, hicbir elle bakim gerektirmiyor: "her veri guncellemesinde
+        # su sabiti de guncelle" gibi unutulmaya acik bir adim yok.
+        base = override.get("_base_fingerprint")
+        if not base:
+            # Parmak izi ALANINDAN ONCE yazilmis satirlar. Hangi veriye
+            # dayandigi bilinmiyor; kodda o fon icin bir dagilim varsa onu
+            # tercih etmek daha guvenli - aksi halde tarihi belirsiz bir
+            # kayit yeni verinin onunu suresiz keserdi.
             return default
-        return override
+
+        return default if composition_fingerprint(default["assets_distribution"]) != base else override
 
     def _load_persisted_cache(self):
         data = cache_service.get_json(self._cache_key)

@@ -21,7 +21,7 @@ from app.models.user import User, anonymized_email, DELETED_EMAIL_DOMAIN, LEGACY
 from app.schemas.support import SupportTicketAdminResponse, SupportTicketUpdate
 from app.schemas.user import UserOut
 from app.services import corporate_actions, portfolio_ledger
-from app.services.tefas import tefas_service, FUND_DETAILS_MAP, BASE_FUNDS
+from app.services.tefas import tefas_service, FUND_DETAILS_MAP, BASE_FUNDS, composition_fingerprint
 
 router = APIRouter()
 
@@ -811,14 +811,25 @@ def save_fund_composition(
 
     distribution = [{"name": h.name.strip().upper(), "value": h.value} for h in payload.assets_distribution]
 
+    # Bu duzenlemenin UZERINE YAZDIGI kod dagiliminin parmak izi de
+    # saklaniyor. Kodun verisi sonradan guncellenirse (biz surekli yeni
+    # TEFAS dagilimi giriyoruz) iz tutmaz ve _resolve_composition bu
+    # override'i BAYAT sayip yeni veriyi kullanir - kimsenin elle bir sey
+    # temizlemesi gerekmez. Kod verisi degismedigi surece bu duzenleme
+    # gecerli kalir, yani admin panelinin amaci bozulmaz.
+    code_default = FUND_DETAILS_MAP.get(code, {}).get("assets_distribution")
+    base_fp = composition_fingerprint(code_default) if code_default else None
+
     override = db.query(FundCompositionOverride).filter(FundCompositionOverride.fund_code == code).first()
     if override:
         override.assets_distribution = distribution
         override.as_of = payload.as_of
+        override.base_fingerprint = base_fp
         override.updated_by_user_id = admin.id
     else:
         override = FundCompositionOverride(
-            fund_code=code, assets_distribution=distribution, as_of=payload.as_of, updated_by_user_id=admin.id,
+            fund_code=code, assets_distribution=distribution, as_of=payload.as_of,
+            base_fingerprint=base_fp, updated_by_user_id=admin.id,
         )
         db.add(override)
     db.commit()
