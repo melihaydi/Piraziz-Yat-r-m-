@@ -840,6 +840,10 @@ class TefasService:
                     self._composition_overrides[row.fund_code] = {
                         "assets_distribution": row.assets_distribution,
                         "as_of": row.as_of.isoformat() if row.as_of else None,
+                        # as_of null birakilabiliyor (drift'i atlamak icin);
+                        # o durumda "bu override ne zaman yazildi" sorusunun
+                        # tek cevabi updated_at. Bkz. _resolve_composition.
+                        "_updated_at": row.updated_at.date().isoformat() if row.updated_at else None,
                     }
             finally:
                 db.close()
@@ -861,6 +865,7 @@ class TefasService:
                 self._composition_overrides[fund_code] = {
                     "assets_distribution": row.assets_distribution,
                     "as_of": row.as_of.isoformat() if row.as_of else None,
+                    "_updated_at": row.updated_at.date().isoformat() if row.updated_at else None,
                 }
             else:
                 self._composition_overrides.pop(fund_code, None)
@@ -875,12 +880,34 @@ class TefasService:
         get_live_estimated_return, so an override takes effect in both
         places at once."""
         override = self._composition_overrides.get(code)
-        if override:
-            return override
         details = FUND_DETAILS_MAP.get(code)
-        if not details or "assets_distribution" not in details:
-            return None
-        return {"assets_distribution": details["assets_distribution"], "as_of": details.get("as_of")}
+        has_default = bool(details and "assets_distribution" in details)
+        default = (
+            {"assets_distribution": details["assets_distribution"], "as_of": details.get("as_of")}
+            if has_default else None
+        )
+        if not override:
+            return default
+        if not has_default:
+            return override
+
+        # Bir kerelik admin duzenlemesi, SONRAKI TUM deploy'lari sessizce
+        # golgeliyordu. Gercekte yasandi: 2026-09-09'da dort fonun dagilimi
+        # kodda guncellendi, fon DETAY sayfasi yeniyi gosterdi (get_fund
+        # dogrudan FUND_DETAILS_MAP okuyor) ama anlik getiri/ortusme eskisini
+        # kullanmaya devam etti - ekranda birbiriyle celisen iki dagilim.
+        # Hicbir hata da vermedi.
+        #
+        # Kural: hangisi daha YENI tarihliyse o kazanir. Admin panelinin amaci
+        # "deploy beklemeden guncelle" - deploy DAHA YENI bir veri getirdiginde
+        # eski elle girdinin onu ezmesi icin bir sebep yok. as_of bilerek null
+        # birakilmis olabilecegi icin (drift'i atlamak icin) o durumda
+        # override'in YAZILDIGI tarihe (updated_at) bakiliyor.
+        override_date = override.get("as_of") or override.get("_updated_at")
+        default_date = default.get("as_of")
+        if default_date and override_date and default_date > override_date:
+            return default
+        return override
 
     def _load_persisted_cache(self):
         data = cache_service.get_json(self._cache_key)
@@ -1516,6 +1543,19 @@ class TefasService:
         # o konuyor. TEFAS o fon icin buyukluk dondurmediyse (eski davranis)
         # FUND_DETAILS_MAP'teki placeholder yerinde kaliyor.
         merged = {**f, **details}
+
+        # Dagilimi _resolve_composition'dan al: get_fund eskiden DOGRUDAN
+        # FUND_DETAILS_MAP'i okuyordu, get_live_estimated_return ise
+        # override'i kullaniyordu - yani fon DETAY sayfasi ile anlik
+        # getiri/ortusme EKRANDA BIRBIRIYLE CELISEN iki dagilim
+        # gosterebiliyordu ve hicbir hata verilmiyordu. Tek kaynaktan
+        # okunmasi bu ihtimali tamamen kaldiriyor.
+        comp = self._resolve_composition(code)
+        if comp:
+            merged["assets_distribution"] = comp["assets_distribution"]
+            if comp.get("as_of"):
+                merged["as_of"] = comp["as_of"]
+
         real_size = _format_try(f.get("fund_size_try"))
         if real_size:
             merged["fund_size"] = real_size
