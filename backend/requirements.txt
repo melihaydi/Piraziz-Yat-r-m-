@@ -13,7 +13,7 @@ python-multipart>=0.0.9
 gunicorn>=22.0.0
 pytest>=8.2.2
 alembic>=1.13.1
-email-validator>=2.0.0
+email-validator>=2.3.0
 
 # Live market data / mutual fund scraping - directly imported throughout
 # app/services (market_data.py, tefas.py, portfolio.py signal fetching, etc.)
