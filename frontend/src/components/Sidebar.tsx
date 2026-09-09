@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
@@ -21,6 +21,12 @@ import {
   Star,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  readPinnedManagedUsers,
+  managedPortfolioHref,
+  PINNED_MANAGED_USERS_EVENT,
+  type PinnedManagedUser,
+} from "@/lib/pinnedManagedUsers"
 import Logo from "@/components/Logo"
 import { authFetch } from "@/lib/auth"
 import { useCurrentUser } from "@/lib/currentUserStore"
@@ -104,6 +110,46 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   // çağırıyordu, tek sayfa açılışında beş istek.
   const { user: currentUser } = useCurrentUser()
   const isSuperuser = !!currentUser?.is_superuser
+
+  // Sabitlenmis yonetilen portfoyler dogrudan menude - eskiden once
+  // /admin/managed-portfolios'a girip SONRA kisiye tiklamak gerekiyordu.
+  // Cok aktif kullanilan bir ekran icin her seferinde iki adim demekti.
+  //
+  // Veri yalnizca localStorage'dan okunuyor (isim dahil, bkz.
+  // pinnedManagedUsers.ts) - Sidebar her sayfa acilisinda /admin/users
+  // cekmiyor, ek bir istek maliyeti yok.
+  const [pinnedManaged, setPinnedManaged] = useState<PinnedManagedUser[]>([])
+  useEffect(() => {
+    if (!isSuperuser) {
+      setPinnedManaged([])
+      return
+    }
+    const sync = () => setPinnedManaged(readPinnedManagedUsers())
+    sync()
+    // Ayni sekmede sabitleme degistiginde ozel olay, BASKA sekmede
+    // degistiginde tarayicinin kendi "storage" olayi tetikler.
+    window.addEventListener(PINNED_MANAGED_USERS_EVENT, sync)
+    window.addEventListener("storage", sync)
+    return () => {
+      window.removeEventListener(PINNED_MANAGED_USERS_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [isSuperuser])
+
+  // Hangi kisinin acik oldugunu isaretlemek icin. useSearchParams yerine
+  // window.location kullaniliyor: useSearchParams statik render edilen
+  // sayfalarda Suspense sinirlamasi getiriyor, burada ise pathname
+  // degistiginde okumak yeterli.
+  const [activeManagedUserId, setActiveManagedUserId] = useState<number | null>(null)
+  useEffect(() => {
+    if (pathname !== "/admin/managed-portfolios") {
+      setActiveManagedUserId(null)
+      return
+    }
+    const raw = new URLSearchParams(window.location.search).get("user")
+    const id = raw ? Number(raw) : NaN
+    setActiveManagedUserId(Number.isInteger(id) ? id : null)
+  }, [pathname])
   const role = currentUser?.role || "free"
   const isFreeTier = role === "free"
 
@@ -279,8 +325,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 {group.items.map((item) => {
                   const isActive = item.href === activeHref
                   const Icon = item.icon
+                  const pinnedHere =
+                    item.href === "/admin/managed-portfolios" ? pinnedManaged : []
                   return (
-                    <div key={item.name} className="relative group/navitem">
+                    <React.Fragment key={item.name}>
+                    <div className="relative group/navitem">
                       <Link
                         href={item.href}
                         onClick={() => onClose?.()}
@@ -315,6 +364,36 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                         </div>
                       )}
                     </div>
+
+                    {/* Sabitlenmis yonetilen portfoyler - tek tikla dogrudan
+                        o kisinin portfoyu aciliyor. Daraltilmis modda
+                        gizleniyor: 72px'te isim okunacak yer yok ve ayni
+                        yildiz ikonunun alt alta tekrar etmesi hangisinin kim
+                        oldugunu belirsizlestirirdi; ust oge zaten erisilebilir
+                        durumda kaliyor. */}
+                    {!isCollapsedNow && pinnedHere.map(pu => {
+                      const puActive = activeManagedUserId === pu.id
+                      return (
+                        <Link
+                          key={`pinned-${pu.id}`}
+                          href={managedPortfolioHref(pu.id)}
+                          onClick={() => onClose?.()}
+                          className={cn(
+                            "press w-full flex items-center h-8 rounded-md pl-9 pr-3 text-[12px] transition-colors duration-150 cursor-pointer",
+                            puActive
+                              ? "bg-primary/[0.08] text-foreground font-semibold"
+                              : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground font-medium"
+                          )}
+                        >
+                          <Star className={cn(
+                            "h-3 w-3 shrink-0 mr-2 fill-current",
+                            puActive ? "text-primary" : "text-muted-foreground/50"
+                          )} />
+                          <span className="truncate">{pu.name || `#${pu.id}`}</span>
+                        </Link>
+                      )
+                    })}
+                    </React.Fragment>
                   )
                 })}
               </div>

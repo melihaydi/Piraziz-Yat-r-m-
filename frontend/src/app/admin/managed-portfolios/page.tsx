@@ -8,6 +8,11 @@ import { Input } from "@/components/ui/Input"
 import { TickerCombobox } from "@/components/ui/TickerCombobox"
 import { authFetch } from "@/lib/auth"
 import { parseTLAmount } from "@/lib/utils"
+import {
+  readPinnedManagedUsers,
+  writePinnedManagedUsers,
+  type PinnedManagedUser,
+} from "@/lib/pinnedManagedUsers"
 
 // Quick-pick shortlist so picking a frequently-managed user doesn't mean
 // scanning a full email dropdown every time - persisted per-browser (this
@@ -15,8 +20,12 @@ import { parseTLAmount } from "@/lib/utils"
 // Seeded once with ugurcankk0@gmail.com per explicit request; after that
 // first seed, admins manage their own pins via the star toggle below and
 // this default never re-applies (so unpinning them later sticks).
-const PINNED_USERS_KEY = "bip_managed_portfolio_pinned_users"
 const PINNED_USERS_SEEDED_KEY = "bip_managed_portfolio_pinned_seeded"
+
+/** Hizli erisimde gosterilecek ad - e-posta ASLA gosterilmiyor (chip'lerin
+ *  kendi notuna bakiniz), tam ad yoksa "@"den onceki kisim kullaniliyor. */
+const pinnedLabel = (u: { full_name?: string | null; email: string }) =>
+  u.full_name || u.email.split("@")[0]
 const DEFAULT_PINNED_EMAIL = "ugurcankk0@gmail.com"
 
 interface AdminUser {
@@ -90,7 +99,8 @@ export default function ManagedPortfoliosPage() {
   const [usdCashAmount, setUsdCashAmount] = useState("")
   const [usdCashBusy, setUsdCashBusy] = useState(false)
 
-  const [pinnedIds, setPinnedIds] = useState<number[]>([])
+  const [pinned, setPinned] = useState<PinnedManagedUser[]>([])
+  const pinnedIds = useMemo(() => pinned.map(p => p.id), [pinned])
 
   useEffect(() => {
     // Own access guard (this page is reached directly from the sidebar, not
@@ -110,13 +120,7 @@ export default function ManagedPortfoliosPage() {
           .then((loadedUsers: AdminUser[]) => {
             setUsers(loadedUsers)
 
-            let pinned: number[] = []
-            try {
-              const raw = localStorage.getItem(PINNED_USERS_KEY)
-              pinned = raw ? JSON.parse(raw) : []
-            } catch (e) {
-              pinned = []
-            }
+            let stored = readPinnedManagedUsers()
 
             // One-time default seed so the requested user shows up as a
             // quick-pick immediately, without the admin having to find and
@@ -131,17 +135,39 @@ export default function ManagedPortfoliosPage() {
             }
             if (!alreadySeeded) {
               const defaultUser = loadedUsers.find(u => u.email.toLowerCase() === DEFAULT_PINNED_EMAIL)
-              if (defaultUser && !pinned.includes(defaultUser.id)) {
-                pinned = [...pinned, defaultUser.id]
+              if (defaultUser && !stored.some(p => p.id === defaultUser.id)) {
+                stored = [...stored, { id: defaultUser.id, name: pinnedLabel(defaultUser) }]
               }
               try {
                 localStorage.setItem(PINNED_USERS_SEEDED_KEY, "1")
-                localStorage.setItem(PINNED_USERS_KEY, JSON.stringify(pinned))
               } catch (e) {
                 // Storage unavailable - the seed just won't persist across reloads.
               }
             }
-            setPinnedIds(pinned)
+
+            // Isimleri her yuklemede tazele: eski bicimden (yalnizca id)
+            // gelen kayitlarin adi bos, ayrica kullanici adini degistirmis
+            // olabilir. Sidebar yalnizca bu depoyu okudugu icin isimlerin
+            // burada guncel tutulmasi sart.
+            const withNames = stored.map(p => {
+              const u = loadedUsers.find(x => x.id === p.id)
+              return u ? { id: p.id, name: pinnedLabel(u) } : p
+            })
+            setPinned(withNames)
+            writePinnedManagedUsers(withNames)
+
+            // ?user=<id> ile dogrudan acilis - Sidebar'daki hizli erisim
+            // baglantilari bunu kullaniyor, boylece once sayfaya girip
+            // sonra kisiye tiklamak gerekmiyor.
+            try {
+              const requested = new URLSearchParams(window.location.search).get("user")
+              const id = requested ? Number(requested) : NaN
+              if (Number.isInteger(id) && loadedUsers.some(u => u.id === id)) {
+                onManagedUserChange(String(id))
+              }
+            } catch (e) {
+              // Gecersiz parametre - normal secim akisi devam eder.
+            }
           })
       })
       .catch(() => setForbidden(true))
@@ -157,13 +183,13 @@ export default function ManagedPortfoliosPage() {
   }, [users, userQuery])
 
   const togglePinned = (userId: number) => {
-    setPinnedIds(prev => {
-      const next = prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-      try {
-        localStorage.setItem(PINNED_USERS_KEY, JSON.stringify(next))
-      } catch (e) {
-        // Not persisted this session, but the toggle still works visually.
-      }
+    setPinned(prev => {
+      const exists = prev.some(p => p.id === userId)
+      const u = users.find(x => x.id === userId)
+      const next = exists
+        ? prev.filter(p => p.id !== userId)
+        : [...prev, { id: userId, name: u ? pinnedLabel(u) : String(userId) }]
+      writePinnedManagedUsers(next)
       return next
     })
   }
