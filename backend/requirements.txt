@@ -45,3 +45,9 @@ sentry-sdk[fastapi]==2.19.2
 # surumu bedava, tutmanin bir sebebi yok.
 jinja2==3.1.6
 iyzipay==1.0.46
+
+# Google ile Giris'te gelen id_token'in imzasini DOGRULAMAK icin. Kimlik
+# dogrulamada JWT imza/issuer/audience kontrolunu elle yazmak dogru degil -
+# bu kutuphane Google'in JWKS anahtarlarini cekip hepsini standarda gore
+# kontrol ediyor. GOOGLE_CLIENT_ID ayarlanmamissa hic import edilmiyor.
+google-auth>=2.35.0

@@ -118,8 +118,17 @@ export const TERA_FUND_CODES = new Set([
 // Jenerik bir dunya ikonu gostermek logosuz gostermekten kotu, o yuzden
 // Tera fonlari dogrudan yerel dosyaya bakiyor.
 //
-// Dosya HENUZ YOKSA: TickerLogo'nun kendi onError yedegi devreye girip
-// renkli bas-harf rozeti ciziyor - hicbir sey kirilmiyor.
+// Konulan dosya: Tera Yatirim'in KENDI resmi kare uygulama ikonu
+// (terayatirim.com/ico/apple-touch-icon-144-precomposed.png, 144x144).
+// Kullanicinin gonderdigi renkli girdap logosu Tera'nin GUNCEL sitelerinde
+// artik yok - kontrol edildi: teraportfoy logo.svg ve terayatirim logo.svg
+// tek renk lacivert WORDMARK, logo2x.png ise 1000x1000 tuvalde yine
+// wordmark (18px'lik bir hucrede okunmaz). Kare ve kucuk boyutta okunabilen
+// tek gercek Tera varligi bu ikon.
+//
+// Degistirmek icin: bu dosyanin uzerine yazmak yeterli, kodda hicbir sey
+// degismesi gerekmiyor. Dosya silinirse TickerLogo'nun onError yedegi
+// (renkli bas-harf rozeti) devreye girer, hicbir sey kirilmaz.
 const TERA_LOCAL_LOGO = "/logos/TERA.png"
 
 export function logoUrlFor(ticker: string, size: number = 64): string | null {

@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # TAMAMEN AYRI bir Telegram botu (ayrı @kullanıcı_adı + ayrı token).
     # TELEGRAM_USER_BOT_USERNAME, kullanıcıya "bu botla sohbet başlat" deep
     # link'i (t.me/<username>?start=<code>) vermek için kullanılıyor.
+    # Google ile Giris. IKISI DE bos birakilabilir - o zaman ozellik
+    # tamamen kapali kalir (uclar 503 doner, arayuzdeki buton hic
+    # gosterilmez), sifreyle giris hicbir sekilde etkilenmez. Ayni
+    # "yapilandirilmamissa sessizce devre disi" deseni TV_SESSION ve
+    # TELEGRAM_* icin de kullaniliyor.
+    #
+    # Deger almak icin: Google Cloud Console > APIs & Services >
+    # Credentials > OAuth client ID (Web application). Yetkili
+    # yonlendirme adresi olarak <API_URL>/api/v1/auth/google/callback
+    # tanimlanmali.
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+
     TELEGRAM_USER_BOT_TOKEN: Optional[str] = None
     TELEGRAM_USER_BOT_USERNAME: Optional[str] = None
 
@@ -80,6 +93,12 @@ class Settings(BaseSettings):
     # reset, email verification, etc.). Override in .env if this ever moves
     # again (e.g. back to the bare Netlify subdomain in a non-prod deploy).
     FRONTEND_URL: str = "https://bipterminal.com"
+    # API'nin KENDI dis adresi. Google OAuth yonlendirme adresini kurmak
+    # icin gerekli - Google, kullaniciyi buraya geri gonderiyor ve bu adres
+    # Google Cloud Console'daki "Authorized redirect URI" ile BIREBIR
+    # ayni olmak zorunda. Yerel gelistirmede .env'den ezilir
+    # (orn. http://127.0.0.1:8000).
+    API_BASE_URL: str = "https://api.bipterminal.com"
 
     # Extra browser origins allowed to call this API, comma-separated. The
     # CORS allowlist in main.py matches *.netlify.app by pattern, which

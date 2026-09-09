@@ -1,8 +1,12 @@
 import base64
 import io
 from datetime import datetime, timedelta, timezone
+from typing import Optional
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
@@ -12,6 +16,7 @@ from app.core.config import settings
 from app.core.email import send_email
 from app.core.limiter import limiter
 from app.api import deps
+from app.services import google_oauth
 from app.models.user import User, anonymized_email
 from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.schemas.token import Token
@@ -563,3 +568,139 @@ def resend_verification(request: Request, body: ResendVerificationRequest, db: S
     if user and user.is_active and not user.is_email_verified:
         _send_verification_email(user)
     return {"detail": "E-posta adresine kayıtlıysa yeni bir doğrulama bağlantısı gönderildi."}
+
+
+# --- Google ile Giris --------------------------------------------------------
+# Ayrintili guvenlik gerekceleri icin bkz. services/google_oauth.py basligi.
+# GOOGLE_CLIENT_ID/SECRET ayarlanmamissa hepsi 503 doner ve sifreyle giris
+# hicbir sekilde etkilenmez.
+
+
+class GoogleExchangeRequest(BaseModel):
+    code: str
+
+
+@router.get("/google/enabled")
+def google_login_enabled():
+    """Arayuz butonu gostermeden once soruyor - yapilandirilmamis bir
+    ozellik icin tiklanip hata alinan bir buton gostermemek icin."""
+    return {"enabled": google_oauth.is_configured()}
+
+
+@router.get("/google/login")
+@limiter.limit("10/minute")
+def google_login(request: Request):
+    if not google_oauth.is_configured():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Google ile giris yapilandirilmamis.")
+    try:
+        url = google_oauth.build_authorization_url()
+    except google_oauth.GoogleAuthError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+    return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/google/callback")
+@limiter.limit("10/minute")
+def google_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    db: Session = Depends(deps.get_db),
+):
+    """Google kullaniciyi buraya geri gonderiyor. Sonuc HER DURUMDA
+    frontend'e yonlendirme ile bildiriliyor - kullanici burada ham bir JSON
+    gormemeli."""
+    def _fail(reason: str):
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/?google_error={quote(reason)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    if not google_oauth.is_configured():
+        return _fail("Google ile giris yapilandirilmamis.")
+    if error or not code:
+        return _fail("Google girisi iptal edildi.")
+    # state TEK KULLANIMLIK - CSRF korumasi, Redis yoksa fail-closed.
+    if not google_oauth.consume_state(state or ""):
+        return _fail("Oturum dogrulanamadi, lutfen tekrar deneyin.")
+
+    try:
+        identity = google_oauth.exchange_code_for_identity(code)
+    except google_oauth.GoogleAuthError as e:
+        return _fail(str(e))
+
+    email = identity["email"]
+    user = db.query(User).filter(User.email == email).first()
+
+    if user is None:
+        # Google hesabiyla ilk giris -> hesap acilir. hashed_password
+        # KULLANILAMAZ bir deger: bcrypt hash'i olmadigi icin verify_password
+        # hicbir sifreyle eslesmez, yani bu hesaba sifreyle girilemez.
+        # Kullanici isterse "sifremi unuttum" ile kendine sifre belirleyebilir.
+        user = User(
+            email=email,
+            hashed_password="!google-oauth-no-password",
+            full_name=identity.get("full_name"),
+            # Google e-postayi DOGRULADI (email_verified sart kosuluyor),
+            # ayrica dogrulama maili gondermeye gerek yok.
+            is_email_verified=True,
+            terms_accepted_at=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        log_audit(db, "google_signup", request=request, user_id=user.id, details={"email": email})
+    else:
+        # Mevcut hesaba baglanma. Google e-postayi dogruladigi icin bu
+        # guvenli; dogrulanmamis e-posta zaten yukarida reddediliyor.
+        if not user.is_email_verified:
+            user.is_email_verified = True
+            db.commit()
+
+    if not user.is_active:
+        return _fail("Hesap devre disi.")
+
+    # 2FA ATLANMIYOR - sifreyle giriste oldugu gibi kod isteniyor.
+    requires_2fa = bool(user.totp_enabled)
+    try:
+        exchange_code = google_oauth.issue_exchange_code(user.id, requires_2fa)
+    except google_oauth.GoogleAuthError as e:
+        return _fail(str(e))
+
+    log_audit(db, "google_login", request=request, user_id=user.id,
+              details={"requires_2fa": requires_2fa})
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}/?google_code={quote(exchange_code)}",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/google/exchange")
+@limiter.limit("10/minute")
+def google_exchange(request: Request, body: GoogleExchangeRequest, db: Session = Depends(deps.get_db)):
+    """Callback'in URL ile verdigi tek kullanimlik kodu gercek token'a
+    cevirir. JWT'nin query string'e hic girmemesini saglayan adim bu."""
+    data = google_oauth.consume_exchange_code(body.code)
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Kod gecersiz ya da suresi dolmus.")
+
+    user = db.query(User).filter(User.id == data["user_id"]).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hesap bulunamadi.")
+
+    if data.get("requires_2fa"):
+        temp_token = security.create_access_token(
+            user.id,
+            expires_delta=timedelta(minutes=TWO_FA_PENDING_TOKEN_MINUTES),
+            scope="2fa_pending",
+        )
+        return {"requires_2fa": True, "temp_token": temp_token}
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return {
+        "access_token": security.create_access_token(user.id, expires_delta=access_token_expires),
+        "token_type": "bearer",
+    }
