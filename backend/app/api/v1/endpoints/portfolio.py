@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.portfolio import Portfolio, PortfolioAsset, PortfolioSnapshot
 from app.models.portfolio_transaction import PortfolioTransaction
 from app.models.kap import KapNotification
+from app.models.upcoming_payment import UpcomingPayment
 from app.schemas.portfolio import (
     PortfolioCreate, PortfolioResponse, PortfolioAssetCreate, PortfolioAssetResponse,
     AssetSell, DividendCreate, PortfolioTransactionResponse,
@@ -1471,3 +1472,92 @@ def get_portfolio_signals(
     }
     cache_service.set_json(cache_key, result, expire_seconds=_SIGNALS_CACHE_TTL_SECONDS)
     return result
+
+
+# --- Yaklasan Odemeler: kullanicinin KENDI kayitlari -------------------------
+# Panel simdiye kadar yalnizca KAP'in kar payi bildirimlerini gosteriyordu ve
+# kullanicinin ekleyebilecegi hicbir sey yoktu. Ustelik oradaki tarih gercek
+# bir odeme tarihi degil, bildirimin YAYIN tarihi (bkz. dividend_notices'in
+# kendi notu). Bu uclar kullanicinin bildigi gercek tarihleri girebilmesi icin.
+
+
+class UpcomingPaymentCreate(BaseModel):
+    title: str
+    due_date: date
+    ticker: Optional[str] = None
+    amount_try: Optional[float] = None
+
+
+def _upcoming_payment_dict(p: UpcomingPayment) -> dict:
+    return {
+        "id": p.id,
+        "title": p.title,
+        "ticker": p.ticker,
+        # Numeric -> float yalnizca SUNUM icin; sutun Numeric kaliyor.
+        "amount_try": float(p.amount_try) if p.amount_try is not None else None,
+        "due_date": p.due_date.isoformat() if p.due_date else None,
+    }
+
+
+@router.get("/upcoming-payments")
+def list_upcoming_payments(
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """Kullanicinin kendi ekledigi yaklasan odemeler - en yakin tarih basta.
+
+    GECMIS tarihliler de donuyor: bir odemeyi kacirdiysan onu listeden
+    sessizce kaybetmek, hatirlatici olmasi gereken bir panelde tam olarak
+    yanlis davranis olurdu. Frontend gecmis olanlari ayrica isaretliyor."""
+    rows = (
+        db.query(UpcomingPayment)
+        .filter(UpcomingPayment.user_id == current_user.id)
+        .order_by(UpcomingPayment.due_date.asc())
+        .all()
+    )
+    return [_upcoming_payment_dict(p) for p in rows]
+
+
+@router.post("/upcoming-payments", status_code=status.HTTP_201_CREATED)
+def create_upcoming_payment(
+    payload: UpcomingPaymentCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    title = (payload.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Baslik bos olamaz.")
+    if payload.amount_try is not None and payload.amount_try < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tutar negatif olamaz.")
+
+    row = UpcomingPayment(
+        user_id=current_user.id,
+        title=title[:120],
+        ticker=(payload.ticker or "").strip().upper()[:20] or None,
+        amount_try=payload.amount_try,
+        due_date=payload.due_date,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _upcoming_payment_dict(row)
+
+
+@router.delete("/upcoming-payments/{payment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_upcoming_payment(
+    payment_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    # user_id filtresi SART - yoksa herhangi bir kullanici baskasinin
+    # kaydini id tahmin ederek silebilirdi (IDOR).
+    row = (
+        db.query(UpcomingPayment)
+        .filter(UpcomingPayment.id == payment_id, UpcomingPayment.user_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kayit bulunamadi.")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

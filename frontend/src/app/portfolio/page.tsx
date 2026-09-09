@@ -221,6 +221,73 @@ export default function PortfolioPage() {
   // desende.
   const [isOpenUsdCashModal, setIsOpenUsdCashModal] = useState(false)
 
+  // Kullanicinin KENDI ekledigi yaklasan odemeler. Panel eskiden yalnizca
+  // KAP'in kar payi bildirimlerini gosteriyordu ve kullanicinin
+  // ekleyebilecegi hicbir sey yoktu; ustelik oradaki tarih gercek bir odeme
+  // tarihi degil, bildirimin YAYIN tarihi. Bu ikisi bilerek AYRI kaynak
+  // olarak gosteriliyor - biri dogrulanmis bir bildirim, digeri kullanicinin
+  // kendi notu.
+  const [myPayments, setMyPayments] = useState<any[]>([])
+  const [isOpenPaymentModal, setIsOpenPaymentModal] = useState(false)
+  const [paymentTitle, setPaymentTitle] = useState("")
+  const [paymentTicker, setPaymentTicker] = useState("")
+  const [paymentAmount, setPaymentAmount] = useState("")
+  const [paymentDate, setPaymentDate] = useState("")
+  const [paymentBusy, setPaymentBusy] = useState(false)
+
+  const loadMyPayments = async () => {
+    try {
+      const res = await authFetch("/portfolio/upcoming-payments")
+      if (res.ok) setMyPayments(await res.json())
+    } catch (e) {
+      // Panel KAP kayitlariyla calismaya devam eder.
+    }
+  }
+
+  useEffect(() => { loadMyPayments() }, [])
+
+  const handleAddPayment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!paymentTitle.trim() || !paymentDate) return
+    setPaymentBusy(true)
+    try {
+      const amount = paymentAmount.trim() ? parseTLAmount(paymentAmount) : null
+      if (amount !== null && !Number.isFinite(amount)) {
+        flashActionError("Tutar gecersiz - orn. 1.250,50 ya da 1250.50 yazin.")
+        return
+      }
+      const res = await authFetch("/portfolio/upcoming-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: paymentTitle.trim(),
+          due_date: paymentDate,
+          ticker: paymentTicker.trim() || null,
+          amount_try: amount,
+        }),
+      })
+      if (res.ok) {
+        setPaymentTitle(""); setPaymentTicker(""); setPaymentAmount(""); setPaymentDate("")
+        setIsOpenPaymentModal(false)
+        await loadMyPayments()
+      } else {
+        const body = await res.json().catch(() => null)
+        flashActionError(body?.detail || "Odeme eklenemedi.")
+      }
+    } finally {
+      setPaymentBusy(false)
+    }
+  }
+
+  const handleDeletePayment = async (id: number) => {
+    try {
+      const res = await authFetch(`/portfolio/upcoming-payments/${id}`, { method: "DELETE" })
+      if (res.ok) setMyPayments(prev => prev.filter(p => p.id !== id))
+    } catch (e) {
+      // Sessizce gec - kullanici tekrar deneyebilir.
+    }
+  }
+
   // sign: +1 deposit, -1 withdraw - user always types a positive amount,
   // this decides direction, same convention as
   // admin/managed-portfolios/page.tsx's adjustCash.
@@ -2421,9 +2488,55 @@ export default function PortfolioPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2.5">
-                {dividendNotices.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">Yaklaşan ödeme bildirimi yok.</p>
-                ) : (
+                {/* Kullanicinin KENDI kayitlari - KAP bildirimlerinden AYRI
+                    gosteriliyor: biri dogrulanmis bir sirket bildirimi,
+                    digeri kullanicinin kendi notu. Ikisini tek listede
+                    karistirmak, kullanicinin kendi tahminini resmi bir
+                    bildirim sanmasina yol acardi. */}
+                {myPayments.map((p: any) => {
+                  const overdue = p.due_date && p.due_date < new Date().toISOString().slice(0, 10)
+                  return (
+                    <div key={`mine-${p.id}`} className="flex items-center justify-between gap-3 text-xs group/pay">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {p.ticker && (
+                          <span className="font-extrabold bg-primary/15 text-primary px-1.5 py-0.5 rounded shrink-0">
+                            {p.ticker}
+                          </span>
+                        )}
+                        <span className="text-foreground/90 truncate">{p.title}</span>
+                        {p.amount_try != null && (
+                          <span className="text-muted-foreground font-mono shrink-0">
+                            ₺{Number(p.amount_try).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`font-mono ${overdue ? "text-bear" : "text-muted-foreground"}`}>
+                          {p.due_date ? new Date(p.due_date).toLocaleDateString("tr-TR") : "—"}
+                        </span>
+                        <button
+                          onClick={() => handleDeletePayment(p.id)}
+                          title="Kaydı sil"
+                          className="text-muted-foreground/50 hover:text-bear transition-colors cursor-pointer opacity-0 group-hover/pay:opacity-100"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {myPayments.length > 0 && dividendNotices.length > 0 && (
+                  <div className="border-t border-border/40 pt-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                    KAP Bildirimleri
+                  </div>
+                )}
+
+                {dividendNotices.length === 0 && myPayments.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Yaklaşan ödeme bildirimi yok. Hızlı İşlemler&apos;den kendi kaydınızı ekleyebilirsiniz.
+                  </p>
+                ) : dividendNotices.length === 0 ? null : (
                   dividendNotices.map((n: any, i: number) => (
                     <div key={i} className="flex items-center justify-between gap-3 text-xs">
                       <div className="flex items-center gap-2 min-w-0">
@@ -2440,6 +2553,71 @@ export default function PortfolioPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Odeme Ekle modali - Hizli Islemler'deki butondan aciliyor. */}
+            <Dialog open={isOpenPaymentModal} onOpenChange={setIsOpenPaymentModal}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Yaklaşan Ödeme Ekle</DialogTitle>
+                  <DialogDescription>
+                    Kendi bildiğiniz bir ödeme/tahsilat tarihini kaydedin - temettü ödeme günü,
+                    kupon, vergi vb. KAP bildirimlerinden ayrı listelenir.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={handleAddPayment} className="py-2 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Başlık</label>
+                    <Input
+                      value={paymentTitle}
+                      onChange={e => setPaymentTitle(e.target.value)}
+                      placeholder="örn. THYAO temettü ödemesi"
+                      className="bg-secondary/50"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Sembol (ops.)</label>
+                      <Input
+                        value={paymentTicker}
+                        onChange={e => setPaymentTicker(e.target.value.toUpperCase())}
+                        placeholder="THYAO"
+                        className="bg-secondary/50"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Tutar ₺ (ops.)</label>
+                      <Input
+                        value={paymentAmount}
+                        onChange={e => setPaymentAmount(e.target.value)}
+                        inputMode="decimal"
+                        placeholder="1.250,50"
+                        className="bg-secondary/50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Tarih</label>
+                    <Input
+                      type="date"
+                      value={paymentDate}
+                      onChange={e => setPaymentDate(e.target.value)}
+                      className="bg-secondary/50"
+                      required
+                    />
+                  </div>
+
+                  <DialogFooter className="pt-2 border-t border-border/50">
+                    <Button type="submit" disabled={paymentBusy} className="w-full cursor-pointer">
+                      {paymentBusy ? "Kaydediliyor..." : "Kaydet"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
 
             <Card className="bip-card">
               <CardHeader className="pb-2">
@@ -2466,6 +2644,12 @@ export default function PortfolioPage() {
                   className="press flex items-center justify-center gap-1.5 h-9 rounded-md text-xs font-bold bg-secondary/40 text-foreground border border-border/40 hover:bg-secondary/60 transition-colors cursor-pointer"
                 >
                   <Bell className="h-3.5 w-3.5" /> Alarm Kur
+                </button>
+                <button
+                  onClick={() => setIsOpenPaymentModal(true)}
+                  className="press flex items-center justify-center gap-1.5 h-9 rounded-md text-xs font-bold bg-secondary/40 text-foreground border border-border/40 hover:bg-secondary/60 transition-colors cursor-pointer"
+                >
+                  <Calendar className="h-3.5 w-3.5" /> Ödeme Ekle
                 </button>
                 <button
                   onClick={handleDownloadReport}

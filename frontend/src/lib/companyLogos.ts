@@ -102,9 +102,35 @@ export const TICKER_LOGO_DOMAINS: Record<string, string> = {
   BIGEN: "birlesimgrupenerji.com",
 }
 
+// Tera Portfoy'un TEFAS fon kodlari. Bunlar hisse degil FON kodu, yani
+// TICKER_LOGO_DOMAINS'e sirket olarak girmeleri yanlis olurdu - ama hepsi
+// ayni kurumun urunu ve kullanici hepsinde Tera Yatirim logosunu istedi.
+// Kaynak: teraportfoy.com/fonlarimiz (2026-09-09'da dogrulandi).
+export const TERA_FUND_CODES = new Set([
+  "TLY", "TMV", "THF", "DOH", "TMM", "T3B", "TRU", "MLK",
+  "TP2", "TRJ", "TUS", "TZS", "LDS", "BSI",
+  "TN1", "TUG", "TGI", "UKA", "OGC", "FSU", "TLV",
+])
+
+// Google favicon servisi terayatirim.com icin GERCEK logoyu DONDURMUYOR -
+// olculdu: 85 baytlik 16x16 bir PNG, yani Google'in jenerik "dunya" yedek
+// ikonu (kiyas: akbank.com 32x32 / 211 bayt gercek favicon donduruyor).
+// Jenerik bir dunya ikonu gostermek logosuz gostermekten kotu, o yuzden
+// Tera fonlari dogrudan yerel dosyaya bakiyor.
+//
+// Dosya HENUZ YOKSA: TickerLogo'nun kendi onError yedegi devreye girip
+// renkli bas-harf rozeti ciziyor - hicbir sey kirilmiyor.
+const TERA_LOCAL_LOGO = "/logos/TERA.png"
+
 export function logoUrlFor(ticker: string, size: number = 64): string | null {
   const t = ticker.toUpperCase()
   if (LOCAL_LOGO_TICKERS.has(t)) return `/logos/${t}.png`
+
+  // Tum Tera fonlari ayni kurum logosunu paylasiyor. Yerel bir
+  // public/logos/TERA.png konursa LOCAL_LOGO_TICKERS'a "TERA" eklenmesi
+  // yeterli - burasi degismeden o dosyaya gecer.
+  if (TERA_FUND_CODES.has(t) || t === "TERA") return TERA_LOCAL_LOGO
+
   const domain = TICKER_LOGO_DOMAINS[t]
   if (!domain) return null
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`

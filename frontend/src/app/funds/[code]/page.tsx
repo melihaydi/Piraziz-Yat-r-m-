@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 // recharts (~324KB) bu sayfanın İLK yükünden çıkarıldı - diğer tüm
 // sayfaların zaten kullandığı dynamic() deseni buraya da uygulandı.
@@ -159,6 +160,10 @@ export default function FundDetailPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center space-x-3">
+            {/* Fon kurumunun logosu - Tera fonlarinin hepsi ayni logoyu
+                paylasiyor (bkz. companyLogos.ts TERA_FUND_CODES). Logosu
+                bilinmeyen fonda TickerLogo hicbir sey cizmiyor. */}
+            <TickerLogo ticker={code} size={36} />
             <span className="bg-bull text-background font-black px-2.5 py-1 rounded text-lg">
               {code}
             </span>

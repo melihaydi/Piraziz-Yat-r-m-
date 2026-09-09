@@ -4,7 +4,16 @@ import "./globals.css"
 import AuthGate from "@/components/AuthGate"
 import AppChrome from "@/components/AppChrome"
 
-const inter = Inter({ subsets: ["latin"] })
+// subsets'e "latin-ext" ZORUNLU: Turkce'nin g-breve, s-cedilla, noktasiz i
+// ve buyuk noktali I harfleri (ğ ş ı İ) latin-ext alt kumesinde. Yalnizca
+// "latin" yuklendiginde bu harfler Inter'den DEGIL, tarayicinin yedek
+// sistem fontundan geliyordu - yani Turkce her metinde harflerin bir kismi
+// baska bir yazi tipiyle diziliyordu. Ayni kelimenin icinde iki font demek;
+// "fontlar biraz daha guzel olsun" isteginin en somut karsiligi bu.
+//
+// display "swap": font inerken metin GORUNMEZ kalmiyor, once yedek yuzle
+// ciziliyor sonra degisiyor. Sayfa gecislerinde bos ekran suresini kesiyor.
+const inter = Inter({ subsets: ["latin", "latin-ext"], display: "swap" })
 
 // Yalnızca gerçekten kod olan içerik için (.font-mono-code, globals.css) -
 // 2FA/kurtarma kodları, hata kodu gibi. Fiyat/tutar/yüzde artık bu yüzü
@@ -12,8 +21,11 @@ const inter = Inter({ subsets: ["latin"] })
 // .font-mono override'ının yanındaki not). CSS değişkeni yöntemi: variable
 // className <html>'e ekleniyor, gerçek font-family ataması globals.css'te.
 const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
+  // Kod/kurtarma kodu icin - Turkce harf gecmesi beklenmiyor ama tutarlilik
+  // ve olasi bir kenar durum icin latin-ext burada da acik.
+  subsets: ["latin", "latin-ext"],
   weight: ["400", "500"],
+  display: "swap",
   variable: "--font-mono-code",
 })
 

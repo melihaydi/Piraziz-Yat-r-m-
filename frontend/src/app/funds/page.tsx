@@ -16,6 +16,7 @@ import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
 import { subscribePopularFunds, getPopularFundsSnapshot } from "@/lib/popularFundsStore"
 
 import { COMPARE_COLORS } from "@/lib/chartColors"
+import { TickerLogo } from "@/components/ui/TickerLogo"
 
 // Karşılaştırma grafiği tembel yükleniyor - gerekçe bileşenin kendi
 // başlığında. Grafik yalnızca kullanıcı fon karşılaştırması açtığında
@@ -500,8 +501,11 @@ function FundsPageInner() {
                       className="w-full p-3 text-left cursor-pointer"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="bg-primary text-primary-foreground font-black px-2 py-0.5 rounded text-xs">
-                          {f.code}
+                        <span className="inline-flex items-center gap-1.5">
+                          <TickerLogo ticker={f.code} size={18} />
+                          <span className="bg-primary text-primary-foreground font-black px-2 py-0.5 rounded text-xs">
+                            {f.code}
+                          </span>
                         </span>
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                       </div>
@@ -812,10 +816,18 @@ function FundsPageInner() {
                                 </button>
                               </td>
                               <td className="px-4 font-bold text-foreground">
-                                <span className={`px-2 py-0.5 rounded text-xs ${
-                                  isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
-                                }`}>
-                                  {fund.code}
+                                <span className="inline-flex items-center gap-1.5">
+                                  {/* Fon kurumunun logosu - Tera fonlarinin
+                                      hepsi ayni logoyu paylasiyor, bkz.
+                                      companyLogos.ts TERA_FUND_CODES.
+                                      Logosu olmayan fonda hicbir sey
+                                      cizilmiyor, rozet tek basina kaliyor. */}
+                                  <TickerLogo ticker={fund.code} size={18} />
+                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                    isSelected ? "bg-primary text-primary-foreground" : "bg-secondary"
+                                  }`}>
+                                    {fund.code}
+                                  </span>
                                 </span>
                               </td>
                               <td className="px-4 font-medium text-foreground/95 truncate max-w-[150px]">{fund.name}</td>
