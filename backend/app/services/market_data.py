@@ -321,7 +321,15 @@ class MarketDataService:
             "BARMA", "RUZYE", "MCARD", "NETCD", "ORZAX", "MOBTL", "RNPOL",
             # Added for DOH's disclosed composition (tefas.py) - the only
             # holding of DOH's not already tracked above.
-            "CITAS"
+            "CITAS",
+            # 2026-09-09: DOH/THF/TLY/TMV'nin yenilenen dagilimlariyla gelen
+            # yeni isimler (bkz. tefas.py FUND_DETAILS_MAP). Bunlar takip
+            # listesinde olmasaydi get_live_estimated_return onlari
+            # _KNOWN_STOCK_TICKERS'ta bulamayip agirliklarini sessizce
+            # ESTIMATE DISINDA birakirdi - anlik getiri eksik hesaplanirdi.
+            "AEFES", "ALTNY", "BINHO", "BLUME", "BOBET", "CCOLA", "CIMSA",
+            "GENIL", "GIPTA", "GUBRF", "ISVEA", "KARSN", "KRDMD", "MARTI",
+            "SURGY", "TKNKA", "TRMET", "ULKER", "VAKBN"
         ]
         
         self.tickers = []
@@ -377,6 +385,19 @@ class MarketDataService:
             # bir süre sığ kalacak; bu sembole özgü bir sorun değil, yeni
             # arz olan her hissede aynı.
             "CITAS": "Çıtlekçi Mağazacılık Gıda A.Ş.",
+            # 2026-09-09 dagilim guncellemesiyle gelen yeni isimler. Ayni
+            # kurala uyuluyor: yalnizca resmi unvanindan EMIN olunanlar
+            # yaziliyor, gerisi asagidaki f"{t} Ticaret A.Ş." placeholder'ina
+            # dusuyor - yanlis bir resmi unvan yazmaktansa placeholder iyidir.
+            "AEFES": "Anadolu Efes Biracılık ve Malt Sanayii A.Ş.",
+            "CCOLA": "Coca-Cola İçecek A.Ş.",
+            "CIMSA": "Çimsa Çimento Sanayi ve Ticaret A.Ş.",
+            "GUBRF": "Gübre Fabrikaları T.A.Ş.",
+            "KARSN": "Karsan Otomotiv Sanayii ve Ticaret A.Ş.",
+            "KRDMD": "Kardemir Karabük Demir Çelik Sanayi ve Ticaret A.Ş.",
+            "MARTI": "Martı Otel İşletmeleri A.Ş.",
+            "ULKER": "Ülker Bisküvi Sanayi A.Ş.",
+            "VAKBN": "Türkiye Vakıflar Bankası T.A.O.",
         }
         
         for t in allowed_list:

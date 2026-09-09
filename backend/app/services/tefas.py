@@ -110,13 +110,13 @@ BASE_FUNDS = {
     # Name/price are placeholders only (same pattern as PRY/HMV above) -
     # _fetch_prices_sync() overwrites both from TEFAS's own real per-fund
     # data the moment the first real crawl succeeds.
-    "THF": {"name": "THF Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "THF": {"name": "Tera Portföy Hisse Senedi (TL) Fon (Hisse Senedi Yoğun Fon)", "category": "Hisse Senedi", "price": 10.0000, "category_tr": "Hisse Senedi Fonu"},
     # DOH - added to POPULAR_LIVE_FUNDS in funds.py replacing PBR (2026-08-20).
     # Same placeholder-overwritten-by-real-TEFAS-data pattern as THF above.
     # PBR itself stays fully tracked/holdable (BASE_FUNDS, FALLBACKS,
     # FUND_DETAILS_MAP all keep their PBR entries), it is just no longer
     # spotlighted in the live-estimate section - same treatment DFI got.
-    "DOH": {"name": "DOH Fonu", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    "DOH": {"name": "Tera Portföy Dördüncü Hisse Senedi Serbest (TL) Fon (Hisse Senedi Yoğun Fon)", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
     "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"},
     "PKZ": {"name": "Pusula Portföy İkinci Serbest (Hisse Senedi Yoğun) Fon", "category": "Serbest Yoğun", "price": 13.4416, "category_tr": "Serbest Fon"},
     "PCS": {"name": "Pusula Portföy Para Piyasası Fonu", "category": "Para Piyasası", "price": 8.2528, "category_tr": "Para Piyasası Fonu"},
@@ -295,179 +295,332 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
     },
     "TLY": {
         "fund_size": "₺3,125,000,000",
-        "risk_level": 3,
-        "manager": "Gökhan Şen / Tera Portföy",
-        # Refreshed 2026-08-14 per the user's updated TEFAS breakdown.
-        "as_of": "2026-08-14",
+        # 3 -> 7: teraportfoy.com'un TLY sayfasi risk degerini 7/7 olarak
+        # veriyor ("piyasa tecrubesi olan, yuksek deger dalgalanmasina
+        # toleransli yatirimcilar icin"). 3 ciddi sekilde yaniltiyordu -
+        # kullaniciya olduğundan cok daha guvenli bir fon gibi gosteriyordu.
+        "risk_level": 7,
+        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
+        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
+        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
+        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
+        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
+        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
+        "manager": "Tera Portföy Yönetimi A.Ş.",
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
+        # dagilimin yerine.
+        #
+        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
+        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
+        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
+        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
+        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
+        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
+        # get_live_estimated_return estimated_change'i resolved_weight'e
+        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
+        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
+        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.
+        "as_of": "2026-09-09",
         "assets_distribution": [
-            {"name": "OZATD", "value": 32.0},
-            {"name": "SABIT", "value": 16.5},
-            {"name": "DSTKF", "value": 11.3},
-            {"name": "TEHOL", "value": 9.1},
-            {"name": "PEKGY", "value": 8.9},
-            # HMV is itself a tracked fund (see BASE_FUNDS/FALLBACKS above),
-            # not a stock - resolved via its own daily_return, not a quote.
-            {"name": "HMV", "value": 4.4},
-            {"name": "TERA", "value": 4.1},
-            {"name": "TRHOL", "value": 3.9},
-            {"name": "ANELE", "value": 3.0},
-            {"name": "BIGEN", "value": 1.7},
-            {"name": "SELEC", "value": 1.6},
-            {"name": "ALKLC", "value": 1.6},
-            {"name": "SVGYO", "value": 0.5},
-            {"name": "MANAS", "value": 0.3},
+            {"name": "OZATD", "value": 21.7},
+            {"name": "DSTKF", "value": 21.1},
+            {"name": "TEHOL", "value": 16.1},
+            {"name": "TRHOL", "value": 8.0},
+            {"name": "PEKGY", "value": 6.0},
+            {"name": "ANELE", "value": 3.1},
+            {"name": "SELEC", "value": 2.3},
+            {"name": "BIGEN", "value": 2.2},
+            {"name": "TKNKA", "value": 2.2},
+            {"name": "KARCL", "value": 0.6},
             {"name": "HEDEF", "value": 0.3},
-            {"name": "SARAE", "value": 0.2},
-            {"name": "EUPWR", "value": 0.2},
-            {"name": "DAPGM", "value": 0.1},
+            {"name": "TERA", "value": 0.3},
+            {"name": "THYAO", "value": 0.3},
             {"name": "TMPOL", "value": 0.1},
-            {"name": "GESAN", "value": 0.0},
-            {"name": "YKBNK", "value": 0.0},
-            {"name": "EFOR", "value": 0.0}
+            {"name": "SISE", "value": 0.1},
+            {"name": "AKBNK", "value": 0.1},
+            {"name": "ISCTR", "value": 0.1},
+            {"name": "GESAN", "value": 0.1},
+            {"name": "EKGYO", "value": 0.1},
+            {"name": "YKBNK", "value": 0.1},
+            {"name": "TCELL", "value": 0.1},
+            {"name": "KCHOL", "value": 0.1},
+            {"name": "ASELS", "value": 0.1},
+            {"name": "SAHOL", "value": 0.0},
+            {"name": "TRALT", "value": 0.0},
+            {"name": "ALKLC", "value": 0.0},
+            {"name": "AKSEN", "value": 0.0},
+            {"name": "DAPGM", "value": 0.0},
+            {"name": "GIPTA", "value": 0.0},
+            {"name": "SVGYO", "value": 0.0},
+            {"name": "EREGL", "value": 0.0},
+            {"name": "HMV", "value": 8.5},
+            {"name": "SABIT", "value": 6.3},
+            {"name": "T3B", "value": 0.0}
         ]
     },
     "TMV": {
         "fund_size": "₺26,000,000,000",
         "risk_level": 6,
-        "manager": "Yapay Zekâ Algoritması / Tera Portföy",
-        # Refreshed 2026-08-14 per the user's updated TEFAS breakdown.
-        "as_of": "2026-08-14",
+        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
+        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
+        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
+        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
+        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
+        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
+        "manager": "Tera Portföy Yönetimi A.Ş.",
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
+        # dagilimin yerine.
+        #
+        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
+        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
+        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
+        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
+        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
+        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
+        # get_live_estimated_return estimated_change'i resolved_weight'e
+        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
+        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
+        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.
+        "as_of": "2026-09-09",
         "assets_distribution": [
-            # Fixed daily-return deposit path below (0.12%/day, weekend-inclusive).
-            {"name": "SABIT", "value": 41.3},
-            {"name": "OZATD", "value": 11.0},
-            {"name": "TEHOL", "value": 10.3},
-            # "VİOP" (Vadeli İşlem ve Opsiyon Piyasası) is a MARKET SEGMENT,
-            # not a single tradable ticker - no real BIST quote to resolve
-            # this against, left unresolved rather than guessing one.
-            {"name": "VIOP", "value": 8.7},
-            {"name": "TRHOL", "value": 7.0},
-            {"name": "ANELE", "value": 5.2},
-            {"name": "SELEC", "value": 3.3},
-            {"name": "DSTKF", "value": 3.2},
-            {"name": "TERA", "value": 2.1},
-            {"name": "EUPWR", "value": 1.6},
-            {"name": "ALKLC", "value": 1.6},
-            {"name": "PEKGY", "value": 1.3},
-            # "VDMK" (Varlığa Dayalı Menkul Kıymet / asset-backed security)
-            # is an instrument CATEGORY, not a single ticker - same
-            # reasoning as VİOP above, left unresolved.
-            {"name": "VDMK", "value": 0.8},
-            {"name": "SVGYO", "value": 0.5},
-            {"name": "GESAN", "value": 0.4},
-            {"name": "AKSEN", "value": 0.4},
-            {"name": "TURSG", "value": 0.3},
-            {"name": "YKBNK", "value": 0.3},
-            {"name": "HEDEF", "value": 0.2},
-            {"name": "KORDS", "value": 0.2},
-            {"name": "MANAS", "value": 0.0},
-            # Bond holding - fixed daily-return path below (0.11%/day, per the user).
-            {"name": "BONO", "value": 0.1}
+            {"name": "ANELE", "value": 12.5},
+            {"name": "SELEC", "value": 12.2},
+            {"name": "TRHOL", "value": 11.5},
+            {"name": "OZATD", "value": 10.4},
+            {"name": "BIGEN", "value": 7.3},
+            {"name": "DSTKF", "value": 5.8},
+            {"name": "KARCL", "value": 4.7},
+            {"name": "TEHOL", "value": 3.4},
+            {"name": "ALKLC", "value": 2.9},
+            {"name": "PEKGY", "value": 2.4},
+            {"name": "TERA", "value": 1.4},
+            {"name": "YKBNK", "value": 1.3},
+            {"name": "TMPOL", "value": 0.7},
+            {"name": "MGROS", "value": 0.3},
+            {"name": "TURSG", "value": 0.2},
+            {"name": "AKSEN", "value": 0.2},
+            {"name": "SAHOL", "value": 0.2},
+            {"name": "THYAO", "value": 0.2},
+            {"name": "ASELS", "value": 0.2},
+            {"name": "TUPRS", "value": 0.1},
+            {"name": "EREGL", "value": 0.1},
+            {"name": "BIMAS", "value": 0.1},
+            {"name": "CITAS", "value": 0.1},
+            {"name": "AKBNK", "value": 0.1},
+            {"name": "ENKAI", "value": 0.1},
+            {"name": "ASTOR", "value": 0.1},
+            {"name": "ISCTR", "value": 0.0},
+            {"name": "KCHOL", "value": 0.0},
+            {"name": "GARAN", "value": 0.0},
+            {"name": "EKGYO", "value": 0.0},
+            {"name": "TCELL", "value": 0.0},
+            {"name": "SISE", "value": 0.0},
+            {"name": "SVGYO", "value": 0.0},
+            {"name": "TAVHL", "value": 0.0},
+            {"name": "KRDMD", "value": 0.0},
+            {"name": "FROTO", "value": 0.0},
+            {"name": "TTKOM", "value": 0.0},
+            {"name": "TRALT", "value": 0.0},
+            {"name": "SASA", "value": 0.0},
+            {"name": "GUBRF", "value": 0.0},
+            {"name": "VAKBN", "value": 0.0},
+            {"name": "PGSUS", "value": 0.0},
+            {"name": "TOASO", "value": 0.0},
+            {"name": "TKNKA", "value": 0.0},
+            {"name": "HEDEF", "value": 0.0},
+            {"name": "AEFES", "value": 0.0},
+            {"name": "PETKM", "value": 0.0},
+            {"name": "SABIT", "value": 18.2},
+            {"name": "VIOP", "value": 2.4},
+            {"name": "VDMK", "value": 0.7},
+            {"name": "BONO", "value": 0.1},
+            {"name": "TMM", "value": 0.0}
         ]
     },
     "THF": {
-        # fund_size/manager are unconfirmed placeholders (same "₺250,000,000"
-        # default get_fund() already falls back to for any fund with no
-        # known details) - manager is tentatively "Tera Portföy" purely
-        # because THF's holdings heavily overlap TLY/TMV/DOH's (TEHOL, TERA,
-        # TRHOL, ANELE, OZATD, PEKGY, SVGYO, plus the same VİOP structure),
-        # not from a confirmed source - update once TEFAS's own crawl or the
-        # user confirms the real manager.
         "fund_size": "₺250,000,000",
         "risk_level": 6,
-        "manager": "Tera Portföy (tahmini - doğrulanmadı)",
-        # Kullanıcının verdiği güncel dağılım (2026-08-20), 2026-08-17
-        # tarihli önceki dağılımın yerine. Toplam 99.8 - TEFAS dağılımları
-        # zaten çoğu zaman tam 100 etmez, kalan sayılmayan nakit/tahvil/diğer
-        # olarak kabul edilir (get_live_estimated_return'ün kendi
-        # dokümantasyonuna bakınız).
+        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
+        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
+        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
+        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
+        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
+        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
+        "manager": "Tera Portföy Yönetimi A.Ş.",
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
+        # dagilimin yerine.
         #
-        # Önceki dağılımdan hiçbir kalem düşmedi; iki yeni isim girdi:
-        # CITAS (18 Ağustos 2026 halka arzı) ve TATEN. Ağırlıklardaki asıl
-        # kayma KARCL'nin %6.0'dan %12.2'ye çıkması ve buna karşılık
-        # VİOP'un %31.2'den %22.1'e inmesi.
-        #
-        # "VİOP" -> VIOP, plain ASCII per TMV's own precedent (a market
-        # segment, not a tradable ticker - left unresolved rather than
-        # guessing a quote for it).
-        "as_of": "2026-08-20",
+        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
+        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
+        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
+        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
+        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
+        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
+        # get_live_estimated_return estimated_change'i resolved_weight'e
+        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
+        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
+        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.        #
+        # YENI: DOH ile THF artik BIRBIRINI tutuyor (DOH -> THF %3.0,
+        # THF -> DOH %2.9). Bu KARSILIKLI bir dongu; onceki dagilimlarda
+        # yalnizca tek yonlu fon-icinde-fon vardi. get_live_estimated_return'un
+        # `_visited` korumasi bunu dogru ele aliyor: ikinci seviyede ayni kod
+        # tekrar gorulunce recursion durup fonun son gercek TEFAS gunluk
+        # getirisine dusuluyor (BASE_FUNDS yolu). Sonsuz dongu yok.
+        "as_of": "2026-09-09",
         "assets_distribution": [
-            {"name": "KARCL", "value": 12.2},
-            {"name": "TEHOL", "value": 7.8},
-            {"name": "ASELS", "value": 6.3},
-            {"name": "TRHOL", "value": 5.9},
-            {"name": "TERA", "value": 5.7},
-            {"name": "EGEGY", "value": 3.5},
-            {"name": "CITAS", "value": 3.2},
-            {"name": "ATATR", "value": 3.0},
-            {"name": "ANELE", "value": 2.9},
-            {"name": "THYAO", "value": 2.9},
-            {"name": "YKBNK", "value": 2.8},
-            {"name": "PEKGY", "value": 2.7},
-            {"name": "SVGYO", "value": 2.1},
-            {"name": "TUPRS", "value": 2.1},
-            {"name": "BRSAN", "value": 1.9},
-            {"name": "HALKB", "value": 1.9},
-            {"name": "GLRMK", "value": 1.4},
+            {"name": "KARCL", "value": 7.5},
+            {"name": "TEHOL", "value": 6.7},
+            {"name": "TRHOL", "value": 5.8},
+            {"name": "TERA", "value": 5.6},
+            {"name": "SELEC", "value": 4.3},
+            {"name": "YKBNK", "value": 3.2},
+            {"name": "ALKLC", "value": 3.1},
+            {"name": "ANELE", "value": 3.0},
+            {"name": "DSTKF", "value": 2.9},
+            {"name": "ASELS", "value": 2.8},
+            {"name": "TUPRS", "value": 2.2},
+            {"name": "AKBNK", "value": 2.1},
+            {"name": "THYAO", "value": 2.1},
+            {"name": "OZATD", "value": 1.7},
+            {"name": "SVGYO", "value": 1.5},
+            {"name": "CITAS", "value": 1.4},
+            {"name": "KCHOL", "value": 1.4},
+            {"name": "BIMAS", "value": 1.4},
             {"name": "MANAS", "value": 1.4},
-            {"name": "EUPWR", "value": 1.1},
-            {"name": "BSOKE", "value": 1.0},
-            {"name": "TABGD", "value": 1.0},
-            {"name": "TATEN", "value": 1.0},
-            {"name": "OZATD", "value": 1.0},
-            {"name": "RUZYE", "value": 0.9},
-            {"name": "MCARD", "value": 0.9},
-            {"name": "KGYO", "value": 0.3},
-            {"name": "NETCD", "value": 0.3},
-            {"name": "BARMA", "value": 0.2},
-            {"name": "ORZAX", "value": 0.1},
-            {"name": "MOBTL", "value": 0.1},
-            {"name": "RNPOL", "value": 0.1},
-            {"name": "VIOP", "value": 22.1}
+            {"name": "PEKGY", "value": 1.3},
+            {"name": "SAHOL", "value": 1.3},
+            {"name": "ISCTR", "value": 1.1},
+            {"name": "GARAN", "value": 1.0},
+            {"name": "EREGL", "value": 1.0},
+            {"name": "ISVEA", "value": 1.0},
+            {"name": "GESAN", "value": 0.9},
+            {"name": "BIGEN", "value": 0.8},
+            {"name": "TMPOL", "value": 0.7},
+            {"name": "TCELL", "value": 0.7},
+            {"name": "FROTO", "value": 0.6},
+            {"name": "HEDEF", "value": 0.6},
+            {"name": "GUBRF", "value": 0.6},
+            {"name": "EKGYO", "value": 0.5},
+            {"name": "TATEN", "value": 0.5},
+            {"name": "TRALT", "value": 0.5},
+            {"name": "SARAE", "value": 0.5},
+            {"name": "DAPGM", "value": 0.5},
+            {"name": "SISE", "value": 0.5},
+            {"name": "GIPTA", "value": 0.4},
+            {"name": "TURSG", "value": 0.4},
+            {"name": "TKNKA", "value": 0.4},
+            {"name": "TOASO", "value": 0.4},
+            {"name": "EUPWR", "value": 0.4},
+            {"name": "PGSUS", "value": 0.4},
+            {"name": "OYAKC", "value": 0.4},
+            {"name": "KRDMD", "value": 0.4},
+            {"name": "AKSEN", "value": 0.3},
+            {"name": "ENKAI", "value": 0.3},
+            {"name": "EFOR", "value": 0.3},
+            {"name": "VAKBN", "value": 0.3},
+            {"name": "PETKM", "value": 0.3},
+            {"name": "TTKOM", "value": 0.3},
+            {"name": "MGROS", "value": 0.3},
+            {"name": "ATATR", "value": 0.3},
+            {"name": "KORDS", "value": 0.2},
+            {"name": "AEFES", "value": 0.2},
+            {"name": "BRSAN", "value": 0.2},
+            {"name": "BINHO", "value": 0.2},
+            {"name": "SASA", "value": 0.1},
+            {"name": "TAVHL", "value": 0.1},
+            {"name": "ALTNY", "value": 0.1},
+            {"name": "MCARD", "value": 0.1},
+            {"name": "ASTOR", "value": 0.1},
+            {"name": "SURGY", "value": 0.1},
+            {"name": "BOBET", "value": 0.1},
+            {"name": "CCOLA", "value": 0.1},
+            {"name": "KGYO", "value": 0.1},
+            {"name": "GLRMK", "value": 0.1},
+            {"name": "HALKB", "value": 0.1},
+            {"name": "TRMET", "value": 0.1},
+            {"name": "CIMSA", "value": 0.1},
+            {"name": "ULKER", "value": 0.0},
+            {"name": "NETCD", "value": 0.0},
+            {"name": "EGEGY", "value": 0.0},
+            {"name": "BLUME", "value": 0.0},
+            {"name": "GENIL", "value": 0.0},
+            {"name": "TABGD", "value": 0.0},
+            {"name": "MOBTL", "value": 0.0},
+            {"name": "VIOP", "value": 9.1},
+            {"name": "TMV", "value": 2.9},
+            {"name": "DOH", "value": 2.9},
+            {"name": "TLY", "value": 2.8},
+            {"name": "BONO", "value": 0.0}
         ]
     },
     "DOH": {
-        # fund_size/manager unconfirmed (same "₺250,000,000" default get_fund()
-        # already falls back to) - no source for either yet, and the holdings
-        # overlap TLY/TMV/THF's so heavily (DSTKF, TERA, TEHOL, TRHOL, ANELE,
-        # OZATD, SVGYO, PEKGY, plus the same VİOP leg) that guessing a manager
-        # from that alone would be exactly the mistake THF's own note warns
-        # about. Left blank-ish until TEFAS's crawl or the user confirms.
         "fund_size": "₺250,000,000",
         "risk_level": 6,
-        "manager": "Bilinmiyor - doğrulanmadı",
-        # User-provided composition (2026-08-20), replacing PBR in the
-        # "Popüler Fonlar - Anlık Getiri" section (see POPULAR_LIVE_FUNDS in
-        # funds.py). Weights sum to exactly 100.0.
+        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
+        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
+        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
+        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
+        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
+        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
+        "manager": "Tera Portföy Yönetimi A.Ş.",
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
+        # dagilimin yerine.
         #
-        # Two legs are not plain BIST tickers:
-        #  - "VIOP" is a market segment, not a tradable ticker - left
-        #    unresolved rather than guessing a quote, same as TMV/THF above.
-        #  - "HMV" is itself a TEFAS fund (Hedef Portföy Mavi, already in
-        #    BASE_FUNDS because TLY holds it too), so get_live_estimated_return
-        #    recurses into it / falls back to its real daily_return, exactly
-        #    the way PBR's PKZ/PCS/PRY legs are handled.
-        "as_of": "2026-08-20",
+        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
+        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
+        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
+        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
+        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
+        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
+        # get_live_estimated_return estimated_change'i resolved_weight'e
+        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
+        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
+        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.        #
+        # YENI: DOH ile THF artik BIRBIRINI tutuyor (DOH -> THF %3.0,
+        # THF -> DOH %2.9). Bu KARSILIKLI bir dongu; onceki dagilimlarda
+        # yalnizca tek yonlu fon-icinde-fon vardi. get_live_estimated_return'un
+        # `_visited` korumasi bunu dogru ele aliyor: ikinci seviyede ayni kod
+        # tekrar gorulunce recursion durup fonun son gercek TEFAS gunluk
+        # getirisine dusuluyor (BASE_FUNDS yolu). Sonsuz dongu yok.
+        "as_of": "2026-09-09",
         "assets_distribution": [
-            {"name": "DSTKF", "value": 10.9},
-            {"name": "TERA", "value": 10.8},
-            {"name": "TEHOL", "value": 10.6},
-            {"name": "CITAS", "value": 9.0},
-            {"name": "KARCL", "value": 8.9},
-            {"name": "ASELS", "value": 8.7},
-            {"name": "TRHOL", "value": 7.7},
-            {"name": "ANELE", "value": 4.3},
-            {"name": "SVGYO", "value": 4.2},
-            {"name": "NETCD", "value": 3.0},
-            {"name": "KGYO", "value": 2.5},
-            {"name": "OZATD", "value": 2.1},
-            {"name": "ORZAX", "value": 1.7},
-            {"name": "YKBNK", "value": 1.6},
-            {"name": "BARMA", "value": 1.0},
-            {"name": "LIDER", "value": 0.9},
-            {"name": "PEKGY", "value": 0.4},
-            {"name": "VIOP", "value": 7.1},
-            {"name": "HMV", "value": 4.6}
+            {"name": "TEHOL", "value": 9.1},
+            {"name": "TRHOL", "value": 7.6},
+            {"name": "TERA", "value": 7.4},
+            {"name": "ANELE", "value": 7.1},
+            {"name": "DSTKF", "value": 6.5},
+            {"name": "TKNKA", "value": 4.8},
+            {"name": "SELEC", "value": 4.7},
+            {"name": "YKBNK", "value": 3.5},
+            {"name": "TUPRS", "value": 3.4},
+            {"name": "THYAO", "value": 3.0},
+            {"name": "ALKLC", "value": 2.9},
+            {"name": "ISVEA", "value": 2.5},
+            {"name": "PEKGY", "value": 2.5},
+            {"name": "ASELS", "value": 2.0},
+            {"name": "SARAE", "value": 1.7},
+            {"name": "ALTNY", "value": 1.5},
+            {"name": "MANAS", "value": 1.5},
+            {"name": "CITAS", "value": 1.3},
+            {"name": "OZATD", "value": 1.2},
+            {"name": "SVGYO", "value": 1.0},
+            {"name": "EUPWR", "value": 1.0},
+            {"name": "TURSG", "value": 0.8},
+            {"name": "TMPOL", "value": 0.7},
+            {"name": "GESAN", "value": 0.6},
+            {"name": "NETCD", "value": 0.5},
+            {"name": "KORDS", "value": 0.3},
+            {"name": "KGYO", "value": 0.3},
+            {"name": "ORZAX", "value": 0.3},
+            {"name": "MCARD", "value": 0.1},
+            {"name": "KARCL", "value": 0.1},
+            {"name": "GENIL", "value": 0.1},
+            {"name": "MARTI", "value": 0.1},
+            {"name": "KARSN", "value": 0.1},
+            {"name": "ATATR", "value": 0.0},
+            {"name": "THF", "value": 3.0},
+            {"name": "TLY", "value": 3.0},
+            {"name": "TMV", "value": 2.3}
         ]
     },
     "PUK": {
@@ -507,6 +660,61 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
         ]
     }
 }
+
+def _num(v) -> Optional[float]:
+    """TEFAS alanlarini guvenle float'a cevirir. Alan yoksa/NaN ise None -
+    0.0 DONMEZ: 0.0 gercek bir "sifir buyukluk" degeriyle karisirdi ve
+    net para akisi hesabini sessizce yanlislardi."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if f != f else f  # NaN kontrolu
+
+
+def _tefas_metrics(series) -> Dict[str, Any]:
+    """TEFAS'tan gelen ham buyukluk alanlarindan sunulabilir metrikler.
+
+    `series` en YENI gun basta olacak sekilde
+    (tarih, fiyat, ad, portfoy_buyuklugu, pay_sayisi, yatirimci_sayisi).
+
+    net_flow_try = GUNLUK NET PARA GIRISI: (pay sayisi degisimi) x fiyat.
+    Fonun buyuklugu iki sebeple degisir - (1) portfoydeki varliklarin
+    fiyati degisti, (2) yatirimci para koydu/cekti. Ikisini ayirmanin
+    dogru yolu tedavuldeki PAY SAYISININ degisimine bakmak: pay sayisi
+    yalnizca katilma payi alinip satildiginda degisir, piyasa hareketiyle
+    degismez. Portfoy buyuklugu farkini almak ise ikisini birbirine
+    karistirir ve yukselen bir gunde para girisi olmadigi halde giris
+    varmis gibi gosterirdi.
+    """
+    out: Dict[str, Any] = {
+        "fund_size_try": None,
+        "investor_count": None,
+        "net_flow_try": None,
+        "net_flow_date": None,
+    }
+    if not series:
+        return out
+
+    latest = series[0]
+    out["fund_size_try"] = latest[3]
+    out["investor_count"] = int(latest[5]) if latest[5] is not None else None
+
+    if len(series) >= 2:
+        prev = series[1]
+        shares_now, shares_prev, price_now = latest[4], prev[4], latest[1]
+        if shares_now is not None and shares_prev is not None and price_now:
+            out["net_flow_try"] = round((shares_now - shares_prev) * price_now, 2)
+            out["net_flow_date"] = latest[0]
+    return out
+
+
+def _format_try(amount: Optional[float]) -> Optional[str]:
+    """1854200000.0 -> "₺1,854,200,000" (FUND_DETAILS_MAP'in mevcut bicimi)."""
+    if amount is None:
+        return None
+    return "₺{:,.0f}".format(amount)
+
 
 class TefasService:
     def __init__(self):
@@ -797,7 +1005,19 @@ class TefasService:
                         continue
                     if price <= 0:
                         continue
-                    series.append((date_str, price, row.iloc[0].get("fund_name")))
+                    # TEFAS'in "info" sorgusu fiyatin yaninda portfoy
+                    # buyuklugunu, tedavuldeki pay sayisini ve yatirimci
+                    # sayisini da DONDURUYOR (bkz. pytefas INFO_FIELDS) -
+                    # bunlar zaten yapilan istekte geliyor, ekstra bir cagri
+                    # maliyeti yok. Onceden atiliyor ve fon buyuklugu
+                    # FUND_DETAILS_MAP'te elle sabit yaziliyordu.
+                    r0 = row.iloc[0]
+                    series.append((
+                        date_str, price, r0.get("fund_name"),
+                        _num(r0.get("portfolio_size")),
+                        _num(r0.get("shares_outstanding")),
+                        _num(r0.get("investor_count")),
+                    ))
 
                 if not series:
                     # Only stamp the static placeholder in if this code has
@@ -847,7 +1067,8 @@ class TefasService:
                         "price": round(price_latest, 4),
                         "daily_return": round(daily_ret, 2),
                         "weekly_return": round(weekly_ret, 2),
-                        "monthly_return": round(monthly_ret, 2)
+                        "monthly_return": round(monthly_ret, 2),
+                        **_tefas_metrics(series),
                     }
                 any_fund_updated = True
 
@@ -1289,10 +1510,23 @@ class TefasService:
             "manager": "Pusula Portföy Yönetimi",
             "assets_distribution": [{"name": "Nakit ve Benzeri", "value": 100}]
         })
-        return {**f, **details}
+        # Sira onemli: `details` sabit/elle girilmis veriler, `f` ise TEFAS'tan
+        # gelen CANLI veri. Duz {**f, **details} sabit fund_size'i canlinin
+        # uzerine yazardi - bu yuzden gercek TEFAS buyuklugu varsa en sona
+        # o konuyor. TEFAS o fon icin buyukluk dondurmediyse (eski davranis)
+        # FUND_DETAILS_MAP'teki placeholder yerinde kaliyor.
+        merged = {**f, **details}
+        real_size = _format_try(f.get("fund_size_try"))
+        if real_size:
+            merged["fund_size"] = real_size
+            merged["fund_size_source"] = "tefas"
+        else:
+            merged["fund_size_source"] = "static"
+        return merged
 
     def get_live_estimated_return(
-        self, code: str, _visited: Optional[set] = None, delay_minutes: int = 0
+        self, code: str, _visited: Optional[set] = None, delay_minutes: int = 0,
+        _quote_memo: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Estimated INTRADAY % change for a fund, computed from its known
         holdings' live prices - TEFAS itself only publishes one NAV per day,
@@ -1320,6 +1554,22 @@ class TefasService:
         if not comp:
             return None
         _visited = (_visited or set()) | {code}
+        # Ayni cagri agacinda ayni sembolun quote'u tekrar tekrar okunuyordu.
+        # 2026-09-09'daki dagilim guncellemesiyle DOH artik THF/TLY/TMV'yi,
+        # THF de TMV/TLY'yi tutuyor - yani fon-icinde-fon grafigi yogunlasti
+        # ve ust uste binen holdingler cogaldi. Olculdu: DOH ve THF'nin her
+        # biri 81 BENZERSIZ sembol icin 268 get_quote cagrisi yapiyordu
+        # (187 tekrar).
+        #
+        # Neden FON sonucu degil de QUOTE hafizalaniyor: bir fonun sonucu
+        # _visited'a gore MESRU olarak degisiyor - donguye takilan bir dal
+        # recursion yerine gunluk getiriye dusuyor, yani DOH'un THF icindeki
+        # degeri ile tek basina hesaplanan degeri ayni olmak zorunda degil.
+        # Koda gore hafizalamak bu farki sessizce silerdi. Sembolun anlik
+        # fiyati ise tek bir hesaplama aninda zaten aynidir; hatta ayni
+        # tahmin icinde tutarli olmasi DOGRUSU.
+        if _quote_memo is None:
+            _quote_memo = {}
 
         # BIST equities are limited to roughly +-10% per session; a handful
         # of thinly-traded tickers (confirmed live: KTLEV showing -73% due to
@@ -1387,7 +1637,7 @@ class TefasService:
             # beats a mostly-empty recursive one.
             MIN_TRUSTED_RESOLVED_PCT = 20.0
             if (ticker in FUND_DETAILS_MAP or ticker in self._composition_overrides) and ticker not in _visited:
-                sub = self.get_live_estimated_return(ticker, _visited, delay_minutes)
+                sub = self.get_live_estimated_return(ticker, _visited, delay_minutes, _quote_memo)
                 if sub is not None and sub["resolved_weight_pct"] >= MIN_TRUSTED_RESOLVED_PCT:
                     change = sub["estimated_change_pct"]
                     holdings_out.append({"ticker": ticker, "weight": weight, "change_pct": change, "type": "fund"})
@@ -1418,10 +1668,14 @@ class TefasService:
             is_known_ticker = ticker in _KNOWN_STOCK_TICKERS
             if not is_known_ticker:
                 quote = None
-            elif delay_minutes > 0:
-                quote = market_data_service.get_delayed_quote(ticker, delay_minutes)
+            elif ticker in _quote_memo:
+                quote = _quote_memo[ticker]
             else:
-                quote = market_data_service.get_quote(ticker)
+                if delay_minutes > 0:
+                    quote = market_data_service.get_delayed_quote(ticker, delay_minutes)
+                else:
+                    quote = market_data_service.get_quote(ticker)
+                _quote_memo[ticker] = quote
             change_pct = quote.get("change_percent") if quote else None
             if change_pct is not None and abs(float(change_pct)) <= MAX_PLAUSIBLE_CHANGE_PCT:
                 change = float(change_pct)
