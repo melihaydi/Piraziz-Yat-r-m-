@@ -20,6 +20,7 @@ import { TickerLogo } from "@/components/ui/TickerLogo"
 import { API_BASE_URL } from "@/lib/config"
 import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
 import { authFetch } from "@/lib/auth"
+import { parseTLAmount } from "@/lib/utils"
 
 export default function StockDetailPage() {
   const params = useParams()
@@ -74,7 +75,7 @@ export default function StockDetailPage() {
           alert_type: alertType,
           trigger_condition: alertType === "strategy_signal"
             ? { direction: alertDirection }
-            : { operator: alertOperator, value: parseFloat(alertValue.replace(",", ".")) || 1.0 }
+            : { operator: alertOperator, value: parseTLAmount(alertValue) || 1.0 }
         })
       })
       if (res.ok) {

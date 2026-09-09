@@ -44,7 +44,11 @@ export default function OrderPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderType, selectedSymbol])
 
-  const lotNum = parseFloat(lot.replace(",", ".")) || 0
+  // Ayni dosyadaki limitPrice/stopPrice zaten parseTLAmount kullaniyordu,
+  // lot ise tek basina eski ad-hoc parser'da kalmisti: "1.500" lot girmek
+  // 1.5 lot demek oluyordu. Ayni girdi kutusu grubunda iki farkli sayi
+  // yorumu olmasi basli basina bir tuzak.
+  const lotNum = parseTLAmount(lot) || 0
   const lastPrice = instrument?.price || 0
   // Prices (unlike lot counts) can be 4+ digits, e.g. a Turkish-formatted
   // "1.245,50" - parseTLAmount handles the thousands separator correctly,
