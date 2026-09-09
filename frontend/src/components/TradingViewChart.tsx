@@ -51,6 +51,11 @@ interface TradingViewChartProps {
    * switching symbols shouldn't show another stock's trend lines. Falls
    * back to a shared "default" bucket if omitted. */
   symbol?: string
+  /** Ucretsiz kaynak (Is Yatirim) yalnizca KAPANIS veriyor - open/high/low
+   *  kapanisa esit ve hacim 0. Mum olarak cizilirse ekranda duz bir doji
+   *  dizisi, yani "veri yok" gibi gorunur. Bu bayrak acikken cizgi
+   *  seriyle ciziliyor. Bkz. backend'in X-Chart-Line-Only basligi. */
+  lineOnly?: boolean
 }
 
 const drawingsStorageKey = (symbol: string) => `bip_chart_drawings_${symbol}`
@@ -99,7 +104,7 @@ function toLineData(data: ChartDataPoint[], key: keyof ChartDataPoint) {
     .filter((d): d is { time: number; value: number } => d.value !== undefined && d.value !== null)
 }
 
-export default function TradingViewChart({ data, pendingOrders, symbol = "default" }: TradingViewChartProps) {
+export default function TradingViewChart({ data, pendingOrders, symbol = "default", lineOnly = false }: TradingViewChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const rsiContainerRef = useRef<HTMLDivElement>(null)
   const macdContainerRef = useRef<HTMLDivElement>(null)
@@ -156,17 +161,22 @@ export default function TradingViewChart({ data, pendingOrders, symbol = "defaul
       height: 380,
     })
 
-    const candleSeries = mainChart.addSeries(CandlestickSeries, {
-      upColor: "#10b981",
-      downColor: "#f43f5e",
-      borderDownColor: "#f43f5e",
-      borderUpColor: "#10b981",
-      wickDownColor: "#f43f5e",
-      wickUpColor: "#10b981",
-    })
+    // lineOnly: kaynakta OHLC yok (yalnizca kapanis) - mum yerine cizgi.
+    const candleSeries: any = lineOnly
+      ? mainChart.addSeries(LineSeries, { color: "#38bdf8", lineWidth: 2 })
+      : mainChart.addSeries(CandlestickSeries, {
+          upColor: "#10b981",
+          downColor: "#f43f5e",
+          borderDownColor: "#f43f5e",
+          borderUpColor: "#10b981",
+          wickDownColor: "#f43f5e",
+          wickUpColor: "#10b981",
+        })
 
     candleSeries.setData(
-      data.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })) as any
+      lineOnly
+        ? data.map(d => ({ time: d.time, value: d.close })) as any
+        : data.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })) as any
     )
 
     mainChartRef.current = mainChart

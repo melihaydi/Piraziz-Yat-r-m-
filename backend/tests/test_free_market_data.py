@@ -39,9 +39,14 @@ class _Cache:
 
 @pytest.fixture
 def cache():
+    # Surec ici katman (free_market_data._mem) modul seviyesinde yasiyor ve
+    # testler arasinda TASINIR - temizlenmezse bir testin doldurdugu deger
+    # digerinde "kaynak hic cagrilmadi" gibi gorunur.
+    free_market_data._mem.clear()
     c = _Cache()
     with patch("app.core.redis.cache_service", c):
         yield c
+    free_market_data._mem.clear()
 
 
 def _provider(raw=RAW, side_effect=None):
@@ -122,6 +127,7 @@ def test_source_outage_serves_last_known_not_tradingview(cache):
     with _provider():
         free_market_data.get_quote("THYAO", 15)          # onbellegi doldur
     cache.d.pop("freequote:THYAO")                        # taze onbellek suresi doldu
+    free_market_data._mem.clear()                         # surec ici katman da
 
     with _provider(side_effect=RuntimeError("kaynak kapali")), \
          patch.object(market_data_service, "get_quote") as tv:
@@ -139,3 +145,83 @@ def test_unknown_symbol_with_no_history_returns_none(cache):
 def test_bad_payload_is_rejected(cache):
     with _provider({"symbol": "X", "last": 0}):
         assert free_market_data.get_quote("X", 15) is None
+
+
+# --- Grafikler ---------------------------------------------------------------
+
+def test_daily_candles_do_not_invent_ohlc(cache):
+    """Kaynak yalnizca KAPANIS veriyor. open/high/low uydurulmamali -
+    uydurulsaydi ekranda gercek gibi duran sahte bir mum grafigi olurdu."""
+    import pandas as pd
+
+    idx = pd.to_datetime(["2026-09-08", "2026-09-09"])
+    df = pd.DataFrame({"Open": [305.0, 301.0], "High": [305.0, 301.0],
+                       "Low": [305.0, 301.0], "Close": [305.0, 301.0],
+                       "Volume": [0, 0]}, index=idx)
+
+    class P:
+        def get_index_history(self, symbol, start=None, end=None): return df
+
+    with patch("borsapy._providers.isyatirim.get_isyatirim_provider", return_value=P()):
+        c = free_market_data.get_daily_candles("THYAO", 10)
+
+    assert len(c) == 2
+    last = c[-1]
+    assert last["close"] == 301.0
+    assert last["open"] == last["high"] == last["low"] == 301.0
+    assert last["volume"] == 0.0
+
+
+def test_daily_candles_are_cached(cache):
+    import pandas as pd
+    idx = pd.to_datetime(["2026-09-09"])
+    df = pd.DataFrame({"Open": [1.0], "High": [1.0], "Low": [1.0],
+                       "Close": [1.0], "Volume": [0]}, index=idx)
+    calls = {"n": 0}
+
+    class P:
+        def get_index_history(self, symbol, start=None, end=None):
+            calls["n"] += 1
+            return df
+
+    with patch("borsapy._providers.isyatirim.get_isyatirim_provider", return_value=P()):
+        free_market_data.get_daily_candles("THYAO")
+        free_market_data.get_daily_candles("THYAO")
+    assert calls["n"] == 1
+
+
+def test_free_chart_endpoint_never_touches_tradingview(client, cache):
+    """Grafik ucu da ayrildi: ucretsiz uyelikte TradingView'in TEK
+    paylasilan grafik oturumuna dokunulmamali."""
+    from app.services.market_data import market_data_service as mds
+
+    client.post("/api/v1/auth/register",
+                json={"email": "freechart@test.com", "password": "mypassword", "terms_accepted": True})
+    tok = client.post("/api/v1/auth/login",
+                      data={"username": "freechart@test.com", "password": "mypassword"}).json()["access_token"]
+    h = {"Authorization": f"Bearer {tok}"}
+
+    candles = [{"time": 1, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 0.0}]
+    with patch("app.services.free_market_data.get_daily_candles", return_value=candles), \
+         patch.object(mds, "get_candles") as tv:
+        r = client.get("/api/v1/screener/chart/THYAO?interval=1d", headers=h)
+
+    assert r.status_code == 200
+    tv.assert_not_called()
+    assert r.headers.get("X-Chart-Source") == "isyatirim"
+    assert r.headers.get("X-Chart-Line-Only") == "true"
+
+
+def test_intraday_request_is_marked_as_downgraded(client, cache):
+    """Kaynakta gun ici cozunurluk YOK - sessizce gunluk vermek yerine
+    bunu basligla bildiriyoruz."""
+    client.post("/api/v1/auth/register",
+                json={"email": "freechart2@test.com", "password": "mypassword", "terms_accepted": True})
+    tok = client.post("/api/v1/auth/login",
+                      data={"username": "freechart2@test.com", "password": "mypassword"}).json()["access_token"]
+    h = {"Authorization": f"Bearer {tok}"}
+
+    candles = [{"time": 1, "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 0.0}]
+    with patch("app.services.free_market_data.get_daily_candles", return_value=candles):
+        r = client.get("/api/v1/screener/chart/THYAO?interval=1h", headers=h)
+    assert r.headers.get("X-Chart-Interval-Downgraded") == "1d"

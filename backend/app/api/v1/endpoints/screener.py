@@ -204,6 +204,14 @@ def get_screener_stocks(
         for item in market_data_service.tickers
     ]
     if delay > 0:
+        # ON-YUKLEME SART: asagidaki dongu her hisse icin get_delayed_quote
+        # cagiriyor ve o artik bir AG cagrisi (bkz. free_market_data.py).
+        # On-yukleme olmadan bu, takip listesindeki 100+ sembol icin ardisik
+        # HTTP istegi demek - kullanicinin bildirdigi "veriler asiri gec
+        # geliyor" tam olarak buydu. Paralel doldurduktan sonra dongudeki
+        # cagrilar onbellekten donuyor.
+        from app.services import free_market_data
+        free_market_data.prefetch([r.ticker for r in result], delay)
         result = [_delay_adjust_price_fields(r, delay) for r in result]
     result_dicts = [r.model_dump() for r in result]
     cache_service.set_json(cache_key, result_dicts, expire_seconds=_SCREENER_LIST_CACHE_TTL_SECONDS)
@@ -404,6 +412,30 @@ def get_stock_chart(
     # free kullanicinin kirpilmis serisi premium kullaniciya da servis
     # edilirdi.)
     from app.core.redis import cache_service
+
+    # FREE TIER GRAFIKLERI DE TRADINGVIEW'A DOKUNMUYOR.
+    #
+    # Kotasyonlar zaten ayrilmisti (bkz. free_market_data.py); grafikler
+    # kalmisti ve tek basina o bile yeterliydi: her chart istegi
+    # TradingView'in TEK paylasilan grafik oturumunu sifirliyor.
+    #
+    # Ucretsiz kaynak yalnizca GUNLUK ve yalnizca KAPANIS veriyor. Bu iki
+    # sinir da cagirana durust sekilde bildiriliyor:
+    #   X-Chart-Line-Only        -> OHLC yok, mum degil CIZGI cizilmeli
+    #   X-Chart-Interval-Downgraded -> gun ici istendi ama gunluk donuldu
+    # open/high/low UYDURULMUYOR (bkz. get_daily_candles notu).
+    if delay > 0:
+        from app.services import free_market_data
+        free_candles = free_market_data.get_daily_candles(symbol)
+        if free_candles:
+            response.headers["X-Chart-Simulated"] = "false"
+            response.headers["X-Chart-Source"] = "isyatirim"
+            response.headers["X-Chart-Line-Only"] = "true"
+            if normalized_interval not in ("1d", "1wk", "1mo"):
+                response.headers["X-Chart-Interval-Downgraded"] = "1d"
+            return free_candles
+        # Ucretsiz kaynak hem erisilemez hem de son bilinen serisi yoksa
+        # asagidaki eski yola dusuluyor - dar bir son care.
 
     chart_cache_key = f"screener:chart:{symbol}:{normalized_interval}"
     candles = cache_service.get_json(chart_cache_key)

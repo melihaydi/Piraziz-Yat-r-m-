@@ -95,6 +95,11 @@ export default function StockDetailPage() {
   const [chartData, setChartData] = useState<any[]>([])
   const [chartLoading, setChartLoading] = useState(true)
   const [chartSimulated, setChartSimulated] = useState(false)
+  // Ucretsiz uyelikte grafik Is Yatirim'in acik verisinden geliyor (bkz.
+  // backend free_market_data.py) - o kaynak yalnizca GUNLUK KAPANIS
+  // veriyor, OHLC ve gun ici cozunurluk yok.
+  const [chartLineOnly, setChartLineOnly] = useState(false)
+  const [chartDowngraded, setChartDowngraded] = useState(false)
 
   // AI report state
   const [aiReport, setAiReport] = useState<any>(null)
@@ -158,18 +163,22 @@ export default function StockDetailPage() {
         .then(res => {
           if (!res.ok) {
             console.warn("No chart data from server");
-            return { data: [], isSimulated: false };
+            return { data: [], isSimulated: false, lineOnly: false, downgraded: false };
           }
           const isSimulated = res.headers.get("X-Chart-Simulated") === "true";
-          return res.json().then(data => ({ data, isSimulated }));
+          const lineOnly = res.headers.get("X-Chart-Line-Only") === "true";
+          const downgraded = !!res.headers.get("X-Chart-Interval-Downgraded");
+          return res.json().then(data => ({ data, isSimulated, lineOnly, downgraded }));
         })
-        .then(({ data, isSimulated }) => {
+        .then(({ data, isSimulated, lineOnly, downgraded }) => {
           if (!active) return;
           if (Array.isArray(data)) {
             setChartData(data)
           }
           setChartLoading(false)
           setChartSimulated(isSimulated)
+          setChartLineOnly(!!lineOnly)
+          setChartDowngraded(!!downgraded)
 
           if (isSimulated && attemptsLeft > 0) {
             attemptsLeft -= 1;
@@ -421,7 +430,20 @@ export default function StockDetailPage() {
                       </span>
                     </div>
                   )}
-                  <TradingViewChart data={chartData} symbol={ticker} />
+                  {/* Ucretsiz uyelik: kaynak yalnizca gunluk kapanis
+                      veriyor. Sessizce mum cizmek "veri yok" gibi duran
+                      duz bir doji dizisi uretirdi - hem cizgiye geciliyor
+                      hem de sebebi yaziliyor. */}
+                  {chartLineOnly && (
+                    <div className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-border/50 bg-secondary/20 px-3 py-2">
+                      <span className="text-[11px] font-bold text-muted-foreground">Gecikmeli veri</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Ücretsiz üyelikte grafik günlük kapanış fiyatlarından çizilir
+                        {chartDowngraded ? " - gün içi çözünürlük ve mum grafiği Premium'da." : "."}
+                      </span>
+                    </div>
+                  )}
+                  <TradingViewChart data={chartData} symbol={ticker} lineOnly={chartLineOnly} />
                 </>
               ) : (
                 <div className="flex items-center justify-center h-[380px] text-xs text-muted-foreground border border-border/30 rounded-xl bg-background/40">

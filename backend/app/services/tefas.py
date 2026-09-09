@@ -117,6 +117,17 @@ BASE_FUNDS = {
     # FUND_DETAILS_MAP all keep their PBR entries), it is just no longer
     # spotlighted in the live-estimate section - same treatment DFI got.
     "DOH": {"name": "Tera Portföy Dördüncü Hisse Senedi Serbest (TL) Fon (Hisse Senedi Yoğun Fon)", "category": "Serbest", "price": 10.0000, "category_tr": "Serbest Fon"},
+    # T3B ve MTL: DOH/TLY'nin dagilimlarinda fon bacagi olarak geciyorlardi
+    # ama BASE_FUNDS'ta olmadiklari icin anlik getiri hesabinda cozulemeyip
+    # agirliklari sessizce disarida kaliyordu. Artik izleniyorlar: hem fon
+    # listesinde gorunuyorlar hem de o bacaklar kendi gunluk getirileriyle
+    # cozuluyor.
+    #
+    # Adlar ve fiyatlar TEFAS'in kendi kaydindan dogrulandi (2026-09-09).
+    # DIKKAT: MTL Tera'nin DEGIL, AURA Portfoy'un fonu - logo/kurum
+    # eslesmesinde Tera fonlariyla birlikte sayilmamali.
+    "T3B": {"name": "Tera Portföy Üçüncü Hisse Senedi Serbest (TL) Fon (Hisse Senedi Yoğun)", "category": "Serbest", "price": 0.137384, "category_tr": "Serbest Fon"},
+    "MTL": {"name": "Aura Portföy Mutlak Getiri Hedefli Serbest Fon", "category": "Serbest", "price": 2.292247, "category_tr": "Serbest Fon"},
     "PUK": {"name": "Pusula Portföy Katılım Hisse Senedi Fonu", "category": "Katılım", "price": 1.1661, "category_tr": "Katılım / Hisse Senedi"},
     "PKZ": {"name": "Pusula Portföy İkinci Serbest (Hisse Senedi Yoğun) Fon", "category": "Serbest Yoğun", "price": 13.4416, "category_tr": "Serbest Fon"},
     "PCS": {"name": "Pusula Portföy Para Piyasası Fonu", "category": "Para Piyasası", "price": 8.2528, "category_tr": "Para Piyasası Fonu"},
@@ -167,6 +178,11 @@ FALLBACKS = {
     "PBR": {"price": 5.4675, "daily": -1.25, "weekly": 0.88, "monthly": 3.42},
     "DFI": {"price": 5.0932, "daily": -0.45, "weekly": 1.95, "monthly": 6.84},
     "TLY": {"price": 7457.4882, "daily": 0.05, "weekly": 0.38, "monthly": 1.52},
+    # Ilk gercek TEFAS cekimine kadarki baslangic degerleri; getiriler 0.0
+    # cunku uydurulacak bir gecmis yok - _fetch_prices_sync ilk basarili
+    # crawl'da hepsini gercek veriyle eziyor.
+    "T3B": {"price": 0.137384, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
+    "MTL": {"price": 2.292247, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "TMV": {"price": 7.7990, "daily": 0.66, "weekly": 3.12, "monthly": 9.45},
     "THF": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
     "DOH": {"price": 10.0000, "daily": 0.0, "weekly": 0.0, "monthly": 0.0},
@@ -344,80 +360,66 @@ FUND_DETAILS_MAP: Dict[str, Dict[str, Any]] = {
     "TMV": {
         "fund_size": "₺26,000,000,000",
         "risk_level": 6,
-        # Tera Portföy Yönetimi A.Ş. - teraportfoy.com'un kendi fon
-        # listesinden doğrulandı (TLY/TMV/THF/DOH dördü de orada Tera'nın
-        # kendi fonları olarak listeleniyor). BİREYSEL portföy yöneticisi
-        # ismi YAZILMIYOR: Tera ne fon sayfalarında ne de "Yönetim
-        # Kadromuz" sayfasında hangi kişinin hangi fonu yönettiğini
-        # açıklamıyor, dolayısıyla kişi adı yazmak uydurmak olurdu.
         "manager": "Tera Portföy Yönetimi A.Ş.",
-        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09), onceki
-        # dagilimin yerine.
+        # Kullanicinin verdigi guncel TEFAS dagilimi (2026-09-09, ucuncu
+        # guncelleme). Toplam 102.23 - TEFAS dagilimlari zaten tam 100 etmiyor.
         #
-        # CIFTE SAYIM DUZELTMESI: kullanicinin listesindeki "Sabit Getiriler"
-        # satiri bir UST BASLIK - altindaki kalemler zaten ayri ayri
-        # listeleniyor. Aritmetik bunu kesinlestiriyor: THF'de VIOP+TMV+DOH+
-        # TLY+BONO = 17.7 (baslikla birebir ayni), TMV'de SABIT+VIOP+VDMK+
-        # BONO+TMM = 21.4 (yine birebir), TLY'de HMV+SABIT+T3B = 14.8 (~14.7).
-        # Ikisi birden girilseydi agirliklar cift sayilirdi ve
-        # get_live_estimated_return estimated_change'i resolved_weight'e
-        # BOLMEDIGI icin (ham agirlikli toplam) anlik getiri ~%18 sisirilmis
-        # olurdu. Ust baslik cikarildi, kalemler tek tek duruyor - mevcut
-        # kayitlarin zaten kullandigi duzen. Kalan toplamlar 100.1/100.0/99.9.
+        # SABIT (sabit getirili kisim) ve VIOP (vadeli islem piyasasi) tek
+        # bir tickera karsilik gelmiyor, canli kotasyona cozulemiyorlar;
+        # agirliklari anlik getiri hesabinda disarida kaliyor - uydurma bir
+        # deger vermektense eksik birakmak dogrusu.
         "as_of": "2026-09-09",
         "assets_distribution": [
-            {"name": "ANELE", "value": 12.5},
-            {"name": "SELEC", "value": 12.2},
-            {"name": "TRHOL", "value": 11.5},
-            {"name": "OZATD", "value": 10.4},
-            {"name": "BIGEN", "value": 7.3},
-            {"name": "DSTKF", "value": 5.8},
-            {"name": "KARCL", "value": 4.7},
-            {"name": "TEHOL", "value": 3.4},
-            {"name": "ALKLC", "value": 2.9},
-            {"name": "PEKGY", "value": 2.4},
-            {"name": "TERA", "value": 1.4},
-            {"name": "YKBNK", "value": 1.3},
-            {"name": "TMPOL", "value": 0.7},
-            {"name": "MGROS", "value": 0.3},
+            {"name": "TRHOL", "value": 12.11},
+            {"name": "ANELE", "value": 12.11},
+            {"name": "OZATD", "value": 11.58},
+            {"name": "SELEC", "value": 10.07},
+            {"name": "DSTKF", "value": 9.53},
+            {"name": "BIGEN", "value": 7.64},
+            {"name": "KARCL", "value": 4.13},
+            {"name": "TEHOL", "value": 2.24},
+            {"name": "TERA", "value": 2.14},
+            {"name": "ALKLC", "value": 2.13},
+            {"name": "YKBNK", "value": 1.17},
+            {"name": "TMPOL", "value": 1.12},
+            {"name": "ISVEA", "value": 1.05},
+            {"name": "MANAS", "value": 1.02},
+            {"name": "PEKGY", "value": 0.77},
+            {"name": "SVGYO", "value": 0.3},
+            {"name": "MGROS", "value": 0.28},
             {"name": "TURSG", "value": 0.2},
-            {"name": "AKSEN", "value": 0.2},
-            {"name": "SAHOL", "value": 0.2},
-            {"name": "THYAO", "value": 0.2},
-            {"name": "ASELS", "value": 0.2},
-            {"name": "TUPRS", "value": 0.1},
-            {"name": "EREGL", "value": 0.1},
-            {"name": "BIMAS", "value": 0.1},
-            {"name": "CITAS", "value": 0.1},
-            {"name": "AKBNK", "value": 0.1},
-            {"name": "ENKAI", "value": 0.1},
-            {"name": "ASTOR", "value": 0.1},
-            {"name": "ISCTR", "value": 0.0},
-            {"name": "KCHOL", "value": 0.0},
-            {"name": "GARAN", "value": 0.0},
-            {"name": "EKGYO", "value": 0.0},
-            {"name": "TCELL", "value": 0.0},
-            {"name": "SISE", "value": 0.0},
-            {"name": "SVGYO", "value": 0.0},
-            {"name": "TAVHL", "value": 0.0},
-            {"name": "KRDMD", "value": 0.0},
-            {"name": "FROTO", "value": 0.0},
-            {"name": "TTKOM", "value": 0.0},
-            {"name": "TRALT", "value": 0.0},
-            {"name": "SASA", "value": 0.0},
-            {"name": "GUBRF", "value": 0.0},
-            {"name": "VAKBN", "value": 0.0},
-            {"name": "PGSUS", "value": 0.0},
-            {"name": "TOASO", "value": 0.0},
-            {"name": "TKNKA", "value": 0.0},
-            {"name": "HEDEF", "value": 0.0},
-            {"name": "AEFES", "value": 0.0},
-            {"name": "PETKM", "value": 0.0},
-            {"name": "SABIT", "value": 18.2},
-            {"name": "VIOP", "value": 2.4},
-            {"name": "VDMK", "value": 0.7},
-            {"name": "BONO", "value": 0.1},
-            {"name": "TMM", "value": 0.0}
+            {"name": "AKSEN", "value": 0.19},
+            {"name": "SAHOL", "value": 0.18},
+            {"name": "THYAO", "value": 0.17},
+            {"name": "ASELS", "value": 0.16},
+            {"name": "EREGL", "value": 0.13},
+            {"name": "BIMAS", "value": 0.12},
+            {"name": "TUPRS", "value": 0.12},
+            {"name": "CITAS", "value": 0.09},
+            {"name": "AKBNK", "value": 0.07},
+            {"name": "ENKAI", "value": 0.05},
+            {"name": "ASTOR", "value": 0.04},
+            {"name": "KCHOL", "value": 0.04},
+            {"name": "ISCTR", "value": 0.04},
+            {"name": "GARAN", "value": 0.03},
+            {"name": "TCELL", "value": 0.03},
+            {"name": "SISE", "value": 0.02},
+            {"name": "TAVHL", "value": 0.02},
+            {"name": "TRALT", "value": 0.02},
+            {"name": "EKGYO", "value": 0.02},
+            {"name": "SASA", "value": 0.02},
+            {"name": "FROTO", "value": 0.02},
+            {"name": "KRDMD", "value": 0.02},
+            {"name": "TKNKA", "value": 0.01},
+            {"name": "PETKM", "value": 0.01},
+            {"name": "TOASO", "value": 0.01},
+            {"name": "VAKBN", "value": 0.01},
+            {"name": "TTKOM", "value": 0.01},
+            {"name": "GUBRF", "value": 0.01},
+            {"name": "PGSUS", "value": 0.01},
+            {"name": "AEFES", "value": 0.01},
+            {"name": "SABIT", "value": 18.56},
+            {"name": "VIOP", "value": 2.4}
         ]
     },
     "THF": {
@@ -1630,6 +1632,20 @@ class TefasService:
         # tahmin icinde tutarli olmasi DOGRUSU.
         if _quote_memo is None:
             _quote_memo = {}
+            # Ucretsiz uyelikte quote artik bir AG cagrisi (bkz.
+            # free_market_data.py). Bu fonksiyon holdingleri duz bir donguyle
+            # geziyor - DOH 45, THF 83 kalem - yani on-yukleme olmadan o kadar
+            # ARDISIK HTTP istegi demek. Yalnizca en ust seviyede (memo yeni
+            # olusturuldugunda) ve yalnizca delay > 0 iken calisiyor.
+            if delay_minutes > 0:
+                try:
+                    from app.services import free_market_data
+                    free_market_data.prefetch(
+                        [str(h.get("name", "")).upper() for h in comp["assets_distribution"]],
+                        delay_minutes,
+                    )
+                except Exception:
+                    pass  # on-yukleme bir hizlandirma, dogruluk kosulu degil
 
         # BIST equities are limited to roughly +-10% per session; a handful
         # of thinly-traded tickers (confirmed live: KTLEV showing -73% due to

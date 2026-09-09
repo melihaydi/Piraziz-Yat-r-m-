@@ -80,5 +80,6 @@ def _no_external_free_quote_calls(request):
     if request.node.get_closest_marker("free_quote"):
         yield
         return
-    with patch("app.services.free_market_data.get_quote", return_value=None):
+    # get_daily_candles ve prefetch de aga cikiyor - ucu de kapatiliyor.
+    with patch("app.services.free_market_data.get_quote", return_value=None),          patch("app.services.free_market_data.get_daily_candles", return_value=None),          patch("app.services.free_market_data.prefetch", return_value=None):
         yield

@@ -165,12 +165,27 @@ def test_deposit_holding_accrues_weekend_interest_across_monday():
 
 
 def test_bono_holding_uses_its_own_flat_daily_rate():
-    # TMV's BONO (bond) holding earns a fixed 0.11%/day rate - distinct from
-    # MEVDUAT/SABİT's 0.12%/day, same weekend-inclusive day counting.
+    """BONO (tahvil) sabit %0.11/gun, SABIT/MEVDUAT %0.12/gun kazandiriyor -
+    ayni hafta sonu dahil gun sayimiyla.
+
+    Bu test eskiden TMV'nin O ANKI dagilimindan BONO satirini cekiyordu ve
+    kullanici yeni bir TMV dagilimi verdiginde (icinde BONO yoktu) StopIteration
+    ile patladi. Dogrulanmasi gereken sey KURAL; fonun o gun ne tuttugu degil.
+    Bu yuzden artik sentetik bir kompozisyon uzerinden calisiyor."""
     service = TefasService()
+    service._composition_overrides = {
+        "ZZTEST": {
+            "assets_distribution": [
+                {"name": "BONO", "value": 50.0},
+                {"name": "SABIT", "value": 50.0},
+            ],
+            "as_of": None,
+            "_base_fingerprint": None,
+        }
+    }
     with patch("app.services.tefas._calendar_days_since_last_bist_session", return_value=1):
         with patch("app.services.tefas.market_data_service.get_quote", return_value=None):
-            result = service.get_live_estimated_return("TMV")
+            result = service.get_live_estimated_return("ZZTEST")
 
     bono = next(h for h in result["holdings"] if h["ticker"] == "BONO")
     assert bono["type"] == "deposit"
