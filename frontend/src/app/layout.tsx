@@ -21,11 +21,19 @@ const inter = Inter({ subsets: ["latin", "latin-ext"], display: "swap" })
 // .font-mono override'ının yanındaki not). CSS değişkeni yöntemi: variable
 // className <html>'e ekleniyor, gerçek font-family ataması globals.css'te.
 const plexMono = IBM_Plex_Mono({
-  // Kod/kurtarma kodu icin - Turkce harf gecmesi beklenmiyor ama tutarlilik
-  // ve olasi bir kenar durum icin latin-ext burada da acik.
-  subsets: ["latin", "latin-ext"],
+  // latin-ext BILEREK YOK: bu yuz yalnizca .font-mono-code'da kullaniliyor
+  // (2FA/kurtarma kodlari, hata kodu - hepsi ASCII). Turkce harf hic
+  // gecmiyor, latin-ext eklemek her sayfaya iki fazla font dosyasi
+  // bindiriyordu.
+  subsets: ["latin"],
   weight: ["400", "500"],
   display: "swap",
+  // preload false: mobilde olculdu, ilk boyamadan once 6 font dosyasi
+  // indiriliyordu. Bu yuz uygulamanin ANA ekranlarinin HICBIRINDE
+  // kullanilmiyor - yalnizca 2FA kurulumu, kurtarma kodlari ve hata
+  // ekraninda. Kritik yoldan cikarildi; ihtiyac duyulan sayfada normal
+  // sekilde yukleniyor.
+  preload: false,
   variable: "--font-mono-code",
 })
 

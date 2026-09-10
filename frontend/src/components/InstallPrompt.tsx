@@ -110,7 +110,7 @@ export default function InstallPrompt() {
       <div className="mx-3 mb-16 rounded-xl border border-border bg-background/95 backdrop-blur-md shadow-[var(--elev-3)] p-3">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-lg overflow-hidden shrink-0 border border-border/50">
-            <img src="/logo.png" alt="" className="h-full w-full object-cover" />
+            <img src="/logo-icon.webp" alt="" className="h-full w-full object-cover" />
           </div>
 
           <div className="min-w-0 flex-1">

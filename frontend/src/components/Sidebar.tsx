@@ -292,7 +292,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               onClick={() => onClose?.()}
               className="flex h-9 w-9 rounded-lg overflow-hidden cursor-pointer shrink-0"
             >
-              <img src="/logo.png" alt="BIP Terminal" className="h-full w-full object-cover" />
+              <img src="/logo-icon.webp" alt="BIP Terminal" className="h-full w-full object-cover" />
             </Link>
           )}
           {!isCollapsedNow && (
