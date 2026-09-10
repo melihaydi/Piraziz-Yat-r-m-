@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/Dialog"
-import TradingViewChart from "@/components/TradingViewChart"
 import { TickerLogo } from "@/components/ui/TickerLogo"
 import { authFetch } from "@/lib/auth"
 import { CHART_TIMEFRAMES, MAX_SIMULATED_CHART_RETRIES } from "@/lib/chartTimeframes"
@@ -32,6 +31,22 @@ import { COMPARE_COLORS } from "@/lib/chartColors"
 // Karşılaştırma grafiği tembel yükleniyor - gerekçe bileşenin kendi
 // başlığında. Grafik yalnızca kullanıcı hisse karşılaştırması açtığında
 // çiziliyor, o yüzden recharts'ın sayfa açılışında inmesi gereksizdi.
+// TradingViewChart tembel yukleniyor: icindeki lightweight-charts kutuphanesi
+// tek basina 186 KB ve ONCEDEN STATIK import ediliyordu - yani grafik henuz
+// cizilmeden, sayfa acilisinin kritik yolunda iniyordu. Olculdu: bu sayfa
+// grafik kutuphanesini bastan cekiyordu, /  ve /portfolio ise cekmiyordu.
+//
+// Grafik zaten kendi yukleme katmanina sahip ve verisi async geliyor; tembel
+// yuklemek tabloyu/govdeyi once cizdiriyor - ozellikle mobilde fark ediliyor.
+const TradingViewChart = dynamic(() => import("@/components/TradingViewChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
+
 const ComparisonLineChart = dynamic(() => import("@/components/charts/ComparisonLineChart"), {
   ssr: false,
   loading: () => (

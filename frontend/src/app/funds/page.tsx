@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/Dialog"
-import TradingViewChart from "@/components/TradingViewChart"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch } from "@/lib/auth"
 import { fetchWatchlist, setWatchlistEntry, migrateLegacyWatchlist } from "@/lib/watchlist"
@@ -21,6 +20,22 @@ import { TickerLogo } from "@/components/ui/TickerLogo"
 // Karşılaştırma grafiği tembel yükleniyor - gerekçe bileşenin kendi
 // başlığında. Grafik yalnızca kullanıcı fon karşılaştırması açtığında
 // çiziliyor.
+// TradingViewChart tembel yukleniyor: icindeki lightweight-charts kutuphanesi
+// tek basina 186 KB ve ONCEDEN STATIK import ediliyordu - yani grafik henuz
+// cizilmeden, sayfa acilisinin kritik yolunda iniyordu. Olculdu: bu sayfa
+// grafik kutuphanesini bastan cekiyordu, /  ve /portfolio ise cekmiyordu.
+//
+// Grafik zaten kendi yukleme katmanina sahip ve verisi async geliyor; tembel
+// yuklemek tabloyu/govdeyi once cizdiriyor - ozellikle mobilde fark ediliyor.
+const TradingViewChart = dynamic(() => import("@/components/TradingViewChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full flex items-center justify-center">
+      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+    </div>
+  ),
+})
+
 const ComparisonLineChart = dynamic(() => import("@/components/charts/ComparisonLineChart"), {
   ssr: false,
   loading: () => (
