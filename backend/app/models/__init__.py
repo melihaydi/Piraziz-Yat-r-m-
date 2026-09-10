@@ -20,6 +20,7 @@ from app.models.alert import Alert
 from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 from app.models.note import Note
 from app.models.upcoming_payment import UpcomingPayment
+from app.models.fund_flow_snapshot import FundFlowSnapshot
 from app.models.news_article import NewsArticle
 from app.models.audit_log import AuditLog
 from app.models.push_subscription import PushSubscription
@@ -50,6 +51,7 @@ __all__ = [
     "FundEstimateSnapshot",
     "Note",
     "UpcomingPayment",
+    "FundFlowSnapshot",
     "NewsArticle",
     "AuditLog"
 ]

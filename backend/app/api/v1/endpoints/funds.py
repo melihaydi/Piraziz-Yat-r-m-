@@ -12,7 +12,8 @@ from app.models.fund_estimate_snapshot import FundEstimateSnapshot
 router = APIRouter()
 
 @router.get("/")
-def list_funds():
+@limiter.limit("60/minute")
+def list_funds(request: Request):
     """Get all TEFAS mutual funds with daily return scaling."""
     return tefas_service.get_funds()
 
@@ -108,6 +109,14 @@ def get_popular_funds_live_estimate(
             "price": fund.get("price"),
             "daily_return": fund.get("daily_return"),
             "fund_size": fund.get("fund_size"),
+            # Gunluk NET NAKIT AKISI - kart uzerinde kucuk bir gosterge olarak
+            # cikiyor. (pay sayisi degisimi) x fiyat; portfoy buyuklugu farki
+            # DEGIL - o, piyasa hareketiyle para girisini birbirine karistirir
+            # ve yukselen bir gunde hic para girmedigi halde "giris var"
+            # gosterirdi. Gecmis seri icin GET /funds/{code}/flows.
+            "net_flow_try": fund.get("net_flow_try"),
+            "net_flow_date": fund.get("net_flow_date"),
+            "investor_count": fund.get("investor_count"),
             "estimated_change_pct": estimate["estimated_change_pct"],
             "resolved_weight_pct": estimate["resolved_weight_pct"],
             "holdings": _with_impact_pct(estimate["holdings"]),
@@ -125,7 +134,8 @@ def get_popular_funds_live_estimate(
 
 
 @router.get("/popular/estimate-history")
-def get_popular_funds_estimate_history(days: int = 30, db: Session = Depends(deps.get_db)):
+@limiter.limit("60/minute")
+def get_popular_funds_estimate_history(request: Request, days: int = 30, db: Session = Depends(deps.get_db)):
     """Historical accuracy of the live estimate for the "Popüler Fonlar"
     funds: one row per (fund, day) with what get_live_estimated_return
     predicted (estimated_change_pct) alongside TEFAS's real published
@@ -175,7 +185,8 @@ def get_popular_funds_estimate_history(days: int = 30, db: Session = Depends(dep
 
 
 @router.get("/compare")
-def compare_funds(codes: str):
+@limiter.limit("30/minute")
+def compare_funds(request: Request, codes: str):
     """Side-by-side comparison of 2-5 TEFAS funds: latest price, 1mo/3mo/1yr
     return and annualized volatility, plus each fund's own candle series so
     the frontend can plot them overlaid (normalized to % change from a
@@ -230,7 +241,8 @@ def compare_funds(codes: str):
 
 
 @router.get("/overlap")
-def fund_overlap(codes: str):
+@limiter.limit("30/minute")
+def fund_overlap(request: Request, codes: str):
     """2-5 fonun İÇİNDEKİ hisselerin ne kadar örtüştüğü - "PHE ile TMV'nin
     %38'i aynı hisseler" gibi. GET /funds/compare'in (fiyat/getiri/volatilite)
     yanına eklenen tamamlayıcı bir görünüm: ikisi de aynı fon seçim akışını
@@ -297,7 +309,8 @@ def get_fund_live_estimate(
 
 
 @router.get("/{code}")
-def get_fund_detail(code: str):
+@limiter.limit("120/minute")
+def get_fund_detail(request: Request, code: str):
     """Get details of a single TEFAS mutual fund."""
     fund = tefas_service.get_fund(code)
     if not fund:
@@ -305,10 +318,60 @@ def get_fund_detail(code: str):
     return fund
 
 @router.get("/chart/{code}")
-def get_fund_candles(code: str, response: Response, count: int = 30):
+@limiter.limit("60/minute")
+def get_fund_candles(request: Request, code: str, response: Response, count: int = 30):
     """Get historical price candle array for a mutual fund (real TEFAS NAV history when available)."""
     candles, is_simulated = tefas_service.get_fund_candles(code, count)
     if not candles:
         raise HTTPException(status_code=404, detail="Fund candles not found")
     response.headers["X-Chart-Simulated"] = "true" if is_simulated else "false"
     return candles
+
+
+@router.get("/{code}/flows")
+@limiter.limit("60/minute")
+def get_fund_flows(
+    request: Request, code: str, days: int = 30,
+    db: Session = Depends(deps.get_db),
+):
+    """Fonun GUNLUK nakit giris/cikis gecmisi - en yeni gun basta.
+
+    TEFAS gecmis akis serisi yayinlamiyor; bu kayitlar uygulamanin kendi
+    gunluk anlik goruntulerinden geliyor (bkz. tefas.py
+    _persist_flow_snapshot), yani seri kaydin BASLADIGI gunden itibaren
+    doluyor - geriye donuk veri yok.
+
+    net_flow_try = (pay sayisi degisimi) x fiyat. Portfoy buyuklugu farki
+    KULLANILMIYOR: o, piyasa hareketiyle para girisini birbirine karistirir
+    ve yukselen bir gunde hic para girmedigi halde "giris var" gosterirdi.
+    """
+    from app.models.fund_flow_snapshot import FundFlowSnapshot
+
+    code = code.upper()
+    days = max(1, min(days, 365))
+    rows = (
+        db.query(FundFlowSnapshot)
+        .filter(FundFlowSnapshot.fund_code == code)
+        .order_by(FundFlowSnapshot.as_of_date.desc())
+        .limit(days)
+        .all()
+    )
+    out = [
+        {
+            "date": r.as_of_date.isoformat() if r.as_of_date else None,
+            # Numeric -> float yalnizca SUNUM icin; sutunlar Numeric kaliyor.
+            "fund_size_try": float(r.fund_size_try) if r.fund_size_try is not None else None,
+            "investor_count": r.investor_count,
+            "net_flow_try": float(r.net_flow_try) if r.net_flow_try is not None else None,
+        }
+        for r in rows
+    ]
+    # Toplam yalnizca HESAPLANABILMIS gunler uzerinden - None'lari 0 saymak
+    # "o gun akis olmadi" demek olurdu, oysa "hesaplanamadi" demek.
+    known = [r["net_flow_try"] for r in out if r["net_flow_try"] is not None]
+    return {
+        "code": code,
+        "days": len(out),
+        "net_flow_total_try": round(sum(known), 2) if known else None,
+        "flows": out,
+    }

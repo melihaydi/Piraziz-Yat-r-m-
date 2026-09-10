@@ -521,6 +521,26 @@ function FundsPageInner() {
                       {f.fund_size && (
                         <div className="text-[11px] text-muted-foreground mt-1">Fon Büyüklüğü: {f.fund_size}</div>
                       )}
+                      {/* Gunluk NET NAKIT AKISI. Hesap (pay sayisi degisimi) x
+                          fiyat - portfoy buyuklugu farki DEGIL: o, piyasa
+                          hareketiyle para girisini birbirine karistirir ve
+                          yukselen bir gunde hic para girmedigi halde "giris
+                          var" gosterirdi. null = "hesaplanamadi" (onceki gun
+                          verisi yok), 0 ile ayni sey degil - o yuzden hic
+                          gosterilmiyor. */}
+                      {f.net_flow_try != null && (
+                        <div className="text-[11px] mt-0.5 flex items-center gap-1">
+                          <span className="text-muted-foreground">Nakit:</span>
+                          <span className={`font-mono font-bold ${f.net_flow_try >= 0 ? "text-bull" : "text-bear"}`}>
+                            {f.net_flow_try >= 0 ? "+" : "−"}₺{Math.abs(f.net_flow_try).toLocaleString("tr-TR", { maximumFractionDigits: 0 })}
+                          </span>
+                          {f.net_flow_date && (
+                            <span className="text-muted-foreground/70">
+                              ({new Date(f.net_flow_date).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })})
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </button>
                     {isExpanded && (
                       <div className="border-t border-border/30 px-3 py-2 space-y-1.5 max-h-64 overflow-y-auto">

@@ -243,7 +243,8 @@ def get_user_portfolios(
     return response_list
 
 @router.get("/history")
-def get_portfolio_history(
+@limiter.limit("60/minute")
+def get_portfolio_history(request: Request, 
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -417,7 +418,8 @@ _ANALYTICS_CACHE_TTL_SECONDS = 900
 
 
 @router.get("/analytics")
-def get_portfolio_analytics(
+@limiter.limit("30/minute")
+def get_portfolio_analytics(request: Request, 
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -509,7 +511,8 @@ def get_portfolio_analytics(
 
 
 @router.get("/live-estimate")
-def get_portfolio_live_estimate(
+@limiter.limit("60/minute")
+def get_portfolio_live_estimate(request: Request, 
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
     delay: int = Depends(deps.get_data_delay_minutes),
@@ -605,7 +608,8 @@ def get_portfolio_live_estimate(
 
 
 @router.get("/look-through")
-def get_portfolio_look_through(
+@limiter.limit("30/minute")
+def get_portfolio_look_through(request: Request, 
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user),
     delay: int = Depends(deps.get_data_delay_minutes),
@@ -1216,7 +1220,8 @@ _SIGNALS_CACHE_TTL_SECONDS = 120
 
 
 @router.get("/signals")
-def get_portfolio_signals(
+@limiter.limit("60/minute")
+def get_portfolio_signals(request: Request, 
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_user)
 ):

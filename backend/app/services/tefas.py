@@ -698,6 +698,7 @@ def _tefas_metrics(series) -> Dict[str, Any]:
     """
     out: Dict[str, Any] = {
         "fund_size_try": None,
+        "shares_outstanding": None,
         "investor_count": None,
         "net_flow_try": None,
         "net_flow_date": None,
@@ -707,6 +708,7 @@ def _tefas_metrics(series) -> Dict[str, Any]:
 
     latest = series[0]
     out["fund_size_try"] = latest[3]
+    out["shares_outstanding"] = latest[4]
     out["investor_count"] = int(latest[5]) if latest[5] is not None else None
 
     if len(series) >= 2:
@@ -716,6 +718,53 @@ def _tefas_metrics(series) -> Dict[str, Any]:
             out["net_flow_try"] = round((shares_now - shares_prev) * price_now, 2)
             out["net_flow_date"] = latest[0]
     return out
+
+
+def _persist_flow_snapshot(code: str, metrics: Dict[str, Any]) -> None:
+    """Gunun nakit akis kaydini yazar (gun basina TEK satir, ustune yazarak).
+
+    TEFAS gecmis akis serisi YAYINLAMIYOR - yalnizca o anki durumu veriyor.
+    Uygulama bu degerleri zaten her fiyat yenilemesinde okuyordu ama hicbir
+    yere yazmiyordu, dolayisiyla "dun ne kadar para girdi" sorusu
+    cevaplanamiyordu. Fiyat yenilemesi saatte bir calistigi icin ayni gun
+    icinde bu kayit birkac kez tazeleniyor ve gun sonunda TEFAS'in o gun
+    icin yayinladigi son degeri tutuyor.
+
+    Sessizce basarisiz oluyor: akis kaydi tutmak, fiyat yenilemesinin
+    calismasi icin bir kosul degil - DB erisilemezse fiyatlar yine
+    guncellenmeli."""
+    if metrics.get("fund_size_try") is None:
+        return
+    date_str = metrics.get("net_flow_date")
+    try:
+        import datetime as _dt
+        as_of = _dt.date.fromisoformat(date_str) if date_str else _dt.date.today()
+    except (TypeError, ValueError):
+        as_of = None
+    if as_of is None:
+        return
+
+    db = SessionLocal()
+    try:
+        from app.models.fund_flow_snapshot import FundFlowSnapshot
+        row = (
+            db.query(FundFlowSnapshot)
+            .filter(FundFlowSnapshot.fund_code == code, FundFlowSnapshot.as_of_date == as_of)
+            .first()
+        )
+        if row is None:
+            row = FundFlowSnapshot(fund_code=code, as_of_date=as_of)
+            db.add(row)
+        row.fund_size_try = metrics.get("fund_size_try")
+        row.shares_outstanding = metrics.get("shares_outstanding")
+        row.investor_count = metrics.get("investor_count")
+        row.net_flow_try = metrics.get("net_flow_try")
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Nakit akis kaydi yazilamadi ({code}): {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _format_try(amount: Optional[float]) -> Optional[str]:
@@ -1104,6 +1153,7 @@ class TefasService:
                     p_prev = series[n_trading_days][1]
                     return ((price_latest - p_prev) / p_prev) * 100 if p_prev > 0 else 0.0
 
+                metrics = _tefas_metrics(series)
                 daily_ret = pct_change_back(1)
                 weekly_ret = pct_change_back(5)
                 monthly_ret = pct_change_back(21)
@@ -1117,8 +1167,9 @@ class TefasService:
                         "daily_return": round(daily_ret, 2),
                         "weekly_return": round(weekly_ret, 2),
                         "monthly_return": round(monthly_ret, 2),
-                        **_tefas_metrics(series),
+                        **metrics,
                     }
+                _persist_flow_snapshot(code, metrics)
                 any_fund_updated = True
 
             if any_fund_updated:

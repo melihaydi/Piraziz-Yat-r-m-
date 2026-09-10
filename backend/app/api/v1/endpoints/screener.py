@@ -292,7 +292,8 @@ def _fetch_compare_candles(ticker: str) -> List[dict]:
 
 
 @router.get("/compare")
-def compare_stocks(tickers: str, current_user: User = Depends(deps.get_current_user)):
+@limiter.limit("30/minute")
+def compare_stocks(request: Request, tickers: str, current_user: User = Depends(deps.get_current_user)):
     """Side-by-side comparison of 2-5 BIST stocks: latest price, 1mo/3mo/1yr
     return and annualized volatility, plus each stock's own candle series so
     the frontend can plot them overlaid (normalized to % change from a
@@ -694,7 +695,8 @@ def get_market_summary(
     return result
 
 @router.get("/score-details/{symbol}")
-def get_stock_score_details(symbol: str, current_user: User = Depends(deps.get_current_user)):
+@limiter.limit("60/minute")
+def get_stock_score_details(request: Request, symbol: str, current_user: User = Depends(deps.get_current_user)):
     """Retrieve detailed AI scoring breakdown for a specific stock using 13 technical indicators."""
     symbol = symbol.upper()
     quote = market_data_service.get_quote(symbol)
@@ -834,7 +836,8 @@ def _format_disclosure(disc: dict) -> dict:
 
 
 @router.get("/kap")
-def get_latest_kap_analysis(limit: int = Query(10, ge=1, le=10), current_user: User = Depends(deps.get_current_user)):
+@limiter.limit("60/minute")
+def get_latest_kap_analysis(request: Request, limit: int = Query(10, ge=1, le=10), current_user: User = Depends(deps.get_current_user)):
     """Fetch latest KAP disclosures (general company + tracked-fund feed,
     see kap_service) formatted for display. No AI enrichment - just KAP's
     own data, cached briefly so repeat page loads don't re-hit KAP/re-run
