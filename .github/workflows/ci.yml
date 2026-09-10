@@ -61,6 +61,60 @@ jobs:
           cd frontend
           npm run build
 
+  ios-build:
+    # Capacitor iOS kabugunu derler. iOS uygulamalari YALNIZCA macOS'ta
+    # derlenebilir (Xcode gerekiyor) - proje sahibinin makinesi Windows, bu
+    # yuzden derleme GitHub'in macOS calistiricisinda yapiliyor.
+    #
+    # SU AN IMZASIZ derleniyor: imzali bir .ipa (yani gercekten bir iPhone'a
+    # kurulabilen dosya) Apple Developer Program uyeligi ($99/yil) ve ona
+    # bagli sertifika/provisioning profil gerektiriyor. Uyelik alindiginda
+    # yapilacaklar:
+    #   1. Sertifika (.p12) ve provisioning profili base64 olarak
+    #      BUILD_CERTIFICATE_BASE64 / PROVISIONING_PROFILE_BASE64 /
+    #      P12_PASSWORD secret'larina konur,
+    #   2. Asagiya bir "import certificate into keychain" adimi eklenir,
+    #   3. archive + "export archive" ile .ipa uretilip TestFlight'a
+    #      (App Store Connect API anahtariyla) yuklenir.
+    # O gune kadar bu is, iOS projesinin DERLENDIGINI dogruluyor - Android
+    # tarafinda oldugu gibi sessizce bozulup fark edilmemesini engelliyor.
+    #
+    # workflow_dispatch kapili: macOS calistiricilari ubuntu'dan pahali,
+    # her push'ta calismasina gerek yok.
+    runs-on: macos-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Capacitor CLI 8.x Node >=22 istiyor - android-build isindeki
+          # ayni not gecerli: Node 20'de `npx cap sync` dogrudan
+          # "[fatal] The Capacitor CLI requires NodeJS >=22.0.0" ile cokuyor.
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      # capacitor.config.ts webDir'i canli dagitimi gosteriyor (server.url
+      # modu - o dosyadaki nota bakiniz), bu yuzden `npm run build`
+      # gerekmiyor: uygulama, zaten yayinda olan siteyi yukleyen bir yerel
+      # kabuk. Android tarafiyla ayni yaklasim.
+      - name: Sync Capacitor iOS project
+        run: |
+          cd frontend
+          npx cap sync ios
+
+      - name: Build iOS app (unsigned)
+        run: |
+          cd frontend/ios/App
+          xcodebuild -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
+
   android-build:
     # Builds the Capacitor Android wrapper (frontend/android) so it can't
     # silently drift out of sync with the web app - previously this was
@@ -108,10 +162,14 @@ jobs:
           cd frontend
           npx cap sync android
 
-      # capacitor.config.ts points webDir at the live Netlify deployment
-      # (server.url mode - see that file's comment) rather than a locally
-      # bundled build, so this doesn't need `npm run build` first: the APK
-      # is just a native shell that loads the already-deployed site.
+      # capacitor.config.ts points server.url at the live site
+      # (https://bipterminal.com - see that file's comment) rather than a
+      # locally bundled build, so this doesn't need `npm run build` first:
+      # the APK is just a native shell that loads the already-deployed site.
+      #
+      # Bu adres 2026-09-10'da DUZELTILDI: eskiden Netlify'in alt alanini
+      # gosteriyordu ve o alan API'nin CORS listesinde olmadigi icin APK
+      # aciliyor ama HICBIR API cagrisi calismiyordu.
       #
       # To add signed release builds later: create a keystore, base64-encode
       # it into a KEYSTORE_BASE64 repo secret alongside KEYSTORE_PASSWORD/

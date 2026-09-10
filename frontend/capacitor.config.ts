@@ -11,7 +11,21 @@ const config: CapacitorConfig = {
   appName: "BIP Terminal",
   webDir: "public",
   server: {
-    url: "https://pirazizyatirim.netlify.app",
+    // bipterminal.com - Netlify'in kendi alt alani DEGIL.
+    //
+    // Eskiden burasi https://pirazizyatirim.netlify.app'i gosteriyordu ve
+    // APK BOZUKTU: o alan adi API'nin CORS listesinde yok (backend
+    // config.py get_cors_origins yalnizca localhost + FRONTEND_URL +
+    // EXTRA_CORS_ORIGINS'e izin veriyor). Canli dogrulandi - Netlify
+    // Origin'i ile yapilan preflight istegine Access-Control-Allow-Origin
+    // BASLIGI HIC DONMUYOR, bipterminal.com ile donuyor.
+    //
+    // Sonuc: uygulama aciliyor, giris formu goruntuleniyor ama /auth/* dahil
+    // hicbir API cagrisi calismiyordu - yani indirilen APK pratikte olu bir
+    // kabuktu. Netlify alt alaninin API'den kesilmesi BILEREK yapilmisti
+    // (bkz. main.py'deki CORS notu); atlanan sey, mobil kabugun hala o
+    // adresi yukluyor olmasiydi.
+    url: "https://bipterminal.com",
     cleartext: false,
   },
 }
