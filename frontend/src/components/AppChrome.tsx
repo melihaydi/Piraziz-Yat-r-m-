@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
 import MobileTabBar from "@/components/MobileTabBar"
+import InstallPrompt from "@/components/InstallPrompt"
 import CommandPalette from "@/components/CommandPalette"
 import { useReveal, useSpotlight } from "@/lib/useReveal"
 
@@ -137,6 +138,11 @@ export default function AppChrome({ children }: AppChromeProps) {
         </main>
       </div>
       <MobileTabBar onMoreClick={() => setMobileMenuOpen(true)} drawerOpen={mobileMenuOpen} />
+
+      {/* "Ana Ekrana Ekle" ipucu - iOS Safari kurulumu kendiliginden
+          ONERMIYOR, kullanicinin adimlari bilmesi gerekiyor. Zaten kuruluysa
+          ya da bir kez kapatildiysa hic gorunmuyor. */}
+      <InstallPrompt />
       <CommandPalette />
     </>
   )
