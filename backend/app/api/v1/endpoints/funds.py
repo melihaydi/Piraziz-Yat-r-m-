@@ -317,6 +317,10 @@ def get_fund_live_estimate(
 def get_flow_radar(
     request: Request, days: int = 1, limit: int = 25,
     db: Session = Depends(deps.get_db),
+    # Giris sart: sayfa zaten giris arkasinda ama uc ilk yayinda acikti -
+    # hesap acmadan dogrudan API'den cekilebiliyordu. '/{code}' ile ayni
+    # kapi.
+    _user: User = Depends(deps.get_current_user),
 ):
     """Fon Akis Radari - fonlara giren paranin hangi hisseye gittigi.
 

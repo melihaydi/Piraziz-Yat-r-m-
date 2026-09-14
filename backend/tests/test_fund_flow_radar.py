@@ -111,10 +111,24 @@ def test_empty_history_is_not_an_error(db):
     assert out["stocks"] == [] and out["covered_fund_count"] == 0
 
 
+def _auth_headers(client):
+    client.post("/api/v1/auth/register",
+                json={"email": "radaruser@example.com", "password": "mypassword", "terms_accepted": True})
+    login = client.post("/api/v1/auth/login",
+                        data={"username": "radaruser@example.com", "password": "mypassword"})
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+def test_endpoint_requires_login(client, db):
+    # Ilk yayinda bu uc girissiz acikti - veri hesap acmadan cekilebiliyordu.
+    assert client.get("/api/v1/funds/flow-radar?days=2").status_code == 401
+
+
 def test_endpoint_responds(client, db):
     _seed(db, "AAA", 1_000_000.0)
+    headers = _auth_headers(client)
     with patch("app.services.portfolio_ledger.expand_fund_leaf_weights", return_value={"THYAO": 1.0}), \
          patch("app.services.tefas._KNOWN_STOCK_TICKERS", {"THYAO"}):
-        r = client.get("/api/v1/funds/flow-radar?days=2")
+        r = client.get("/api/v1/funds/flow-radar?days=2", headers=headers)
     assert r.status_code == 200, r.text
     assert r.json()["stocks"][0]["ticker"] == "THYAO"
