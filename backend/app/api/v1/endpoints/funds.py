@@ -308,6 +308,51 @@ def get_fund_live_estimate(
     return payload
 
 
+# DIKKAT: bu rota '/{code}' rotasindan ONCE tanimli olmali. Sonra
+# tanimlanirsa FastAPI '/funds/flow-radar' istegini '/funds/{code}' ile
+# eslestirip code='flow-radar' diye arar ve 404 doner - ayni tuzak icin
+# '/compare' rotasinda da bir not var.
+@router.get("/flow-radar")
+@limiter.limit("60/minute")
+def get_flow_radar(
+    request: Request, days: int = 1, limit: int = 25,
+    db: Session = Depends(deps.get_db),
+):
+    """Fon Akis Radari - fonlara giren paranin hangi hisseye gittigi.
+
+    TEFAS fon akislarini yayinliyor ama o paranin hangi HISSEYE gittigini
+    kimse soylemiyor; bunun icin fonun icini bilmek gerekiyor. Uygulamada
+    ikisi de var (kompozisyonlar + gunluk akis kaydi), carpimi bu ucu
+    veriyor.
+
+    ONEMLI: donen rakam IMA EDILEN baskidir, kanitlanmis alim degil - fonun
+    yeni parayi mevcut agirliklarina gore dagittigi VARSAYILIYOR. Arayuz
+    bunu acikca yazmali.
+
+    Onbellek: hesap, kompozisyonlari yaprak hisselere kadar aciyor ve
+    gunde bir degisen bir veriye dayaniyor - her istekte tekrarlamanin
+    anlami yok.
+    """
+    from app.core.redis import cache_service
+    from app.services.fund_flow_radar import compute_flow_radar
+
+    days = max(1, min(days, 90))
+    limit = max(1, min(limit, 100))
+    cache_key = f"funds:flow-radar:{days}:{limit}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = compute_flow_radar(db, days=days, limit=limit)
+    # Yalnizca ICI DOLU bir sonuc onbellege aliniyor: hic fon cozulememisken
+    # (gecici bir kompozisyon/quote sorunu) bos cevabi 15 dakika boyunca
+    # herkese servis etmek, tek seferlik bir aksakligi kalici bir bosluga
+    # cevirirdi.
+    if result.get("covered_fund_count"):
+        cache_service.set_json(cache_key, result, expire_seconds=900)
+    return result
+
+
 @router.get("/{code}")
 @limiter.limit("120/minute")
 def get_fund_detail(request: Request, code: str):

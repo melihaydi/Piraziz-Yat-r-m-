@@ -1,6 +1,6 @@
 import html
 from datetime import date, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
@@ -871,10 +871,29 @@ def reset_fund_composition(
 # önizleme (GET) ile ne değişeceği görülür, sonra uygulanır (POST).
 
 
-def _plan_dict(p) -> dict:
+def _plan_owners(db: Session, plans) -> Dict[int, tuple]:
+    """portfolio_id -> (user_id, email). Tek sorguda çözülüyor: önizleme
+    ekranında "portföy #37" yerine kimin pozisyonu olduğu yazmalı, ama her
+    satır için ayrı sorgu atmak N+1 olurdu."""
+    ids = {p.portfolio_id for p in plans}
+    if not ids:
+        return {}
+    rows = (
+        db.query(Portfolio.id, Portfolio.user_id, User.email)
+        .join(User, User.id == Portfolio.user_id)
+        .filter(Portfolio.id.in_(ids))
+        .all()
+    )
+    return {pid: (uid, email) for pid, uid, email in rows}
+
+
+def _plan_dict(p, owners: Optional[Dict[int, tuple]] = None) -> dict:
+    owner = (owners or {}).get(p.portfolio_id)
     return {
         "asset_id": p.asset_id,
         "portfolio_id": p.portfolio_id,
+        "user_id": owner[0] if owner else None,
+        "user_email": owner[1] if owner else None,
         "ticker": p.ticker,
         "current_shares": round(p.current_shares, 4),
         "current_average_cost": round(p.current_average_cost, 4),
@@ -934,12 +953,13 @@ def preview_corporate_action(
     if not action:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bu hisse için tanımlı kurumsal işlem yok.")
     plans = corporate_actions.plan_adjustments(db, action)
+    owners = _plan_owners(db, plans)
     return {
         "ticker": action.ticker,
         "ratio": action.ratio,
         "ex_date": action.ex_date.isoformat(),
         "description": action.description,
-        "plans": [_plan_dict(p) for p in plans],
+        "plans": [_plan_dict(p, owners) for p in plans],
     }
 
 
@@ -962,6 +982,7 @@ def apply_corporate_action(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bu hisse için tanımlı kurumsal işlem yok.")
 
     plans = corporate_actions.apply_action(db, action)
+    owners = _plan_owners(db, plans)
     applied = [p for p in plans if p.applicable]
 
     log_audit(db, "corporate_action_applied", request=request, user_id=admin.id,
@@ -977,5 +998,5 @@ def apply_corporate_action(
         "ratio": action.ratio,
         "applied_count": len(applied),
         "skipped_count": len(plans) - len(applied),
-        "plans": [_plan_dict(p) for p in plans],
+        "plans": [_plan_dict(p, owners) for p in plans],
     }

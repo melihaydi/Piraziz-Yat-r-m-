@@ -19,6 +19,9 @@ import {
   Users,
   PieChart,
   Star,
+  Radio,
+  Split,
+  ScrollText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -185,6 +188,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       items: [
         { name: "Portföyüm", href: "/portfolio", icon: Briefcase },
         { name: "Fon Takip", href: "/funds", icon: Coins },
+        { name: "Fon Akış Radarı", href: "/flow-radar", icon: Radio },
       ],
     },
     {
@@ -202,6 +206,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           { name: "Yönetim Paneli", href: "/admin", icon: ShieldCheck },
           { name: "Yönetilen Portföyler", href: "/admin/managed-portfolios", icon: Users },
           { name: "Fon Ağırlık Ayarlamaları", href: "/admin/fund-compositions", icon: PieChart },
+          { name: "Kurumsal İşlemler", href: "/admin/corporate-actions", icon: Split },
+          { name: "Denetim Kaydı", href: "/admin/audit-log", icon: ScrollText },
         ] : []),
       ],
     },
