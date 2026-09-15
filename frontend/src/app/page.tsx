@@ -268,9 +268,9 @@ export default function Home() {
         .then(data => { if (Array.isArray(data)) setRecentTx(data) })
         .catch(err => console.error("Failed to load recent transactions:", err))
     }
-    fetchPortfolio()
-    fetchLiveEstimate()
-    fetchRecentTx()
+    // Elle ilk cagri YOK: pollWhileVisibleAndOpen kurulurken zaten bir kez
+    // cagiriyor (usePolling.ts'te evaluate() -> hasFetchedOnce). Ikisi
+    // birlikte ayni istegi acilista IKI KEZ gonderiyordu.
     return pollWhileVisibleAndOpen(() => { fetchPortfolio(); fetchLiveEstimate(); fetchRecentTx() }, 15000)
   }, [])
 
@@ -303,7 +303,9 @@ export default function Home() {
         .catch(err => console.error("Failed to load strategy signals:", err))
         .finally(() => setLoadingSignals(false))
     }
-    fetchSignals()
+    // Elle ilk cagri YOK: pollWhileVisibleAndOpen kurulurken zaten bir kez
+    // cagiriyor (usePolling.ts'te evaluate() -> hasFetchedOnce). Ikisi
+    // birlikte ayni istegi acilista IKI KEZ gonderiyordu.
     // Motor arka planda 3 dakikada bir yenileniyor (StrategyEngine.
     // REFRESH_INTERVAL_SECONDS) - burada daha sık sormanın bir faydası yok.
     return pollWhileVisibleAndOpen(fetchSignals, 60000)
@@ -387,8 +389,11 @@ export default function Home() {
     // (yukarıdaki useSyncExternalStore aboneliği), Header'la paylaşımlı.
     fetchNewsFeed()
     fetchIndexChanges()
-    fetchScreenerList()
     loadFavoriteKeys().then(loadFavoriteFunds)
+    // fetchScreenerList'in elle cagrisi YOK: asagidaki
+    // pollWhileVisibleAndOpen kurulurken zaten bir kez cagiriyor
+    // (usePolling.ts'te evaluate() -> hasFetchedOnce) - ikisi birlikte
+    // ayni istegi acilista IKI KEZ gonderiyordu.
 
     const stopScreener = pollWhileVisibleAndOpen(fetchScreenerList, 10000)
 

@@ -415,7 +415,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         })
         .catch(err => console.error("Failed to load trade watchlist:", err))
     }
-    fetchWatchlist()
+    // Elle ilk cagri YOK - poll yardimcisi kurulurken zaten cagiriyor.
     // pollWhileVisibleAndOpen - also skips this outside the BIST session
     // (see bistSession.ts), same reasoning as every other live-price poll.
     const stop = pollWhileVisibleAndOpen(fetchWatchlist, 2000)
@@ -435,7 +435,7 @@ export function TradeProvider({ children }: { children: React.ReactNode }) {
         })
         .catch(err => console.error("Failed to load VİOP contracts:", err))
     }
-    fetchViop()
+    // Elle ilk cagri YOK - poll yardimcisi kurulurken zaten cagiriyor.
     const stop = pollWhileVisibleAndOpen(fetchViop, 2000)
     return () => {
       active = false

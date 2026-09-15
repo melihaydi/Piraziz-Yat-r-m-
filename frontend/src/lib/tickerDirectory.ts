@@ -48,19 +48,37 @@ async function fetchDirectory(): Promise<TickerDirectoryEntry[]> {
   return list
 }
 
+/** Liste henuz yok ve bir istek havadaysa true - arama kutusu "sonuc yok"
+ *  yerine "yukleniyor" diyebilsin diye (bkz. Header). */
+export function isTickerDirectoryLoading(): boolean {
+  return cache === null && inflight !== null
+}
+
 export function ensureTickerDirectoryLoaded(): Promise<TickerDirectoryEntry[]> {
   if (cache) return Promise.resolve(cache)
-  if (!inflight) inflight = fetchDirectory().finally(() => { inflight = null })
+  if (!inflight) inflight = fetchDirectory().finally(() => { inflight = null; notify() })
   return inflight
 }
 
-export function useTickerDirectory(): TickerDirectoryEntry[] {
+/**
+ * `enabled=false` ile cagirilirsa listeye ABONE olur ama CEKMEZ.
+ *
+ * Neden: bu liste /screener/ (~26 KB, sogukken ~2 sn) ve /funds/ (~9 KB)
+ * cagrilarinin toplami ve YALNIZCA arama kutusunu besliyor. Header her
+ * sayfada oldugu icin, kullanici arama yapsa da yapmasa da her acilista
+ * ikisi birden cekiliyordu. Artik arama kutusu ilk kez kullanildiginda
+ * yukleniyor; modul seviyesindeki `cache` sayesinde bu bir kez oluyor ve
+ * sonra her yer ayni veriyi paylasiyor.
+ */
+export function useTickerDirectory(enabled: boolean = true): TickerDirectoryEntry[] {
   const [, forceRerender] = useState(0)
   useEffect(() => {
     const listener = () => forceRerender(v => v + 1)
     listeners.add(listener)
-    ensureTickerDirectoryLoaded()
     return () => { listeners.delete(listener) }
   }, [])
+  useEffect(() => {
+    if (enabled) ensureTickerDirectoryLoaded()
+  }, [enabled])
   return cache || []
 }

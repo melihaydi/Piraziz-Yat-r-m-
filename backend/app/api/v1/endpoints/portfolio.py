@@ -1216,7 +1216,15 @@ def add_dividend(
 # Daily-bar-based indicators don't meaningfully change within a couple of
 # minutes, so this is cached per (user, holdings) like /analytics, and for
 # the same reason lives in Redis rather than process memory.
-_SIGNALS_CACHE_TTL_SECONDS = 120
+#
+# TTL, ALTTAKI mum onbellegiyle hizali (price_history.py, history:1d:1y:*
+# = 15 dk). Daha once 120 sn'ydi ve bu, elde edilemeyecek bir tazelik
+# vaat ediyordu: 2 dakikada bir yeniden hesaplanan gostergeler, 15
+# dakikadir degismeyen AYNI gunluk mumlar uzerinde calisiyordu. Yani her
+# 15 dakikada 7 kez ayni sonucu uretmek icin islemci yakiyorduk. Ustelik
+# bu uc Header'dan HER SAYFADA, her kullanici icin 60 sn'de bir
+# cagriliyor - bosa tekrarin maliyeti kullanici sayisiyla carpiliyor.
+_SIGNALS_CACHE_TTL_SECONDS = 900
 
 
 @router.get("/signals")

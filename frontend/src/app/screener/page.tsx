@@ -395,7 +395,8 @@ export default function ScreenerPage() {
         })
     }
 
-    fetchStocks()
+    // Elle ilk cagri YOK - pollWhileVisibleAndOpen kurulurken zaten bir
+    // kez cagiriyor; ikisi birlikte acilista cift istek demekti.
     // Backend reads from an in-memory TradingView WebSocket cache, so polling
     // every 2s doesn't add real network/API load, just keeps the table fresh.
     // pollWhileVisibleAndOpen also skips this outside the BIST session

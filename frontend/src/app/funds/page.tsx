@@ -344,7 +344,9 @@ function FundsPageInner() {
         })
     }
 
-    fetchFunds()
+    // Elle ilk cagri YOK: pollWhileVisibleAndOpen kurulurken zaten bir kez
+    // cagiriyor (usePolling.ts'te evaluate() -> hasFetchedOnce). Ikisi
+    // birlikte ayni istegi acilista IKI KEZ gonderiyordu.
     // pollWhileVisibleAndOpen - stops while the tab is hidden AND outside
     // the BIST session (see usePolling.ts / bistSession.ts): this list's
     // prices don't move outside 09:30-18:15 Mon-Fri Istanbul time either.

@@ -137,6 +137,9 @@ function PortfolioStressTest({ beta, currentValue }: { beta: number | null; curr
   )
 }
 
+// Bkz. assetsList: bos durumda kimligi sabit kalsin diye tek bir sabit.
+const EMPTY_ASSETS: any[] = []
+
 export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<any[]>([])
   // Seçili portföy, oturum boyunca korunur (localStorage: kullanıcı sayfayı
@@ -554,8 +557,17 @@ export default function PortfolioPage() {
   }
 
   useEffect(() => {
-    loadData()
-    fetchLiveEstimate(false)
+    // Burada loadData() DEGIL, onun yalnizca yoklanMAYAN parcalari
+    // cagriliyor. loadData() = loadCore + analytics + equity + ledger +
+    // lookThrough; asagidaki pollWhileVisibleAndOpen ise kurulurken zaten
+    // loadCore + fetchLiveEstimate cagiriyor (usePolling.ts'te evaluate()
+    // -> hasFetchedOnce). Eskiden ikisi birlikte oldugu icin sayfa her
+    // acilista loadCore'u ve canli tahmini IKI KEZ istiyordu - portfoyun
+    // en pahali iki cagrisi, bosuna.
+    loadAnalytics()
+    loadEquityHistory()
+    loadLedger()
+    loadLookThrough()
     // Keeps the headline PORTFÖY DEĞERİ card (and fund holdings' estimate-
     // projected price) moving during the live session instead of only
     // reflecting whatever was true at page load. pollWhileVisible - stops
@@ -622,11 +634,24 @@ export default function PortfolioPage() {
   // portföy destekliyordu ama burası her zaman portfolios[0]'ı gösteriyordu:
   // ikinci portföy oluşsa bile arayüzde görünmez oluyordu (Trade modülünde
   // tam bir hesap değiştirici varken portföy tarafında yoktu).
-  const activePortfolio =
-    portfolios.find(p => p.id === activePortfolioId) || portfolios[0] || null
+  //
+  // useMemo SART: asagidaki turetilmis degerlerin neredeyse hepsi
+  // `assetsList`e bagli. Bunlar her cizimde yeni bir dizi/nesne uretirse
+  // hicbir useMemo tutmaz VE React Compiler "mevcut hafizalama
+  // korunamiyor" deyip TUM BILESENI optimize etmeden atlar - 2800 satirlik
+  // bu sayfada her tus vurusu, her 15 saniyelik yoklama tum agaci yeniden
+  // cizer. Kimlik sabitligi burada okunabilirlik meselesi degil, sayfanin
+  // akiciligi meselesi.
+  const activePortfolio = React.useMemo(
+    () => portfolios.find(p => p.id === activePortfolioId) || portfolios[0] || null,
+    [portfolios, activePortfolioId]
+  )
 
   // Calculate stats
-  const assetsList = activePortfolio ? activePortfolio.assets || [] : []
+  // EMPTY_ASSETS modul seviyesinde sabit: `|| []` yazmak bos durumda her
+  // cizimde YENI bir dizi uretir ve asagidaki tum useMemo'lari bosa
+  // dusururdu.
+  const assetsList = activePortfolio?.assets || EMPTY_ASSETS
   const totalCost = activePortfolio ? activePortfolio.total_cost || 0.0 : 0.0
   const currentValue = activePortfolio ? activePortfolio.total_value || 0.0 : 0.0
   const totalProfit = activePortfolio ? activePortfolio.total_profit || 0.0 : 0.0

@@ -50,7 +50,8 @@ export default function CommandPalette() {
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const directory = useTickerDirectory()
+  // Ctrl+K ile acilana kadar listeyi cekme - bkz. tickerDirectory.ts.
+  const directory = useTickerDirectory(open)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

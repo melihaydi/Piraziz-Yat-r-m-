@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button"
 import { API_BASE_URL } from "@/lib/config"
 import { authFetch, getProfilePicKey } from "@/lib/auth"
 import { pollWhileVisibleAndOpen } from "@/lib/usePolling"
-import { useTickerDirectory } from "@/lib/tickerDirectory"
+import { useTickerDirectory, isTickerDirectoryLoading } from "@/lib/tickerDirectory"
 import { subscribeMarketSummary, getMarketSummarySnapshot } from "@/lib/marketSummaryStore"
 import { useCurrentUser } from "@/lib/currentUserStore"
 import { useFlash } from "@/lib/useFlash"
@@ -168,7 +168,6 @@ export default function Header({ onMenuClick }: HeaderProps) {
       }
     }
     
-    checkSignalsAndAlarms()
     // Runs globally on every page for every logged-in user; the backend
     // now caches /portfolio/signals for 2 minutes (see portfolio.py), so
     // polling much faster than that just burns requests without fresher
@@ -177,7 +176,26 @@ export default function Header({ onMenuClick }: HeaderProps) {
     // (see bistSession.ts): both /portfolio/signals and /alert/check are
     // price-driven, so there's nothing new to detect outside 09:30-18:15
     // Mon-Fri Istanbul time either.
-    return pollWhileVisibleAndOpen(checkSignalsAndAlarms, 60000)
+    //
+    // IKI DUZELTME BIR ARADA:
+    //
+    // 1) Elle yazilmis `checkSignalsAndAlarms()` ilk cagrisi KALDIRILDI.
+    //    pollWhileVisibleAndOpen zaten kurulurken bir kez cagiriyor
+    //    (usePolling.ts'te evaluate() -> hasFetchedOnce), yani ikisi
+    //    birlikte HER sayfa acilisinda ayni pahali istegi IKI KEZ
+    //    gonderiyordu. Header her sayfada oldugu icin bu, bosa giden
+    //    istegin kullanici sayisiyla carpilmasi demekti.
+    //
+    // 2) Kurulum 4 saniye geciktirildi. /portfolio/signals sunucudaki en
+    //    pahali uclardan biri (onbellek sogukken hisse basina 1 yillik
+    //    gunluk mum cekiyor) ve besledigi sey yalnizca zildeki rozet.
+    //    Acilista kullanicinin BAKTIGI verinin istekleriyle yarismasinin
+    //    anlami yok.
+    let stopPolling: (() => void) | null = null
+    const firstRun = setTimeout(() => {
+      stopPolling = pollWhileVisibleAndOpen(checkSignalsAndAlarms, 60000)
+    }, 4000)
+    return () => { clearTimeout(firstRun); stopPolling?.() }
   }, [])
 
   // Frantic Strateji signal history notifications - previously the only
@@ -351,7 +369,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
   // 2. Tüm hisse+fon listesi - paylaşılan tek kaynak (bkz. tickerDirectory.ts),
   // portföye/yönetilen portföye varlık ekleme ve fon kompozisyon editöründeki
   // TickerCombobox'larla AYNI veriyi/fetch'i paylaşıyor.
-  const directory = useTickerDirectory()
+  // Liste yalnizca arama kutusuna DOKUNULDUGUNDA cekiliyor - bkz.
+  // tickerDirectory.ts. Header her sayfada oldugu icin bu, her acilistan
+  // ~35 KB ve bir /screener/ cagrisi eksiltiyor.
+  const [searchUsed, setSearchUsed] = useState(false)
+  const directory = useTickerDirectory(searchUsed)
 
   // 3. Filter searches
   const filteredResults = useMemo(() => {
@@ -441,7 +463,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               setSearchQuery(e.target.value)
               setShowDropdown(true)
             }}
-            onFocus={() => setShowDropdown(true)}
+            onFocus={() => { setSearchUsed(true); setShowDropdown(true) }}
             onBlur={() => setTimeout(() => setShowDropdown(false), 250)}
             className="pl-9 md:pr-8 bg-secondary/50 border-border/60 hover:bg-secondary/80 focus-visible:ring-primary focus-visible:ring-1 w-full"
           />
@@ -483,7 +505,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
           {showDropdown && searchQuery && filteredResults.length === 0 && (
             <div className="absolute top-11 left-0 right-0 bg-popover/95 backdrop-blur-md border border-border rounded-lg shadow-[var(--elev-3)] p-3 text-center text-[10px] text-muted-foreground z-50 animate-pop origin-top">
-              Sonuç bulunamadı.
+              {/* Liste artik odaklanildiginda cekiliyor (bkz.
+                  useTickerDirectory), dolayisiyla ilk saniyelerde hazir
+                  olmayabilir - o ani "sonuc yok" diye gostermek yanlis
+                  cevap vermek olurdu. */}
+              {isTickerDirectoryLoading() ? "Liste yükleniyor..." : "Sonuç bulunamadı."}
             </div>
           )}
         </div>

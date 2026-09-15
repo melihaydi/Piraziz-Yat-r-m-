@@ -47,20 +47,45 @@ def compute_flow_radar(db: Session, days: int = 1, limit: int = 25) -> Dict[str,
     from app.services.tefas import BASE_FUNDS, _KNOWN_STOCK_TICKERS
 
     days = max(1, min(days, 90))
-    since = dt.date.today() - dt.timedelta(days=days)
+
+    # Pencere BUGUNE degil, YAYINLANMIS SON GUNE sabitleniyor.
+    #
+    # Onceki hali `since = bugun - days` idi ve "1 gun" secenegini pratikte
+    # bos birakiyordu: TEFAS gun sonu verisini aksam yayinliyor, hafta sonu
+    # ve tatilde hic yayinlamiyor. Pazartesi oglen "1 gun" sorulunca
+    # aralik (dun, bugun) oluyordu ve elimizdeki en taze kayit Cuma'ya ait
+    # oldugu icin ekran "kayit yok" diyordu - veri duruyorken.
+    latest = (
+        db.query(FundFlowSnapshot.as_of_date)
+        .filter(FundFlowSnapshot.net_flow_try.isnot(None))
+        .order_by(FundFlowSnapshot.as_of_date.desc())
+        .limit(1)
+        .scalar()
+    )
+    if latest is None:
+        return {"days": days, "funds": [], "stocks": [], "other": [],
+                "net_flow_total_try": None, "covered_fund_count": 0,
+                "from_date": None, "to_date": None, "day_count": 0}
+
+    since = latest - dt.timedelta(days=days)
 
     rows = (
         db.query(FundFlowSnapshot)
         .filter(FundFlowSnapshot.as_of_date > since,
+                FundFlowSnapshot.as_of_date <= latest,
                 FundFlowSnapshot.net_flow_try.isnot(None))
         .order_by(FundFlowSnapshot.as_of_date.desc())
         .all()
     )
     if not rows:
         return {"days": days, "funds": [], "stocks": [], "other": [],
-                "net_flow_total_try": None, "covered_fund_count": 0}
+                "net_flow_total_try": None, "covered_fund_count": 0,
+                "from_date": None, "to_date": latest.isoformat(), "day_count": 0}
 
     known_funds = set(BASE_FUNDS.keys())
+    # Ekranda "hangi gunleri kapsiyor" yazabilmek icin: secilen gun sayisi
+    # degil, GERCEKTEN veri bulunan gun sayisi onemli (hafta sonlari bos).
+    covered_dates = sorted({r.as_of_date for r in rows if r.as_of_date})
 
     # Fon basina toplam akis (ayni fonun birden fazla gunu toplaniyor)
     flow_by_fund: Dict[str, float] = {}
@@ -108,6 +133,9 @@ def compute_flow_radar(db: Session, days: int = 1, limit: int = 25) -> Dict[str,
 
     return {
         "days": days,
+        "from_date": covered_dates[0].isoformat() if covered_dates else None,
+        "to_date": covered_dates[-1].isoformat() if covered_dates else None,
+        "day_count": len(covered_dates),
         "covered_fund_count": len(covered),
         "funds": sorted(covered, key=lambda f: -abs(f["net_flow_try"])),
         "net_flow_total_try": round(sum(f["net_flow_try"] for f in covered), 2),

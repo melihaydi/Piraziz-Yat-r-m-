@@ -12,6 +12,9 @@ interface RadarData {
   days: number
   covered_fund_count: number
   net_flow_total_try: number | null
+  from_date: string | null
+  to_date: string | null
+  day_count: number
   funds: FundRow[]
   stocks: Row[]
   other: Row[]
@@ -27,10 +30,25 @@ const TL = (v: number) => {
 }
 
 const RANGES = [
-  { days: 1, label: "1 gun" },
-  { days: 7, label: "1 hafta" },
-  { days: 30, label: "1 ay" },
+  { days: 1, label: "Gunluk" },
+  { days: 7, label: "Haftalik" },
+  { days: 30, label: "Aylik" },
 ]
+
+const D = (v: string | null) => {
+  if (!v) return "—"
+  const d = new Date(v + "T00:00:00")
+  return isNaN(d.getTime())
+    ? v
+    : d.toLocaleDateString("tr-TR", { day: "numeric", month: "long" })
+}
+
+/** "15 Eylul" ya da "9 Eylul – 15 Eylul" - tek gunluk aralikta tekrar etmesin. */
+const rangeLabel = (d: RadarData) => {
+  if (!d.to_date) return null
+  if (!d.from_date || d.from_date === d.to_date) return D(d.to_date)
+  return `${D(d.from_date)} – ${D(d.to_date)}`
+}
 
 export default function FlowRadarPage() {
   const [data, setData] = useState<RadarData | null>(null)
@@ -79,7 +97,7 @@ export default function FlowRadarPage() {
         </p>
       </div>
 
-      <div className="flex gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {RANGES.map(r => (
           <button
             key={r.days}
@@ -93,6 +111,16 @@ export default function FlowRadarPage() {
             {r.label}
           </button>
         ))}
+        {/* Hangi gunleri kapsadigi yaziliyor: TEFAS hafta sonu yayin
+            yapmadigi icin "Haftalik" secimi cogu zaman 5 gun demek, ve
+            verinin bayatlayip bayatlamadigini ancak tarih gosterirse
+            anlasilir. */}
+        {data && !loading && data.to_date && (
+          <span className="ml-1 text-[11px] text-muted-foreground">
+            {rangeLabel(data)}
+            {data.day_count > 1 ? ` · ${data.day_count} veri gunu` : ""}
+          </span>
+        )}
       </div>
 
       {loading ? (
@@ -105,6 +133,9 @@ export default function FlowRadarPage() {
             <p className="text-sm text-muted-foreground">
               Bu aralikta kayitli fon akisi yok. Akis gecmisi 10 Eylul 2026&apos;da birikmeye
               basladi &mdash; geriye donuk veri bulunmuyor, seri her gun uzuyor.
+              {data?.to_date && (
+                <> Elimizdeki en taze kayit: <span className="font-semibold text-foreground">{D(data.to_date)}</span>.</>
+              )}
             </p>
           </CardContent>
         </Card>

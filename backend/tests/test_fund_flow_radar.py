@@ -132,3 +132,42 @@ def test_endpoint_responds(client, db):
         r = client.get("/api/v1/funds/flow-radar?days=2", headers=headers)
     assert r.status_code == 200, r.text
     assert r.json()["stocks"][0]["ticker"] == "THYAO"
+
+
+# --- Pencerenin son YAYINLANMIS gune sabitlenmesi --------------------------
+
+def test_stale_data_still_shows_in_one_day_window(db):
+    """TEFAS hafta sonu/tatilde yayin yapmiyor, gun ici verisini de aksam
+    yayinliyor. Pencere `bugun - days` olsaydi Pazartesi oglen "1 gun"
+    sorgusu Cuma'nin kaydini disarida birakir ve ekran veri dururken
+    "kayit yok" derdi. Pencere son yayinlanan gune sabit."""
+    _seed(db, "AAA", 1_000_000.0, day_offset=3)   # 3 gun once yayinlanmis
+    with patch("app.services.portfolio_ledger.expand_fund_leaf_weights", return_value={"THYAO": 1.0}), \
+         patch("app.services.tefas._KNOWN_STOCK_TICKERS", {"THYAO"}):
+        out = radar.compute_flow_radar(db, days=1)
+
+    assert out["covered_fund_count"] == 1
+    assert out["stocks"][0]["implied_flow_try"] == 1_000_000.0
+    assert out["to_date"] == (dt.date.today() - dt.timedelta(days=3)).isoformat()
+    assert out["day_count"] == 1
+
+
+def test_window_length_counts_back_from_latest_not_today(db):
+    """Son kayit 3 gun once ise, "1 hafta" penceresi o gunden GERIYE
+    sayilmali - bugunden degil."""
+    _seed(db, "AAA", 100.0, day_offset=3)    # pencere ici
+    _seed(db, "AAA", 200.0, day_offset=8)    # son kayittan 5 gun geride: ici
+    _seed(db, "AAA", 400.0, day_offset=30)   # cok eski: disarida
+    with patch("app.services.portfolio_ledger.expand_fund_leaf_weights", return_value={"THYAO": 1.0}), \
+         patch("app.services.tefas._KNOWN_STOCK_TICKERS", {"THYAO"}):
+        out = radar.compute_flow_radar(db, days=7)
+
+    assert out["funds"][0]["net_flow_try"] == 300.0
+    assert out["day_count"] == 2
+    assert out["from_date"] == (dt.date.today() - dt.timedelta(days=8)).isoformat()
+
+
+def test_empty_table_reports_no_dates(db):
+    out = radar.compute_flow_radar(db, days=7)
+    assert out["covered_fund_count"] == 0
+    assert out["from_date"] is None and out["to_date"] is None and out["day_count"] == 0
