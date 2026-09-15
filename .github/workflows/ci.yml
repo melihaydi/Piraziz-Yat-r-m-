@@ -156,6 +156,17 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Kosucuda HAZIR GELEN cmdline-tools surumune sabitlendi.
+          #
+          # Varsayilan ayarla is basarisiz oldu (calisma #346): eylem
+          # onyuklu 12.0'i gorup "Wrong version" deyip 16.0'i indiriyor,
+          # sonra `sdkmanager --licenses` calistiriyor ve yeni surumde
+          # lisanslar kabul edilmemis oldugu icin "Accept? (y/N):"
+          # sorusunda takilip patliyordu. Kosucu imajinin kendi 12.0'inde
+          # lisanslar zaten kabul edilmis durumda - sabitleyince hem
+          # indirme hem lisans adimi tamamen atlaniyor.
+          cmdline-tools-version: '12.0'
 
       - name: Sync Capacitor Android project
         run: |
