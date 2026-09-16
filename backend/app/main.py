@@ -161,6 +161,12 @@ async def start_background_jobs():
     telegram_bot_service.start_background_scheduler()
     from app.services.index_tracker import index_tracker_service
     index_tracker_service.start_daily_scheduler()
+
+    # Cikis Kapisi: hesap ~45 hisse icin gecmis veri cekiyor ve sogukken
+    # 35 saniye suruyor - ilk kullanicinin bunu beklememesi icin arka
+    # planda hazirlaniyor (bkz. crowding_risk.py).
+    from app.services import crowding_risk
+    crowding_risk.start_background_scheduler()
     from app.services.subscription_expiry import subscription_expiry_service
     subscription_expiry_service.start_daily_scheduler()
     from app.services.news import NewsService

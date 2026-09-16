@@ -22,6 +22,7 @@ import {
   Radio,
   Split,
   ScrollText,
+  DoorOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -189,6 +190,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         { name: "Portföyüm", href: "/portfolio", icon: Briefcase },
         { name: "Fon Takip", href: "/funds", icon: Coins },
         { name: "Fon Akış Radarı", href: "/flow-radar", icon: Radio },
+        { name: "Çıkış Kapısı", href: "/exit-door", icon: DoorOpen },
       ],
     },
     {

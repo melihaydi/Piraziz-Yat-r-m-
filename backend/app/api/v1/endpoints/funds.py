@@ -357,6 +357,37 @@ def get_flow_radar(
     return result
 
 
+# DIKKAT: bu rota da '/{code}'dan ONCE tanimli olmali - bkz. hemen
+# yukaridaki '/flow-radar' notu.
+@router.get("/exit-door")
+@limiter.limit("30/minute")
+def get_exit_door(
+    request: Request, limit: int = 25,
+    _user: User = Depends(deps.get_current_user),
+):
+    """Cikis Kapisi - izlenen fonlarin bir hissede tuttugu TL, o hissenin
+    tipik gunluk hacminin kac katina denk geliyor.
+
+    Akis Radari'nin aynasi: o "para nereye girdi" diyor, bu "cikmak
+    isterlerse ne olur" diyor. Ikisi de ayni iki veriden besleniyor (fon
+    kompozisyonlari + fon buyuklukleri), yani yeni bir kaynak gerekmiyor.
+
+    ONEMLI: donen rakam bir ALT SINIR - yalnizca kompozisyonunu bildigimiz
+    fonlar sayiliyor, TEFAS'ta cok daha fazlasi var. Ayrica "N gunluk
+    hacim" N gunde cikabilirler demek degil; piyasanin tamami olunamaz.
+    Arayuz ikisini de yazmali.
+
+    Hesap ~45 hisse icin gecmis veri cekiyor ve sogukken 35 saniye suruyor
+    (olculdu) - bu yuzden istek icinde YAPILMIYOR. Arka planda hazirlanip
+    paylasiliyor (crowding_risk.start_background_scheduler); burasi yalnizca
+    hazir olani okuyor. Henuz hazir degilse `ready: false` donuyor ve
+    arayuz "hazirlaniyor" diyor - kullaniciyi yarim dakika bekletmektense.
+    """
+    from app.services.crowding_risk import get_exit_door
+
+    return get_exit_door(limit=max(1, min(limit, 50)))
+
+
 @router.get("/{code}")
 @limiter.limit("120/minute")
 def get_fund_detail(request: Request, code: str):
