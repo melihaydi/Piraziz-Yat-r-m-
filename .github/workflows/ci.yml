@@ -167,6 +167,13 @@ jobs:
           # lisanslar zaten kabul edilmis durumda - sabitleyince hem
           # indirme hem lisans adimi tamamen atlaniyor.
           cmdline-tools-version: '12.0'
+          # Eylemin varsayilani 'tools platform-tools' ve 'tools' paketi
+          # Google deposundan KALDIRILDI - calisma #349'da tam olarak bu
+          # patladi: "Warning: Failed to find package 'tools'" ardindan
+          # sdkmanager exit 1. Yalnizca hala var olan platform-tools
+          # isteniyor; platform/build-tools'u Gradle zaten kendisi
+          # indiriyor.
+          packages: 'platform-tools'
 
       - name: Sync Capacitor Android project
         run: |
